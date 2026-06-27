@@ -1,0 +1,410 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --ink: 60 64 71;
+  --ink-soft: 127 132 143;
+  --ink-faint: 174 179 189;
+  --surface-body: 238 240 243;
+  --tile-top: 245 246 248;
+  --tile-bottom: 221 224 230;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: 255 255 255;
+  --ink-soft: 168 168 184;
+  --ink-faint: 107 107 128;
+  --surface-body: 5 5 8;
+  --tile-top: 255 255 255;
+  --tile-bottom: 255 255 255;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: theme("fontFamily.sans");
+  color: theme("colors.ink.DEFAULT");
+  overflow: hidden;
+  background-color: rgb(var(--surface-body));
+}
+
+#root {
+  overflow: hidden;
+}
+
+/* The IISU "paper": near-white centre, soft grey vignette to the edges,
+   with a faint perforated dot grid printed over it. */
+.paper-bg {
+  position: absolute;
+  inset: 0;
+  background-color: rgb(var(--surface-body));
+  background-image:
+    radial-gradient(circle, rgba(150, 158, 172, 0.16) 1px, transparent 1.4px),
+    radial-gradient(125% 115% at 50% 35%, #fbfbfc 0%, #f0f1f4 48%, #dfe2e8 78%, #d2d5dc 100%);
+  background-size:
+    13px 13px,
+    100% 100%;
+  background-position:
+    0 0,
+    0 0;
+}
+
+[data-theme="dark"] .paper-bg {
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1.4px),
+    radial-gradient(ellipse 90% 70% at 50% 28%, rgba(30, 27, 75, 0.72) 0%, transparent 68%),
+    radial-gradient(ellipse 55% 45% at 72% 62%, rgba(96, 165, 250, 0.14) 0%, transparent 62%),
+    radial-gradient(ellipse 40% 35% at 18% 78%, rgba(192, 132, 252, 0.1) 0%, transparent 58%),
+    linear-gradient(180deg, #050508 0%, #0a0a12 55%, #050508 100%);
+  background-size:
+    13px 13px,
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    100% 100%;
+  background-position:
+    0 0,
+    0 0,
+    0 0,
+    0 0,
+    0 0;
+}
+
+[data-theme="dark"] .doodle-layer {
+  opacity: 0.12;
+  filter: drop-shadow(0 2px 8px rgba(192, 132, 252, 0.25)) !important;
+}
+
+@layer components {
+  /* Glossy light squircle tile — the core IISU surface. */
+  .tile {
+    @apply relative shadow-tile transition-all duration-200 ease-out;
+    border-radius: 30%;
+    background: linear-gradient(
+      180deg,
+      theme("colors.tile.top") 0%,
+      theme("colors.tile.bottom") 100%
+    );
+  }
+  .tile-press {
+    @apply active:scale-95 active:shadow-tile-press;
+  }
+
+  /* A rounded-rectangle panel/card (lists, sheets, info blocks). */
+  .panel {
+    @apply relative rounded-tile shadow-panel;
+    background: linear-gradient(180deg, #ffffff 0%, #f4f5f7 100%);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+  }
+  .card {
+    @apply relative rounded-tile shadow-soft;
+    background: linear-gradient(180deg, #ffffff 0%, #f3f4f7 100%);
+    border: 1px solid rgba(255, 255, 255, 0.75);
+  }
+
+  /* Floating capsule (dock, status pills, tab bar). */
+  .capsule {
+    @apply rounded-pill shadow-pill;
+    background: linear-gradient(180deg, #ffffff 0%, #eef0f3 100%);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+  }
+
+  /* Console-style button glyph: circled letter, embossed grey. */
+  .glyph {
+    @apply inline-flex items-center justify-center rounded-full text-[11px] font-900;
+    width: 20px;
+    height: 20px;
+    color: #6b7079;
+    background: linear-gradient(180deg, #fbfbfc, #e4e6ea);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      0 1px 2px rgba(120, 130, 150, 0.35);
+  }
+
+  /* Primary glossy button. */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-pill px-5 py-3
+      font-800 text-white transition-all duration-150 active:scale-95;
+    background: linear-gradient(180deg, #6cc6ff 0%, #3a8ef0 100%);
+    box-shadow:
+      0 10px 22px -8px rgba(58, 142, 240, 0.7),
+      inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-pill px-5 py-3
+      font-800 text-ink transition-all duration-150 active:scale-95 capsule;
+  }
+
+  .iisu-gradient-text {
+    background: linear-gradient(135deg, #c084fc 0%, #60a5fa 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .quick-menu-panel {
+    background: linear-gradient(180deg, #ffffff 0%, #f3f4f7 100%);
+    border: 1px solid rgba(255, 255, 255, 0.75);
+  }
+
+  .quick-menu-row {
+    background: linear-gradient(180deg, #ffffff 0%, #f0f1f4 100%);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+  }
+
+  .dock-tab-active {
+    background: linear-gradient(180deg, #8fe6c6, #5cd0a8);
+    box-shadow:
+      0 6px 14px -6px rgba(76, 199, 156, 0.7),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    transform: translateY(-3px);
+  }
+
+  .dock-shoulder {
+    z-index: 20;
+    border-radius: 0.375rem;
+    padding: 0.125rem 0.5rem;
+    font-size: 10px;
+    font-weight: 900;
+    color: rgb(var(--ink-faint));
+    background: #ffffff;
+    box-shadow: 0 8px 22px -12px rgba(70, 80, 100, 0.35);
+    transition: all 150ms;
+  }
+  .dock-shoulder:hover {
+    background: #f5f6f8;
+  }
+  .dock-shoulder:active {
+    transform: scale(0.95);
+  }
+
+  .content-title {
+    @apply text-ink;
+  }
+
+  .category-label {
+    @apply text-ink-soft;
+  }
+}
+
+/* App viewport — phone portrait, widens on tablet / landscape like IISU. */
+.app-shell {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  height: 100dvh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+@media (min-width: 720px), (orientation: landscape) and (min-height: 420px) {
+  .app-shell {
+    max-width: min(960px, 100%);
+  }
+}
+
+/* IISU home dashboard — single column on phone, two panels on wide screens. */
+.home-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+@media (min-width: 720px), (orientation: landscape) and (min-height: 420px) {
+  .home-dashboard {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    gap: 1.25rem;
+    align-items: start;
+  }
+}
+
+.home-panel {
+  min-width: 0;
+}
+
+.scroll-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.scroll-area::-webkit-scrollbar {
+  display: none;
+}
+
+/* Horizontal scroller (no flex-grow, hidden scrollbar). */
+.hscroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.hscroll::-webkit-scrollbar {
+  display: none;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* ── Dark mode (iiSU.network-style) ───────────────────────────────────── */
+
+[data-theme="dark"] .panel {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(14px);
+  box-shadow:
+    0 14px 40px -14px rgba(0, 0, 0, 0.65),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 28px -12px rgba(0, 0, 0, 0.55);
+}
+
+[data-theme="dark"] .capsule {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 8px 24px -12px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .tile {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.12) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  box-shadow:
+    0 8px 20px -10px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.25);
+}
+
+[data-theme="dark"] .glyph {
+  color: rgb(var(--ink-soft));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.05));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+[data-theme="dark"] .btn {
+  background: linear-gradient(135deg, #c084fc 0%, #60a5fa 100%);
+  box-shadow:
+    0 10px 24px -8px rgba(192, 132, 252, 0.65),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+[data-theme="dark"] .btn-ghost {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .quick-menu-panel {
+  background: rgba(12, 12, 18, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(20px);
+  box-shadow:
+    0 24px 48px -16px rgba(0, 0, 0, 0.75),
+    0 0 0 1px rgba(192, 132, 252, 0.08);
+}
+
+[data-theme="dark"] .quick-menu-row {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .dark-overlay {
+  background: rgba(0, 0, 0, 0.55) !important;
+}
+
+[data-theme="dark"] .sheet-panel {
+  background: rgba(12, 12, 18, 0.97) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="dark"] .dock-tab-active {
+  background: linear-gradient(135deg, #c084fc 0%, #60a5fa 100%) !important;
+  box-shadow:
+    0 8px 20px -6px rgba(192, 132, 252, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+}
+
+[data-theme="dark"] .hint-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.drop-shadow-light {
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.8));
+}
+
+.dock-icon-idle {
+  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.9));
+}
+
+[data-theme="dark"] .drop-shadow-light {
+  filter: none;
+  text-shadow: none;
+}
+
+[data-theme="dark"] .hero-greeting,
+[data-theme="dark"] .content-title,
+[data-theme="dark"] .category-label {
+  color: #ffffff;
+}
+
+[data-theme="dark"] .activity-row-scrim {
+  background: rgba(8, 8, 14, 0.78) !important;
+}
+
+[data-theme="dark"] .dock-shoulder {
+  color: rgb(var(--ink-soft));
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 8px 24px -12px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .dock-shoulder:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .dock-icon-idle {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+}
+
+/* Goal strip routine row — pad tiles so completion rings aren't clipped by overflow-x. */
+.goal-routine-icon-wrap {
+  padding: 5px;
+}
