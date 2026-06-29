@@ -7,7 +7,7 @@ export type TileState = "default" | "priority" | "done" | "selected";
 interface Props {
   /** emoji or short text */
   glyph?: string;
-  /** line-art icon (IISU app-logo style) — takes precedence over glyph when set */
+  /** line-art icon (IISU app-logo style) - takes precedence over glyph when set */
   Icon?: LucideIcon;
   /** accent colour used for the frame + glow */
   color?: string;

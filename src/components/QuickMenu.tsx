@@ -4,7 +4,7 @@ import { Moon, Sun, X } from "lucide-react";
 import { useControls } from "@/store/useControls";
 import { useTheme } from "@/store/useTheme";
 
-/** Quick options menu (B) — dark mode toggle and future shortcuts. */
+/** Quick options menu (B) - dark mode toggle and future shortcuts. */
 export function QuickMenu() {
   const open = useControls((s) => s.quickMenuOpen);
   const setOpen = useControls((s) => s.setQuickMenuOpen);

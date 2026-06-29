@@ -7,7 +7,7 @@ interface Props {
   onPick?: (key: CategoryKey) => void;
 }
 
-/** IISU emulator/platform tile grid — quick-launch categories. */
+/** IISU emulator/platform tile grid - quick-launch categories. */
 export function CategoryGrid({ onPick }: Props) {
   const nav = useNavigate();
 

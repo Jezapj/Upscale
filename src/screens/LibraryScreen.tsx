@@ -95,7 +95,7 @@ export function LibraryScreen() {
         />
       </div>
 
-      {/* Category filter — IISU segmented style row */}
+      {/* Category filter - IISU segmented style row */}
       <div className="hscroll flex items-center gap-2 px-4 pb-2 pt-1">
         <FilterPill
           active={filter === "all"}
@@ -132,7 +132,7 @@ export function LibraryScreen() {
             </button>
           </div>
         ) : view === "grid" ? (
-          /* IISU Apps grid — squircle tiles on a white panel */
+          /* IISU Apps grid - squircle tiles on a white panel */
           <div className="panel p-4">
             <div className="grid grid-cols-4 gap-4 sm:grid-cols-5">
               {routines.map((r) => (

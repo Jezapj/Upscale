@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Upscale — a 3DS eShop styled habit, routine & goal tracker PWA",
+  "description": "Upscale is a habit, routine and goal tracker PWA",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

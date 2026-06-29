@@ -7,7 +7,7 @@ interface Props {
   size?: "sm" | "lg";
 }
 
-/** Worst → best rating tiles — glossy squircles like IISU app icons. */
+/** Worst → best rating tiles - glossy squircles like IISU app icons. */
 export function RatingButtons({ value, onPick, size = "lg" }: Props) {
   const big = size === "lg";
   const tileSize = big ? 52 : 44;

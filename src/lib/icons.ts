@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import type { CategoryKey } from "./types";
 
-/** Line-art icons for categories — matches the IISU app-logo tile look. */
+/** Line-art icons for categories - matches the IISU app-logo tile look. */
 export const CATEGORY_ICONS: Record<CategoryKey, LucideIcon> = {
   exercise: Dumbbell,
   instrument: Music2,

@@ -16,7 +16,7 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.png", "apple-touch-icon.png", "icons/*.png"],
       manifest: {
-        name: "Upscale — Goals & Routines",
+        name: "Upscale: Goals & Routines",
         short_name: "Upscale",
         description:
           "A 3DS eShop styled reminder, self-improvement and goal tracker. Build routines, group them under goals, and map your progress.",

@@ -44,7 +44,7 @@ function HintButton({ hint }: { hint: Hint }) {
   );
 }
 
-/** Console-style control hints — clickable when an action is wired. */
+/** Console-style control hints - clickable when an action is wired. */
 export function HintBar({ left = [], right = [], insetSafe = true }: Props) {
   return (
     <div

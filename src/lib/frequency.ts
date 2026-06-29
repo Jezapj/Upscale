@@ -21,7 +21,7 @@ export function describeFrequency(f: Frequency): string {
         ? `Every ${f.intervalDays} days`
         : "Every day";
     default:
-      return "—";
+      return "-";
   }
 }
 

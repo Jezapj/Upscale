@@ -70,7 +70,7 @@ export function HomeScreen() {
         </div>
 
         <div className="home-dashboard">
-          {/* Left column — hero + goal strips (IISU home left panel) */}
+          {/* Left column - hero + goal strips (IISU home left panel) */}
           <div className="home-panel space-y-3">
             {/* Jump back in */}
             <button
@@ -224,7 +224,7 @@ export function HomeScreen() {
             )}
           </div>
 
-          {/* Right column — activity list + category grid (IISU centre/right) */}
+          {/* Right column - activity list + category grid (IISU centre/right) */}
           <div className="home-panel space-y-4">
             <div className="hidden lg:block">
               <p className="text-sm font-700 text-ink-faint">{prettyDay(key)}</p>

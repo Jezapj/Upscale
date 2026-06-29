@@ -10,7 +10,7 @@ import { isEmoji } from "@/lib/icons";
 interface Props {
   routine: Routine;
   data: AppData;
-  /** IISU "recently played" list row — no inline rating buttons */
+  /** IISU "recently played" list row - no inline rating buttons */
   compact?: boolean;
   showRating?: boolean;
   onOpen?: () => void;
@@ -39,7 +39,7 @@ export function ActivityRow({
         tileState === "priority" ? "animate-pulse-red ring-2 ring-cat-exercise/60" : ""
       }`}
     >
-      {/* blurred colour wash — like IISU game artwork behind list rows */}
+      {/* blurred colour wash - like IISU game artwork behind list rows */}
       <div
         className="absolute inset-0 scale-110 blur-2xl"
         style={{

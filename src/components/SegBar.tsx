@@ -9,7 +9,7 @@ interface Props<T extends string> {
   onChange: (v: T) => void;
 }
 
-/** Wide white capsule with an inset "pressed" active segment — the IISU
+/** Wide white capsule with an inset "pressed" active segment - the IISU
  *  Apps / Games / Emulators tab bar. */
 export function SegBar<T extends string>({ options, value, onChange }: Props<T>) {
   return (
