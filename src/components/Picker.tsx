@@ -85,4 +85,4 @@ export function Field({
 }
 
 export const inputClass =
-  "w-full rounded-2xl border border-white/70 bg-white/90 px-4 py-3 font-600 text-ink shadow-soft outline-none placeholder:text-ink-faint focus:ring-2 focus:ring-mint";
+  "form-input w-full rounded-2xl border border-white/70 bg-white/90 px-4 py-3 font-600 text-ink shadow-soft outline-none placeholder:text-ink-faint focus:ring-2 focus:ring-mint";

@@ -20,8 +20,8 @@ export function SegBar<T extends string>({ options, value, onChange }: Props<T>)
           <button
             key={o.key}
             onClick={() => onChange(o.key)}
-            className={`flex-1 rounded-pill py-2 text-sm font-800 transition-all duration-150 active:scale-95 ${
-              active ? "text-ink shadow-seg-inset" : "text-ink-faint"
+            className={`seg-option flex-1 rounded-pill py-2 text-sm font-800 transition-all duration-150 active:scale-95 ${
+              active ? "seg-option-active text-ink shadow-seg-inset" : "text-ink-faint"
             }`}
             style={
               active

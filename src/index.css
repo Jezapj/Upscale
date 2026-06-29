@@ -408,3 +408,43 @@ input[type="number"]::-webkit-inner-spin-button {
 .goal-routine-icon-wrap {
   padding: 5px;
 }
+
+/* ── Dark mode: light-surface form controls (readable typed text) ─────────── */
+
+[data-theme="dark"] .form-input {
+  color: #2a2a35;
+  -webkit-text-fill-color: #2a2a35;
+  color-scheme: light;
+}
+
+[data-theme="dark"] .form-input::placeholder {
+  color: #6b7280;
+  -webkit-text-fill-color: #6b7280;
+  opacity: 1;
+}
+
+[data-theme="dark"] input[type="date"].form-input::-webkit-datetime-edit,
+[data-theme="dark"] input[type="date"].form-input::-webkit-datetime-edit-fields-wrapper,
+[data-theme="dark"] input[type="date"].form-input::-webkit-datetime-edit-text,
+[data-theme="dark"] input[type="date"].form-input::-webkit-datetime-edit-month-field,
+[data-theme="dark"] input[type="date"].form-input::-webkit-datetime-edit-day-field,
+[data-theme="dark"] input[type="date"].form-input::-webkit-datetime-edit-year-field {
+  color: #2a2a35;
+  -webkit-text-fill-color: #2a2a35;
+}
+
+[data-theme="dark"] .seg-option-active {
+  color: #2a2a35 !important;
+}
+
+[data-theme="dark"] .form-category-label {
+  color: #ffffff;
+}
+
+[data-theme="dark"] .form-category-label--active {
+  color: #2a2a35 !important;
+}
+
+[data-theme="dark"] .form-freq-inactive {
+  color: #ffffff !important;
+}

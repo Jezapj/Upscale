@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useStore } from "@/store/useStore";
 import { googleConfigured, makeGuest, renderGoogleButton } from "@/lib/auth";
 import { BackgroundDecor } from "@/components/BackgroundDecor";
-import { Tile } from "@/components/Tile";
 import { ArrowRight, Sparkles } from "lucide-react";
 
 export function LoginScreen() {
@@ -29,12 +28,18 @@ export function LoginScreen() {
       <BackgroundDecor />
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-7 text-center">
         <div className="animate-pop-in">
-          <Tile glyph="⛰️" color="#4aa3ff" size={108} state="selected" />
+          <img
+            src="/Upscale.png"
+            alt="Upscale"
+            width={108}
+            height={108}
+            draggable={false}
+          />
         </div>
         <h1 className="mt-5 font-display text-4xl font-800 text-ink">Upscale</h1>
         <p className="mt-2 max-w-[18rem] text-sm font-600 text-ink-soft">
           Build routines, group them under goals, and watch your progress level
-          up — one day at a time.
+          up - one day at a time.
         </p>
 
         <div className="mt-9 flex w-full max-w-[320px] flex-col items-center gap-3">
@@ -44,7 +49,7 @@ export function LoginScreen() {
             <div className="card w-full px-4 py-3 text-xs font-600 text-ink-soft">
               <span className="font-800 text-ink">Google sign-in is optional.</span>{" "}
               Add a <code className="rounded bg-white/70 px-1">VITE_GOOGLE_CLIENT_ID</code>{" "}
-              to enable it. For now, jump in as a guest — your data is saved on
+              to enable it. For now, jump in as a guest - your data is saved on
               this device.
             </div>
           )}
@@ -65,7 +70,7 @@ export function LoginScreen() {
                 onChange={(e) => setGuestName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && continueAsGuest()}
                 placeholder="What should we call you?"
-                className="w-full rounded-2xl border border-white/70 bg-white/90 px-4 py-3 font-600 text-ink outline-none placeholder:text-ink-faint focus:ring-2 focus:ring-mint"
+                className="form-input w-full rounded-2xl border border-white/70 bg-white/90 px-4 py-3 font-600 text-ink outline-none placeholder:text-ink-faint focus:ring-2 focus:ring-mint"
               />
               <button onClick={continueAsGuest} className="btn w-full">
                 Let's go <ArrowRight size={18} />

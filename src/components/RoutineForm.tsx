@@ -116,7 +116,11 @@ export function RoutineForm({
                   size={36}
                   state={active ? "selected" : "default"}
                 />
-                <span className="text-[10px] font-800 text-ink-soft">
+                <span
+                  className={`form-category-label text-[10px] font-800 text-ink-soft ${
+                    active ? "form-category-label--active" : ""
+                  }`}
+                >
                   {c.label}
                 </span>
               </button>
@@ -135,7 +139,7 @@ export function RoutineForm({
               className={`flex-1 rounded-pill py-2 text-sm font-800 transition-all active:scale-95 ${
                 freqType === t
                   ? "bg-mint text-white shadow-soft"
-                  : "bg-white/60 text-ink-soft"
+                  : "form-freq-inactive bg-white/60 text-ink-soft"
               }`}
             >
               {t === "daily" ? "Daily" : t === "weekly" ? "Weekly" : "Interval"}
@@ -152,7 +156,7 @@ export function RoutineForm({
                 className={`h-10 w-10 rounded-full text-sm font-800 transition-all active:scale-90 ${
                   daysOfWeek.includes(i)
                     ? "bg-mint text-white shadow-soft"
-                    : "bg-white/60 text-ink-faint"
+                    : "form-freq-inactive bg-white/60 text-ink-faint"
                 }`}
               >
                 {lbl}
