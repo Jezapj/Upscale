@@ -1,9 +1,6 @@
 import { useNavigate, useLocation, NavLink } from "react-router-dom";
 import { Home, Gamepad2, Trophy, Smile, LayoutGrid } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useStore } from "@/store/useStore";
-import { todayKey } from "@/lib/dates";
-import { isDueToday } from "@/lib/frequency";
 import { dockNext, dockPrev } from "@/lib/dock";
 
 interface Item {
@@ -14,7 +11,7 @@ interface Item {
 
 const ITEMS: Item[] = [
   { to: "/", label: "Home", icon: Home },
-  { to: "/checkin", label: "Check-in", icon: Gamepad2 },
+  { to: "/games", label: "Arcade", icon: Gamepad2 },
   { to: "/goals", label: "Goals", icon: Trophy },
   { to: "/progress", label: "Progress", icon: Smile },
   { to: "/library", label: "Library", icon: LayoutGrid },
@@ -24,9 +21,6 @@ const ITEMS: Item[] = [
 export function Dock() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const data = useStore((s) => s.data);
-  const key = todayKey();
-  const dueCount = data.routines.filter((r) => isDueToday(r, key, data)).length;
 
   const goPrev = () => navigate(dockPrev(pathname));
   const goNext = () => navigate(dockNext(pathname));
@@ -76,11 +70,6 @@ export function Dock() {
                     color={isActive ? "#ffffff" : "#8b919c"}
                     className={isActive ? "" : "dock-icon-idle"}
                   />
-                  {item.to === "/checkin" && dueCount > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-cat-exercise px-1 text-[10px] font-900 text-white shadow-soft ring-2 ring-white">
-                      {dueCount}
-                    </span>
-                  )}
                 </span>
               )}
             </NavLink>

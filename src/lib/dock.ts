@@ -1,7 +1,7 @@
 /** Dock tab order - matches the bottom nav left → right. */
 export const DOCK_ROUTES = [
   "/",
-  "/checkin",
+  "/games",
   "/goals",
   "/progress",
   "/library",

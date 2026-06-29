@@ -18,6 +18,10 @@ import { HomeScreen } from "@/screens/HomeScreen";
 import { CheckinScreen } from "@/screens/CheckinScreen";
 import { GoalsScreen } from "@/screens/GoalsScreen";
 import { LibraryScreen } from "@/screens/LibraryScreen";
+import { GamesScreen } from "@/screens/GamesScreen";
+import { TipTopScreen } from "@/screens/games/TipTopScreen";
+import { OctaneScreen } from "@/screens/games/OctaneScreen";
+import { DissiadaScreen } from "@/screens/games/DissiadaScreen";
 import { ProgressScreen } from "@/screens/ProgressScreen";
 
 function AppShell() {
@@ -35,8 +39,10 @@ function AppShell() {
     };
   }, [refreshToday]);
 
-  // The check-in flow is a focused, full-screen experience (no dock).
+  // Full-screen flows: check-in and active game sessions (no dock).
   const isCheckin = location.pathname.startsWith("/checkin");
+  const isPlayingGame = /^\/games\/[^/]+/.test(location.pathname);
+  const hideChrome = isCheckin || isPlayingGame;
 
   useKeyboardControls();
 
@@ -50,17 +56,21 @@ function AppShell() {
           <Route path="/checkin" element={<CheckinScreen />} />
           <Route path="/goals" element={<GoalsScreen />} />
           <Route path="/library" element={<LibraryScreen />} />
+          <Route path="/games" element={<GamesScreen />} />
+          <Route path="/games/tiptop" element={<TipTopScreen />} />
+          <Route path="/games/octane" element={<OctaneScreen />} />
+          <Route path="/games/dissiada" element={<DissiadaScreen />} />
           <Route path="/progress" element={<ProgressScreen />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
       <QuickMenu />
-      {!isCheckin && (
+      {!hideChrome && (
         <div className="relative z-30">
           <ScreenHints />
         </div>
       )}
-      {!isCheckin && <Dock />}
+      {!hideChrome && <Dock />}
     </div>
   );
 }

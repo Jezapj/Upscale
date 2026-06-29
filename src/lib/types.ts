@@ -76,7 +76,18 @@ export interface AppData {
   logs: Record<string, DayLog>;
   /** The last day the user opened/refreshed the app (YYYY-MM-DD). */
   lastActiveDate?: string;
+  /** Daily arcade play counts (resets each calendar day). */
+  gamePlays?: GamePlaysState;
+  /** Future: Stripe subscription unlocks unlimited plays. */
+  gamePremium?: boolean;
   version: number;
+}
+
+export type GameId = "tiptop" | "octane" | "dissiada";
+
+export interface GamePlaysState {
+  date: string;
+  counts: Record<GameId, number>;
 }
 
 export interface User {

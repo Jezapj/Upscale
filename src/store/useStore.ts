@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type {
   AppData,
+  GameId,
   Goal,
   Rating,
   Routine,
@@ -11,6 +12,11 @@ import { storage } from "@/lib/storage";
 import { todayKey } from "@/lib/dates";
 import { buildEntry } from "@/lib/rating";
 import { signOutGoogle } from "@/lib/auth";
+import {
+  canPlayGame,
+  playsRemaining,
+  recordGamePlay,
+} from "@/lib/gamePlays";
 
 const uid = () => crypto.randomUUID();
 
@@ -36,6 +42,10 @@ interface StoreState {
   clearRating: (routineId: string) => void;
 
   refreshToday: () => void;
+
+  gamePlaysLeft: (gameId: GameId) => number;
+  canPlay: (gameId: GameId) => boolean;
+  consumePlay: (gameId: GameId) => boolean;
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -170,6 +180,23 @@ export const useStore = create<StoreState>((set, get) => {
       mutate((d) =>
         d.lastActiveDate === key ? d : { ...d, lastActiveDate: key },
       );
+    },
+
+    gamePlaysLeft(gameId) {
+      const { data, today } = get();
+      return playsRemaining(data, gameId, today);
+    },
+
+    canPlay(gameId) {
+      const { data, today } = get();
+      return canPlayGame(data, gameId, today);
+    },
+
+    consumePlay(gameId) {
+      const { data, today } = get();
+      if (!canPlayGame(data, gameId, today)) return false;
+      mutate((d) => recordGamePlay(d, gameId, today));
+      return true;
     },
   };
 });

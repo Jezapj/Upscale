@@ -46,6 +46,23 @@ export function ScreenHints() {
     );
   }
 
+  if (pathname.startsWith("/games")) {
+    if (pathname === "/games") {
+      return (
+        <HintBar
+          insetSafe={false}
+          left={[
+            settingsHint,
+            optionsHint,
+            ...wire([{ glyph: "←", label: "Back", action: "back" }], invoke),
+          ]}
+          right={wire([{ glyph: "A", label: "Play", action: "primary" }], invoke)}
+        />
+      );
+    }
+    return null;
+  }
+
   if (pathname.startsWith("/goals")) {
     return (
       <HintBar
@@ -123,4 +140,4 @@ export function CheckinHints() {
     />
   );
 }
-
+

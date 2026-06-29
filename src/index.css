@@ -457,3 +457,41 @@ input[type="number"]::-webkit-inner-spin-button {
 [data-theme="dark"] .form-freq-inactive {
   color: #ffffff !important;
 }
+
+/* ── Arcade game shell (matches app light / dark theme) ───────────────────── */
+
+.game-shell {
+  background: linear-gradient(180deg, #f5f6f8 0%, #eef0f3 100%);
+}
+
+.game-stage {
+  background: #e4e6ea;
+  border-top: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+.game-overlay {
+  background: rgba(238, 240, 243, 0.88);
+  backdrop-filter: blur(8px);
+}
+
+.game-shell-title {
+  color: rgb(var(--ink));
+}
+
+[data-theme="dark"] .game-shell {
+  background: linear-gradient(180deg, #0c0c12 0%, #050508 100%);
+}
+
+[data-theme="dark"] .game-stage {
+  background: #0a0a10;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .game-overlay {
+  background: rgba(5, 5, 8, 0.82);
+  backdrop-filter: blur(12px);
+}
+
+[data-theme="dark"] .game-shell-title {
+  color: #ffffff;
+}
