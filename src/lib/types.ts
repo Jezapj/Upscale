@@ -7,6 +7,7 @@ export type CategoryKey =
   | "chores"
   | "health"
   | "learning"
+  | "relax"
   | "other";
 
 /** The 4-level daily rating, ordered worst -> best. */

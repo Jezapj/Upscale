@@ -2,6 +2,7 @@ import {
   BookOpen,
   Dumbbell,
   HeartPulse,
+  Moon,
   Music2,
   Sparkles,
   Star,
@@ -18,6 +19,7 @@ export const CATEGORY_ICONS: Record<CategoryKey, LucideIcon> = {
   chores: Sparkles,
   health: HeartPulse,
   learning: BookOpen,
+  relax: Moon,
   other: Star,
 };
 

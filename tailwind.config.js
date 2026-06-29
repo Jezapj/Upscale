@@ -55,6 +55,7 @@ export default {
           chores: "#2bc4a8",
           health: "#ff77b0",
           learning: "#ffb43d",
+          relax: "#7c9cff",
           other: "#8b97a8",
         },
       },

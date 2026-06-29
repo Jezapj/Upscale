@@ -59,6 +59,14 @@ export const CATEGORIES: Record<CategoryKey, CategoryMeta> = {
     gradient: "linear-gradient(160deg,#ffce6e 0%,#ff9f1c 100%)",
     examples: ["Read", "Study language", "Online course"],
   },
+  relax: {
+    key: "relax",
+    label: "Relax",
+    icon: "🌙",
+    color: "#7c9cff",
+    gradient: "linear-gradient(160deg,#a5b8ff 0%,#5b7cf0 100%)",
+    examples: ["Sleep on time", "Read for fun", "Wind down", "Meditate"],
+  },
   other: {
     key: "other",
     label: "Other",
