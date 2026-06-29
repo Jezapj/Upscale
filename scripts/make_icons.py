@@ -7,8 +7,8 @@ ROOT = os.path.join(os.path.dirname(__file__), "..", "public")
 SRC = os.path.join(ROOT, "UpscaleX.png")
 LOGIN_COPY = os.path.join(ROOT, "Upscale.png")
 ICONS = os.path.join(ROOT, "icons")
-# Matches the logo’s dark backdrop when flattening transparent PNGs.
-FLAT_BG = (5, 5, 8, 255)
+# White backdrop when flattening transparent PNGs for install icons.
+ICON_BG = (255, 255, 255, 255)
 
 os.makedirs(ICONS, exist_ok=True)
 
@@ -17,14 +17,14 @@ def resize_square(src: Image.Image, size: int) -> Image.Image:
     return src.resize((size, size), Image.Resampling.LANCZOS)
 
 
-def flatten(src: Image.Image, size: int, bg=FLAT_BG) -> Image.Image:
+def flatten(src: Image.Image, size: int, bg=ICON_BG) -> Image.Image:
     canvas = Image.new("RGBA", (size, size), bg)
     scaled = resize_square(src, size)
     canvas.alpha_composite(scaled)
     return canvas.convert("RGB")
 
 
-def maskable(src: Image.Image, size: int, bg=FLAT_BG) -> Image.Image:
+def maskable(src: Image.Image, size: int, bg=ICON_BG) -> Image.Image:
     """Scale to ~82% safe zone for Android maskable icons."""
     canvas = Image.new("RGBA", (size, size), bg)
     inner = int(size * 0.82)

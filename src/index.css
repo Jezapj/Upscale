@@ -202,6 +202,7 @@ body {
 /* App viewport — phone portrait, widens on tablet / landscape like IISU. */
 .app-shell {
   position: relative;
+  z-index: 1;
   width: 100%;
   max-width: 480px;
   height: 100dvh;
@@ -212,6 +213,14 @@ body {
 }
 
 @media (min-width: 720px), (orientation: landscape) and (min-height: 420px) {
+  .paper-bg {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
+    z-index: 0;
+  }
+
   .app-shell {
     max-width: min(960px, 100%);
   }
