@@ -9,3 +9,6 @@ dist-ssr
 .DS_Store
 *.log
 .vite
+node_modules/.cache
+api/*.js
+api/*.d.ts
