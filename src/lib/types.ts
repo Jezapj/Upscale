@@ -80,6 +80,8 @@ export interface AppData {
   gamePlays?: GamePlaysState;
   /** Future: Stripe subscription unlocks unlimited plays. */
   gamePremium?: boolean;
+  /** ISO timestamp of last local/cloud save (for sync). */
+  syncedAt?: string;
   version: number;
 }
 

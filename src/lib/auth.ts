@@ -1,4 +1,6 @@
 import type { User } from "./types";
+import { GoogleAuthProvider, signInWithCredential } from "firebase/auth";
+import { cloudConfigured, getFirebaseAuth } from "./firebase";
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 
@@ -74,15 +76,28 @@ export async function renderGoogleButton(
   const id = window.google!.accounts.id;
   id.initialize({
     client_id: CLIENT_ID!,
-    callback: (resp) => {
+    callback: async (resp) => {
       const payload = decodeJwt(resp.credential);
-      onUser({
+      const user: User = {
         id: `google:${payload.sub}`,
         name: payload.name ?? "Friend",
         email: payload.email,
         picture: payload.picture,
         provider: "google",
-      });
+      };
+
+      if (cloudConfigured()) {
+        try {
+          const auth = getFirebaseAuth();
+          if (auth) {
+            await signInWithCredential(auth, GoogleAuthProvider.credential(resp.credential));
+          }
+        } catch (e) {
+          console.warn("Firebase sign-in failed; using local storage only", e);
+        }
+      }
+
+      onUser(user);
     },
     auto_select: false,
   });

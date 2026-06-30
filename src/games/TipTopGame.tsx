@@ -35,8 +35,8 @@ interface Stage {
 }
 
 const STAGE_COUNT = 3;
-const GRAVITY = 0.24;
-const FLAP_POWER = 5.4;
+const GRAVITY = 0.21;
+const FLAP_POWER = 5.9;
 const FLAP_ANGLE = (75 * Math.PI) / 180;
 const GROUND_Y = 0.78;
 const STAGE_CLEAR_FRAMES = 50;

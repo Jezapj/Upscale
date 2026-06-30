@@ -1,15 +1,40 @@
 import type { AppData, User } from "./types";
 import { emptyAppData } from "./types";
+import { cloudConfigured } from "./firebase";
+import {
+  isCloudUser,
+  loadCloudData,
+  mergeLocalAndCloud,
+  saveCloudData,
+} from "./cloudSync";
+import { getFirebaseAuth } from "./firebase";
 
 const USER_KEY = "upscale:user";
 const dataKey = (userId: string) => `upscale:data:${userId}`;
 
+function loadLocal(userId: string): AppData {
+  try {
+    const raw = localStorage.getItem(dataKey(userId));
+    if (!raw) return emptyAppData();
+    const parsed = JSON.parse(raw) as AppData;
+    return { ...emptyAppData(), ...parsed };
+  } catch {
+    return emptyAppData();
+  }
+}
+
+function saveLocal(userId: string, data: AppData): void {
+  try {
+    localStorage.setItem(dataKey(userId), JSON.stringify(data));
+  } catch (e) {
+    console.error("Failed to persist data locally", e);
+  }
+}
+
 /**
- * Local-first storage. Everything is persisted in localStorage, scoped by the
- * signed-in user's id so multiple accounts can coexist on one device and a
- * returning user restores exactly what they had. The async signatures keep the
- * door open for a future cloud backend (e.g. Firestore) without touching the
- * rest of the app.
+ * Local-first storage with optional Firestore sync for Google accounts.
+ * Guest data stays on-device only. Google users sync when Firebase is configured
+ * and they have an active Firebase Auth session (established at sign-in).
  */
 export const storage = {
   getUser(): User | null {
@@ -27,21 +52,40 @@ export const storage = {
   },
 
   async loadData(userId: string): Promise<AppData> {
-    try {
-      const raw = localStorage.getItem(dataKey(userId));
-      if (!raw) return emptyAppData();
-      const parsed = JSON.parse(raw) as AppData;
-      return { ...emptyAppData(), ...parsed };
-    } catch {
-      return emptyAppData();
+    const local = loadLocal(userId);
+
+    if (!isCloudUser(userId) || !cloudConfigured()) {
+      return local;
     }
+
+    const auth = getFirebaseAuth();
+    if (!auth?.currentUser) {
+      return local;
+    }
+
+    const cloud = await loadCloudData(userId);
+    const merged = mergeLocalAndCloud(local, cloud);
+    saveLocal(userId, merged);
+
+    const localAhead =
+      (local.syncedAt ?? "") > (cloud?.updatedAt ?? "") &&
+      (local.goals.length > 0 || local.routines.length > 0 || Object.keys(local.logs).length > 0);
+    if (localAhead) {
+      void saveCloudData(userId, merged);
+    }
+
+    return merged;
   },
 
   async saveData(userId: string, data: AppData): Promise<void> {
-    try {
-      localStorage.setItem(dataKey(userId), JSON.stringify(data));
-    } catch (e) {
-      console.error("Failed to persist data", e);
-    }
+    const stamped: AppData = { ...data, syncedAt: new Date().toISOString() };
+    saveLocal(userId, stamped);
+
+    if (!isCloudUser(userId) || !cloudConfigured()) return;
+
+    const auth = getFirebaseAuth();
+    if (!auth?.currentUser) return;
+
+    await saveCloudData(userId, stamped);
   },
 };

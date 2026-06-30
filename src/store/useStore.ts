@@ -12,6 +12,8 @@ import { storage } from "@/lib/storage";
 import { todayKey } from "@/lib/dates";
 import { buildEntry } from "@/lib/rating";
 import { signOutGoogle } from "@/lib/auth";
+import { getFirebaseAuth, cloudConfigured } from "@/lib/firebase";
+import { signOut as firebaseSignOut, onAuthStateChanged } from "firebase/auth";
 import {
   canPlayGame,
   playsRemaining,
@@ -75,6 +77,19 @@ export const useStore = create<StoreState>((set, get) => {
     async init() {
       const user = storage.getUser();
       if (user) {
+        if (user.provider === "google" && cloudConfigured()) {
+          const auth = getFirebaseAuth();
+          if (auth) {
+            await new Promise<void>((resolve) => {
+              const timeout = setTimeout(resolve, 3000);
+              const unsub = onAuthStateChanged(auth, () => {
+                clearTimeout(timeout);
+                unsub();
+                resolve();
+              });
+            });
+          }
+        }
         const data = await storage.loadData(user.id);
         set({ user, data, today: todayKey() });
         get().refreshToday();
@@ -91,6 +106,10 @@ export const useStore = create<StoreState>((set, get) => {
 
     signOut() {
       signOutGoogle();
+      if (cloudConfigured()) {
+        const auth = getFirebaseAuth();
+        if (auth) void firebaseSignOut(auth);
+      }
       storage.setUser(null);
       set({ user: null, data: emptyAppData() });
     },
