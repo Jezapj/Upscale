@@ -19,16 +19,16 @@ export const GAMES: GameMeta[] = [
   {
     id: "tiptop",
     name: "TipTop",
-    tagline: "Flap the ball into the hole",
+    tagline: "Flap into the pits",
     color: "#5cd0a8",
-    controls: "Tap or space to flap into each cup",
+    controls: "A/D or ◀ ▶ to flap left and right",
   },
   {
     id: "octane",
     name: "Octane",
-    tagline: "Quarter-mile drag: rev and shift",
+    tagline: "Drag race: rev to redline and shift",
     color: "#ff7a59",
-    controls: "Hold to gas · Tap SHIFT to change gears",
+    controls: "Hold gas · Tap clutch at redline to shift",
   },
   {
     id: "dissiada",

@@ -7,13 +7,181 @@ interface Props {
   onGameOver: (score: number) => void;
 }
 
-const GEARS = 5;
-const REDLINE = 8200;
-const SHIFT_MIN = 5200;
-const SHIFT_MAX = 7800;
-const RACE_DISTANCE = 402;
+const GEARS = 6;
+const RPM_MAX = 9000;
+const REDLINE_START = 7500;
+const REDLINE_END = 9000;
+const SHIFT_PERFECT_MIN = 7000;
+const SHIFT_PERFECT_MAX = 8800;
+const RACE_DISTANCE = 4800;
 
-/** Pixel drag racer: hold gas, tap shift button, scrolling road, fixed car. */
+function drawGauge(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+  value: number,
+  max: number,
+  label: string,
+  unit: string,
+  redlineStart: number | null,
+  redlineEnd: number | null,
+  faceColor: string,
+  tickColor: string,
+  needleColor: string,
+) {
+  const startA = Math.PI * 0.75;
+  const endA = Math.PI * 2.25;
+  const span = endA - startA;
+
+  ctx.fillStyle = faceColor;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(0,0,0,0.35)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, startA, endA);
+  ctx.stroke();
+
+  if (redlineStart !== null && redlineEnd !== null) {
+    const rs = startA + (redlineStart / max) * span;
+    const re = startA + (redlineEnd / max) * span;
+    ctx.strokeStyle = "#e03030";
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r - 5, rs, re);
+    ctx.stroke();
+  }
+
+  const majorTicks = max <= 10 ? 9 : 8;
+  for (let i = 0; i <= majorTicks; i++) {
+    const t = i / majorTicks;
+    const ang = startA + t * span;
+    const inner = r - 14;
+    const outer = r - 4;
+    ctx.strokeStyle = tickColor;
+    ctx.lineWidth = i % 2 === 0 ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(ang) * inner, cy + Math.sin(ang) * inner);
+    ctx.lineTo(cx + Math.cos(ang) * outer, cy + Math.sin(ang) * outer);
+    ctx.stroke();
+
+    if (i % 2 === 0) {
+      const display = max <= 10 ? i : i * (max / majorTicks / 1000);
+      ctx.fillStyle = tickColor;
+      ctx.font = "bold 9px Nunito, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(String(Math.round(display)), cx + Math.cos(ang) * (r - 22), cy + Math.sin(ang) * (r - 22) + 3);
+    }
+  }
+
+  const pct = Math.min(1, value / max);
+  const needleA = startA + pct * span;
+  ctx.strokeStyle = needleColor;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(needleA) * (r - 18), cy + Math.sin(needleA) * (r - 18));
+  ctx.stroke();
+  ctx.fillStyle = needleColor;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = tickColor;
+  ctx.font = "bold 10px Nunito, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(label, cx, cy + r * 0.45);
+  ctx.font = "bold 13px Nunito, sans-serif";
+  ctx.fillText(unit, cx, cy + 8);
+  ctx.textAlign = "left";
+}
+
+function drawCheckeredPedal(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  active: boolean,
+) {
+  ctx.fillStyle = "#2a2a2a";
+  ctx.fillRect(x, y, w, h);
+
+  const cell = 6;
+  const cols = Math.ceil(w / cell);
+  const rows = Math.ceil(h / cell);
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const even = (row + col) % 2 === 0;
+      ctx.fillStyle = even ? "#f2f2f2" : "#1a1a1a";
+      const cw = Math.min(cell, x + w - (x + col * cell));
+      const ch = Math.min(cell, y + h - (y + row * cell));
+      ctx.fillRect(x + col * cell, y + row * cell, cw, ch);
+    }
+  }
+
+  const grad = ctx.createLinearGradient(x, y, x, y + h);
+  grad.addColorStop(0, "rgba(255,255,255,0.22)");
+  grad.addColorStop(0.5, "rgba(255,255,255,0)");
+  grad.addColorStop(1, "rgba(0,0,0,0.25)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(x, y, w, h);
+
+  if (active) {
+    ctx.fillStyle = "rgba(92, 208, 168, 0.4)";
+    ctx.fillRect(x, y, w, h);
+  }
+
+  ctx.strokeStyle = "#888";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+  ctx.strokeStyle = "rgba(0,0,0,0.6)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+}
+
+function drawPixelCar(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  bodyColor: string,
+  scale: number,
+) {
+  const cols = [
+    "......bbbbbbbbbbbbbbbb......",
+    "....bbbbbbbbbbbbbbbbbbbb....",
+    "...bbbbbbbbbbbbbbbbbbbbbb...",
+    "..bbbbbbwwwwwwwwwwwwbbbbbb..",
+    ".bbbbbbwwwwwwwwwwwwwwbbbbbb.",
+    "bbbbbbwwwwwwwwwwwwwwwwbbbbbb",
+    "bbbbbbwwwwwwwwwwwwwwwwbbbbbb",
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "bbwwwwbbbbbbbbbbbbbbwwwwbbbb",
+    "bbwwwwbbbbbbbbbbbbbbwwwwbbbb",
+    "bbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "...bbbbbb......bbbbbb...",
+  ];
+  const colorMap: Record<string, string> = {
+    b: bodyColor,
+    w: "#88bbee",
+    ".": "",
+  };
+  cols.forEach((row, ri) => {
+    for (let ci = 0; ci < row.length; ci++) {
+      const ch = row[ci];
+      if (ch === ".") continue;
+      ctx.fillStyle = colorMap[ch] ?? bodyColor;
+      ctx.fillRect(x + ci * scale, y + ri * scale, scale, scale);
+    }
+  });
+}
+
+/** Pixel drag racer: hold gas, clutch to shift at redline, scrolling road, dashboard gauges. */
 export function OctaneGame({ width, height, onGameOver }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gasRef = useRef(false);
@@ -31,19 +199,26 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
     canvas.height = height * dpr;
     ctx.scale(dpr, dpr);
 
-    const carX = width * 0.28;
-    const carY = height * 0.58;
-    const carW = 72;
-    const carH = 32;
+    const sceneH = height * 0.58;
+    const dashY = sceneH;
+    const dashH = height - sceneH;
+    const roadY = sceneH * 0.72;
+    const roadH = sceneH - roadY;
+    const carScale = 5;
+    const carRows = 14;
+    const carH = carRows * carScale;
+    const carW = 28 * carScale;
+    const carX = width * 0.08;
+    const carY = roadY + roadH * 0.42 - carH;
 
-    const shiftBtn = {
-      x: width - 108,
-      y: height - 72,
-      w: 92,
-      h: 52,
-    };
+    const clutchBtn = { x: 14, y: height - 62, w: 40, h: 40 };
+    const brakeBtn = { x: 60, y: height - 62, w: 40, h: 40 };
+    const gasBtn = { x: width - 62, y: height - 98, w: 48, h: 76 };
 
-    let rpm = 2500;
+    const hit = (x: number, y: number, b: typeof gasBtn) =>
+      x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+
+    let rpm = 2200;
     let gear = 1;
     let speed = 0;
     let distance = 0;
@@ -53,26 +228,27 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
     let shiftFlash = 0;
     let shiftQuality = 0;
     let time = 0;
-    let shiftBtnDown = false;
+    let clutchDown = false;
+    let brakeDown = false;
+    let gasDown = false;
 
-    const inShiftBtn = (x: number, y: number) =>
-      x >= shiftBtn.x && x <= shiftBtn.x + shiftBtn.w &&
-      y >= shiftBtn.y && y <= shiftBtn.y + shiftBtn.h;
+    const rpmRiseRate = (g: number) => 165 / Math.pow(g, 1.85);
 
     const shift = () => {
       if (!alive || finished || gear >= GEARS) return;
-      if (rpm < SHIFT_MIN) {
+      if (rpm < SHIFT_PERFECT_MIN * 0.55) {
         shiftQuality = -1;
-        shiftFlash = 20;
-        rpm = Math.max(2000, rpm - 800);
+        shiftFlash = 22;
+        rpm = Math.max(1800, rpm - 900);
+        speed = Math.max(0, speed - 1.2);
         return;
       }
-      const perfect = rpm >= SHIFT_MIN && rpm <= SHIFT_MAX;
-      shiftQuality = perfect ? 1 : 0;
-      shiftFlash = perfect ? 35 : 18;
+      const perfect = rpm >= SHIFT_PERFECT_MIN && rpm <= SHIFT_PERFECT_MAX;
+      shiftQuality = perfect ? 1 : rpm > SHIFT_PERFECT_MAX ? -1 : 0;
+      shiftFlash = perfect ? 40 : 18;
       gear++;
-      rpm = perfect ? 4200 : 4800;
-      speed += perfect ? 4.5 : 2.2;
+      rpm = perfect ? 3800 + gear * 120 : 4600 + gear * 80;
+      speed += perfect ? 5.5 : rpm > SHIFT_PERFECT_MAX ? 1.5 : 3;
     };
 
     const onPointerDown = (e: PointerEvent) => {
@@ -80,10 +256,13 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      if (inShiftBtn(x, y)) {
-        shiftBtnDown = true;
+      if (hit(x, y, clutchBtn)) {
+        clutchDown = true;
         shift();
-      } else {
+      } else if (hit(x, y, brakeBtn)) {
+        brakeDown = true;
+      } else if (hit(x, y, gasBtn)) {
+        gasDown = true;
         gasRef.current = true;
       }
     };
@@ -91,15 +270,18 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-      if (shiftBtnDown && inShiftBtn(x, y)) {
-        shiftBtnDown = false;
-      } else {
+      if (clutchDown && hit(x, y, clutchBtn)) clutchDown = false;
+      if (brakeDown && hit(x, y, brakeBtn)) brakeDown = false;
+      if (gasDown && hit(x, y, gasBtn)) {
+        gasDown = false;
         gasRef.current = false;
       }
     };
-    const onGasUp = () => {
+    const onLeave = () => {
+      clutchDown = false;
+      brakeDown = false;
+      gasDown = false;
       gasRef.current = false;
-      shiftBtnDown = false;
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === "Space" || e.code === "ArrowUp") {
@@ -117,7 +299,7 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
 
     canvas.addEventListener("pointerdown", onPointerDown);
     canvas.addEventListener("pointerup", onPointerUp);
-    canvas.addEventListener("pointerleave", onGasUp);
+    canvas.addEventListener("pointerleave", onLeave);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
 
@@ -132,162 +314,206 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
 
       if (!finished) {
         if (gasRef.current) {
-          const gearMult = 1 + (gear - 1) * 0.22;
-          rpm += (140 + gear * 18) * dt;
-          speed += 0.08 * gearMult * dt;
+          rpm += rpmRiseRate(gear) * dt;
+          const gearMult = 1 + (gear - 1) * 0.28;
+          speed += 0.065 * gearMult * dt;
         } else {
-          rpm -= 90 * dt;
-          speed = Math.max(0, speed - 0.04 * dt);
+          rpm -= 75 * dt;
+          speed = Math.max(0, speed - 0.035 * dt);
+        }
+        if (brakeDown) {
+          rpm -= 120 * dt;
+          speed = Math.max(0, speed - 0.12 * dt);
         }
 
-        if (rpm > REDLINE) {
-          rpm = REDLINE;
-          speed = Math.max(0, speed - 0.15 * dt);
+        if (rpm > REDLINE_END) {
+          rpm = REDLINE_END;
         }
-        rpm = Math.max(1800, Math.min(REDLINE + 200, rpm));
+        rpm = Math.max(1600, Math.min(RPM_MAX, rpm));
 
-        distance += speed * dt * 0.35;
-        scroll += speed * dt * 2.8;
+        distance += speed * dt * 0.42;
+        scroll += speed * dt * 3.2;
 
         if (distance >= RACE_DISTANCE) {
           finished = true;
           const score = Math.round((RACE_DISTANCE / Math.max(time, 1)) * 100);
-          setTimeout(() => onGameOver(score), 600);
+          setTimeout(() => onGameOver(score), 800);
         }
       }
 
       if (shiftFlash > 0) shiftFlash--;
 
-      const sky = ctx.createLinearGradient(0, 0, 0, height * 0.55);
+      const sky = ctx.createLinearGradient(0, 0, 0, sceneH);
       sky.addColorStop(0, p.skyTop);
-      sky.addColorStop(1, p.skyBot);
+      sky.addColorStop(0.55, p.skyBot);
+      sky.addColorStop(1, "#6ecf8a");
       ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, width, height);
+      ctx.fillRect(0, 0, width, sceneH);
 
-      ctx.fillStyle = p.building;
-      const bScroll = scroll * 0.15;
-      for (let i = 0; i < 8; i++) {
-        const bx = ((i * 120 - bScroll) % (width + 120)) - 60;
-        const bh = 40 + (i % 3) * 25;
-        ctx.fillRect(bx, height * 0.35 - bh, 50, bh);
+      const cloudScroll = scroll * 0.08;
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      for (let i = 0; i < 5; i++) {
+        const cx = ((i * 180 - cloudScroll) % (width + 200)) - 80;
+        const cy = 28 + (i % 3) * 22;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 22, 0, Math.PI * 2);
+        ctx.arc(cx + 24, cy - 6, 18, 0, Math.PI * 2);
+        ctx.arc(cx + 44, cy, 20, 0, Math.PI * 2);
+        ctx.fill();
       }
 
-      const roadY = height * 0.52;
-      const roadH = height * 0.48;
+      const poleScroll = scroll * 0.45;
+      for (let i = 0; i < 6; i++) {
+        const px = ((i * 140 - poleScroll) % (width + 160)) - 40;
+        ctx.strokeStyle = "#555";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(px, sceneH * 0.42);
+        ctx.lineTo(px, sceneH * 0.72);
+        ctx.stroke();
+        ctx.fillStyle = "#444";
+        ctx.fillRect(px - 8, sceneH * 0.4, 16, 6);
+      }
+
+      const roadY = sceneH * 0.72;
+      const roadH = sceneH - roadY;
       ctx.fillStyle = p.road;
       ctx.fillRect(0, roadY, width, roadH);
 
       ctx.strokeStyle = p.line;
-      ctx.lineWidth = 4;
-      ctx.setLineDash([40, 50]);
-      const lineScroll = scroll % 90;
-      for (let y = roadY + 30; y < height; y += 90) {
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, roadY + 4);
+      ctx.lineTo(width, roadY + 4);
+      ctx.stroke();
+
+      const lineScroll = scroll % 70;
+      ctx.strokeStyle = "rgba(255,255,255,0.9)";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([36, 44]);
+      for (let lx = -lineScroll; lx < width + 70; lx += 80) {
         ctx.beginPath();
-        ctx.moveTo(width * 0.5, y + lineScroll);
-        ctx.lineTo(width * 0.5, y + lineScroll + 40);
+        ctx.moveTo(lx, roadY + roadH * 0.55);
+        ctx.lineTo(lx + 36, roadY + roadH * 0.55);
         ctx.stroke();
       }
       ctx.setLineDash([]);
 
-      ctx.strokeStyle = p.line;
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(0, roadY + 8);
-      ctx.lineTo(width, roadY + 8);
-      ctx.stroke();
-
-      const finishX = width - ((distance / RACE_DISTANCE) * (width * 1.2) - width * 0.1);
-      if (finishX > -40 && finishX < width + 40) {
+      const finishScroll = width - ((distance / RACE_DISTANCE) * (width * 2.5));
+      if (finishScroll > -60 && finishScroll < width + 60) {
         for (let i = 0; i < 8; i++) {
-          ctx.fillStyle = i % 2 === 0 ? p.line : p.road;
-          ctx.fillRect(finishX, roadY + i * (roadH / 8), 14, roadH / 8);
+          ctx.fillStyle = i % 2 === 0 ? "#fff" : "#111";
+          ctx.fillRect(finishScroll, roadY, 16, roadH);
         }
       }
 
-      ctx.fillStyle = "rgba(0,0,0,0.35)";
-      ctx.fillRect(carX - 4, carY + carH - 2, carW + 8, 8);
+      ctx.fillStyle = "rgba(0,0,0,0.3)";
+      ctx.beginPath();
+      ctx.ellipse(carX + carW * 0.45, roadY + roadH * 0.38, carW * 0.42, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
 
-      ctx.fillStyle = shiftFlash > 0 && shiftQuality === 1 ? "#7fffd4" : p.car;
-      ctx.fillRect(carX, carY, carW, carH);
-      ctx.fillStyle = "#333";
-      ctx.fillRect(carX + 8, carY + 6, 22, 14);
-      ctx.fillStyle = "#222";
-      ctx.fillRect(carX + carW - 14, carY + 10, 10, 12);
-      ctx.fillStyle = "#111";
-      ctx.fillRect(carX + 10, carY + carH - 4, 14, 8);
-      ctx.fillRect(carX + carW - 24, carY + carH - 4, 14, 8);
+      const carColor = shiftFlash > 0 && shiftQuality === 1 ? "#7fffd4" : "#1a1a1a";
+      drawPixelCar(ctx, carX, carY, carColor, carScale);
 
       if (gasRef.current && !finished) {
-        ctx.fillStyle = "rgba(255,200,100,0.6)";
-        for (let i = 0; i < 3; i++) {
-          ctx.fillRect(carX - 12 - i * 8 - (scroll % 5), carY + 14 + i * 2, 6, 4);
+        ctx.fillStyle = "rgba(255,180,80,0.7)";
+        for (let i = 0; i < 4; i++) {
+          ctx.fillRect(carX - 12 - i * 8 - (scroll % 4), carY + carH * 0.55 + i, 6, 4);
         }
       }
 
-      const hudY = height * 0.08;
-      ctx.fillStyle = p.hudBg;
-      ctx.fillRect(12, hudY, width - 24, 72);
+      ctx.fillStyle = palette.isDark ? "rgba(8,10,16,0.92)" : "rgba(30,32,38,0.88)";
+      ctx.fillRect(0, dashY, width, dashH);
       ctx.strokeStyle = p.hudBorder;
-      ctx.strokeRect(12, hudY, width - 24, 72);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, dashY);
+      ctx.lineTo(width, dashY);
+      ctx.stroke();
 
-      const gaugeX = 28;
-      const gaugeW = width - 56;
-      const gaugeH = 14;
-      const rpmPct = rpm / REDLINE;
-      ctx.fillStyle = "#333";
-      ctx.fillRect(gaugeX, hudY + 14, gaugeW, gaugeH);
-      const shiftStart = SHIFT_MIN / REDLINE;
-      const shiftEnd = SHIFT_MAX / REDLINE;
-      ctx.fillStyle = "rgba(80,220,120,0.5)";
-      ctx.fillRect(gaugeX + gaugeW * shiftStart, hudY + 14, gaugeW * (shiftEnd - shiftStart), gaugeH);
-      ctx.fillStyle = rpm > REDLINE * 0.95 ? "#ff4444" : "#ffaa44";
-      ctx.fillRect(gaugeX, hudY + 14, gaugeW * Math.min(1, rpmPct), gaugeH);
-      ctx.fillStyle = p.hudText;
+      const gaugeR = Math.min(dashH * 0.38, width * 0.17);
+      const rpmCx = width * 0.28;
+      const mphCx = width * 0.72;
+      const gaugeCy = dashY + dashH * 0.42;
+      const face = palette.isDark ? "#1a1c24" : "#e8eaee";
+      const tick = palette.isDark ? "#ccc" : "#333";
+
+      drawGauge(
+        ctx,
+        rpmCx,
+        gaugeCy,
+        gaugeR,
+        rpm / 1000,
+        9,
+        "RPM",
+        `${Math.round(rpm)}`,
+        REDLINE_START / 1000,
+        REDLINE_END / 1000,
+        face,
+        tick,
+        rpm >= REDLINE_START ? "#ff4444" : "#ffaa44",
+      );
+
+      const mph = Math.round(speed * 22);
+      drawGauge(ctx, mphCx, gaugeCy, gaugeR, mph, 160, "MPH", `${mph}`, null, null, face, tick, "#44aaff");
+
+      const gearX = width * 0.5;
+      const gearTop = dashY + dashH * 0.18;
+      ctx.fillStyle = tick;
       ctx.font = "bold 11px Nunito, sans-serif";
-      ctx.fillText(`${Math.round(rpm)} RPM`, gaugeX, hudY + 10);
-      ctx.font = "bold 20px Nunito, sans-serif";
-      ctx.fillText(`GEAR ${gear}/${GEARS}`, gaugeX, hudY + 48);
-      ctx.fillText(`${Math.round(speed * 18)} km/h`, gaugeX + 120, hudY + 48);
-      ctx.font = "bold 14px Nunito, sans-serif";
-      ctx.fillText(`${Math.round(distance)}m / ${RACE_DISTANCE}m`, gaugeX + 240, hudY + 48);
-
-      if (shiftFlash > 0) {
-        ctx.fillStyle = shiftQuality === 1 ? "#5cd0a8" : shiftQuality === 0 ? "#ffb43d" : "#ff5a5a";
-        ctx.font = "bold 16px Nunito, sans-serif";
-        ctx.fillText(
-          shiftQuality === 1 ? "PERFECT SHIFT!" : shiftQuality === 0 ? "Good shift" : "Too early!",
-          width * 0.3,
-          height * 0.42,
-        );
-      }
-
-      // Shift button
-      const inGreen = rpm >= SHIFT_MIN && rpm <= SHIFT_MAX;
-      ctx.fillStyle = shiftBtnDown ? p.shiftBtnActive : inGreen ? p.shiftBtnReady : p.shiftBtn;
-      ctx.fillRect(shiftBtn.x, shiftBtn.y, shiftBtn.w, shiftBtn.h);
-      ctx.strokeStyle = inGreen ? p.hudText : p.hudBorder;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(shiftBtn.x, shiftBtn.y, shiftBtn.w, shiftBtn.h);
-      ctx.fillStyle = palette.isDark ? "#fff" : p.hudText;
-      ctx.font = "bold 16px Nunito, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("SHIFT", shiftBtn.x + shiftBtn.w / 2, shiftBtn.y + shiftBtn.h / 2 + 6);
+      ctx.fillText("GEAR", gearX, gearTop);
+      const bars = ["#4aa3ff", "#5cd0a8", "#ffb43d", "#ff7a59", "#ff5a5a", "#c084fc"];
+      for (let i = 0; i < GEARS; i++) {
+        ctx.fillStyle = i < gear ? bars[i % bars.length] : "rgba(120,120,120,0.35)";
+        ctx.fillRect(gearX - 28 + i * 10, gearTop + 8, 8, 22);
+      }
+      ctx.font = "bold 28px Nunito, sans-serif";
+      ctx.fillStyle = gear === 0 ? tick : bars[(gear - 1) % bars.length];
+      ctx.fillText(gear >= 1 ? String(gear) : "N", gearX, gearTop + 58);
+      ctx.font = "bold 10px Nunito, sans-serif";
+      ctx.fillStyle = "rgba(150,150,150,0.8)";
+      ctx.fillText("R", gearX - 20, gearTop + 58);
       ctx.textAlign = "left";
 
+      ctx.fillStyle = tick;
+      ctx.font = "bold 11px Nunito, sans-serif";
+      ctx.fillText(`${Math.round(distance)}m`, 14, dashY + 16);
+      ctx.fillText(`${RACE_DISTANCE}m`, width - 58, dashY + 16);
+
+      drawCheckeredPedal(ctx, clutchBtn.x, clutchBtn.y, clutchBtn.w, clutchBtn.h, clutchDown);
+      drawCheckeredPedal(ctx, brakeBtn.x, brakeBtn.y, brakeBtn.w, brakeBtn.h, brakeDown);
+      drawCheckeredPedal(ctx, gasBtn.x, gasBtn.y, gasBtn.w, gasBtn.h, gasDown || gasRef.current);
+
+      ctx.fillStyle = tick;
+      ctx.font = "9px Nunito, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("CLUTCH", clutchBtn.x + clutchBtn.w / 2, height - 6);
+      ctx.fillText("BRAKE", brakeBtn.x + brakeBtn.w / 2, height - 6);
+      ctx.fillText("GAS", gasBtn.x + gasBtn.w / 2, height - 6);
+      ctx.textAlign = "left";
+
+      if (shiftFlash > 0) {
+        ctx.fillStyle =
+          shiftQuality === 1 ? "#5cd0a8" : shiftQuality === 0 ? "#ffb43d" : "#ff5a5a";
+        ctx.font = "bold 15px Nunito, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(
+          shiftQuality === 1 ? "PERFECT!" : shiftQuality === 0 ? "Good shift" : rpm > SHIFT_PERFECT_MAX ? "Over-rev!" : "Too early!",
+          width / 2,
+          sceneH * 0.35,
+        );
+        ctx.textAlign = "left";
+      }
+
       if (finished) {
-        ctx.fillStyle = palette.isDark ? "rgba(0,0,0,0.6)" : "rgba(255,255,255,0.75)";
+        ctx.fillStyle = palette.isDark ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.7)";
         ctx.fillRect(0, 0, width, height);
         ctx.fillStyle = p.hudText;
         ctx.font = "bold 28px Nunito, sans-serif";
         ctx.textAlign = "center";
         ctx.fillText("FINISH!", width / 2, height / 2);
         ctx.textAlign = "left";
-      } else {
-        ctx.fillStyle = p.hudText;
-        ctx.globalAlpha = 0.55;
-        ctx.font = "11px Nunito, sans-serif";
-        ctx.fillText("Hold screen to rev", 16, height - 28);
-        ctx.globalAlpha = 1;
       }
 
       raf = requestAnimationFrame(loop);
@@ -298,7 +524,7 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
       cancelAnimationFrame(raf);
       canvas.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("pointerup", onPointerUp);
-      canvas.removeEventListener("pointerleave", onGasUp);
+      canvas.removeEventListener("pointerleave", onLeave);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
