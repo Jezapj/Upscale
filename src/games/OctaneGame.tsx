@@ -1,9 +1,11 @@
 import { useEffect, useRef } from "react";
 import { useGamePalette } from "./GamePaletteContext";
+import type { OctaneConfig } from "./octaneConfig";
 
 interface Props {
   width: number;
   height: number;
+  config: OctaneConfig;
   onGameOver: (score: number) => void;
 }
 
@@ -13,8 +15,9 @@ const REDLINE_START = 7500;
 const REDLINE_END = 9000;
 const SHIFT_PERFECT_MIN = 7000;
 const SHIFT_PERFECT_MAX = 8800;
-const RACE_DISTANCE = 4800;
 const MPH_MAX = 301;
+/** Wheel rotation rate (lower = slower spin). */
+const WHEEL_SPIN_RATE = 22;
 /** Per-gear top speed (mph). Must shift to exceed each cap. */
 const GEAR_SPEED_CAP = [40, 80, 120, 150, 220, 301];
 /** MPH gained per frame at redline, per gear (60fps baseline). */
@@ -288,16 +291,17 @@ function drawSceneryLayer(
   buildingColor: string,
   kinds: SceneryKind[],
 ) {
-  const world = scrollPx * parallax;
-  const startTile = Math.floor(world / SCENERY_TILE) - 1;
+  const offset = scrollPx * parallax;
+  const startTile = Math.floor(offset / SCENERY_TILE) - 1;
   const endTile = startTile + Math.ceil(width / SCENERY_TILE) + 2;
 
   for (let tile = startTile; tile <= endTile; tile++) {
     const items = tileScenery(tile);
     for (const item of items) {
       if (!kinds.includes(item.kind)) continue;
-      const screenX = item.x + tile * SCENERY_TILE - (world % SCENERY_TILE);
-      if (screenX < -120 || screenX > width + 120) continue;
+      const screenX = item.x + tile * SCENERY_TILE - offset;
+      const margin = item.kind === "building" ? 110 : item.kind === "tree" ? 70 : 50;
+      if (screenX + margin < 0 || screenX > width + margin) continue;
 
       if (item.kind === "building") {
         drawBuilding(ctx, screenX, groundY, item.variant, buildingColor);
@@ -310,11 +314,35 @@ function drawSceneryLayer(
   }
 }
 
+function drawClouds(ctx: CanvasRenderingContext2D, width: number, scrollPx: number) {
+  const cloudTile = 900;
+  const offset = scrollPx * 0.06;
+  const startTile = Math.floor(offset / cloudTile) - 1;
+  const endTile = startTile + Math.ceil(width / cloudTile) + 2;
+
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  for (let tile = startTile; tile <= endTile; tile++) {
+    const base = tile * cloudTile - offset;
+    for (let i = 0; i < 3; i++) {
+      const cx = base + 80 + i * 260;
+      const cy = 24 + (i % 3) * 20;
+      if (cx + 60 < 0 || cx - 20 > width) continue;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 20, 0, Math.PI * 2);
+      ctx.arc(cx + 22, cy - 5, 16, 0, Math.PI * 2);
+      ctx.arc(cx + 40, cy, 18, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
 /** Pixel drag racer: hold gas, clutch to shift at redline, scrolling road, dashboard gauges. */
-export function OctaneGame({ width, height, onGameOver }: Props) {
+export function OctaneGame({ width, height, config, onGameOver }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gasRef = useRef(false);
   const palette = useGamePalette();
+  const isDrag = config.mode === "drag";
+  const raceDistanceM = config.raceDistanceM;
 
   useEffect(() => {
     const p = palette.octane;
@@ -492,11 +520,11 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
 
         distance += mph * 0.00745 * dt;
         scrollPx += mph * 0.22 * dt;
-        wheelAngle += (mph / 7.5) * dt;
+        wheelAngle += (mph / WHEEL_SPIN_RATE) * dt;
 
-        if (distance >= RACE_DISTANCE) {
+        if (isDrag && distance >= raceDistanceM) {
           finished = true;
-          const score = Math.round((RACE_DISTANCE / Math.max(time, 1)) * 100);
+          const score = Math.round((raceDistanceM / Math.max(time, 1)) * 100);
           setTimeout(() => onGameOver(score), 800);
         }
       }
@@ -513,22 +541,7 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
       ctx.fillStyle = "#5a9e68";
       ctx.fillRect(0, horizonY, width, roadY - horizonY);
 
-      const cloudWorld = scrollPx * 0.06;
-      const cloudTile = 900;
-      ctx.fillStyle = "rgba(255,255,255,0.85)";
-      for (let tile = -1; tile <= Math.ceil(width / cloudTile) + 1; tile++) {
-        const base = tile * cloudTile - (cloudWorld % cloudTile);
-        for (let i = 0; i < 3; i++) {
-          const cx = base + 80 + i * 260;
-          const cy = 24 + (i % 3) * 20;
-          if (cx < -100 || cx > width + 100) continue;
-          ctx.beginPath();
-          ctx.arc(cx, cy, 20, 0, Math.PI * 2);
-          ctx.arc(cx + 22, cy - 5, 16, 0, Math.PI * 2);
-          ctx.arc(cx + 40, cy, 18, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
+      drawClouds(ctx, width, scrollPx);
 
       drawSceneryLayer(ctx, width, roadY - 6, scrollPx, 0.12, horizonY, p.building, ["building"]);
       drawSceneryLayer(ctx, width, roadY - 4, scrollPx, 0.28, horizonY, p.building, ["tree"]);
@@ -556,12 +569,14 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
       }
       ctx.setLineDash([]);
 
-      const finishOffset = RACE_DISTANCE - distance;
-      const finishScreenX = width * 0.55 + finishOffset * 0.08;
-      if (finishScreenX > -60 && finishScreenX < width + 60) {
-        for (let i = 0; i < 8; i++) {
-          ctx.fillStyle = i % 2 === 0 ? "#fff" : "#111";
-          ctx.fillRect(finishScreenX, roadY, 16, roadH);
+      if (isDrag) {
+        const finishOffset = raceDistanceM - distance;
+        const finishScreenX = width * 0.55 + finishOffset * 0.08;
+        if (finishScreenX > -60 && finishScreenX < width + 60) {
+          for (let i = 0; i < 8; i++) {
+            ctx.fillStyle = i % 2 === 0 ? "#fff" : "#111";
+            ctx.fillRect(finishScreenX, roadY, 16, roadH);
+          }
         }
       }
 
@@ -658,7 +673,13 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
       ctx.fillStyle = tick;
       ctx.font = "bold 11px Nunito, sans-serif";
       ctx.fillText(`${Math.round(distance)}m`, 14, dashY + 16);
-      ctx.fillText(`${RACE_DISTANCE}m`, width - 58, dashY + 16);
+      if (isDrag) {
+        ctx.fillText(`${raceDistanceM}m`, width - 58, dashY + 16);
+      } else {
+        ctx.textAlign = "right";
+        ctx.fillText("Free ride", width - 14, dashY + 16);
+        ctx.textAlign = "left";
+      }
 
       drawCheckeredPedal(ctx, clutchBtn.x, clutchBtn.y, clutchBtn.w, clutchBtn.h, clutchDown);
       drawCheckeredPedal(ctx, brakeBtn.x, brakeBtn.y, brakeBtn.w, brakeBtn.h, brakeDown);
@@ -707,7 +728,7 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [width, height, onGameOver, palette]);
+  }, [width, height, config, onGameOver, palette, isDrag, raceDistanceM]);
 
   return (
     <canvas

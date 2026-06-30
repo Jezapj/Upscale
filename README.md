@@ -60,18 +60,24 @@ To enable real Google sign‑in:
    create an **OAuth 2.0 Client ID** of type **Web application**.
 2. Add your origin(s) to **Authorized JavaScript origins** (e.g. `http://localhost:5173`
    and your deployed URL).
-3. Copy `.env.example` to `.env` and set:
+3. Copy `.env.example` to `.env` and set server-side variables (no `VITE_` prefix):
 
    ```
-   VITE_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   FIREBASE_API_KEY=...
+   FIREBASE_AUTH_DOMAIN=...
+   FIREBASE_PROJECT_ID=...
+   FIREBASE_STORAGE_BUCKET=...
+   FIREBASE_MESSAGING_SENDER_ID=...
+   FIREBASE_APP_ID=...
    ```
 
-4. Restart the dev server. The official Google button now appears on the login screen,
-   and your routines/goals are scoped to your Google account id on this device.
+4. Restart the dev server. Config is served from `GET /api/config` (not embedded in the
+   client bundle). On Vercel, set the same variables in the project Environment Settings.
 
-> Data is persisted **locally** (per account) so the app works fully offline. The
-> storage layer in `src/lib/storage.ts` is intentionally async‑shaped so a cloud backend
-> (e.g. Firestore) can be dropped in later for cross‑device sync without touching the UI.
+> Google sign-in and Firebase **client** IDs are still sent to the browser at runtime
+> (required for OAuth and the Firebase web SDK). True secrets (e.g. service account keys)
+> must never be added to these variables. Firestore security uses `firestore.rules`.
 
 ---
 

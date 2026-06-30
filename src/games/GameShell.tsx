@@ -12,6 +12,10 @@ interface Props {
     height: number;
     onGameOver: (score: number) => void;
   }) => React.ReactNode;
+  /** Custom pre-play UI (e.g. Octane mode picker). Call `start()` when ready. */
+  renderLobby?: (start: () => void) => React.ReactNode;
+  /** Called when the player chooses Play again (e.g. clear mode config). */
+  onSessionReset?: () => void;
 }
 
 function useContainerSize(ref: React.RefObject<HTMLDivElement | null>) {
@@ -32,7 +36,7 @@ function useContainerSize(ref: React.RefObject<HTMLDivElement | null>) {
 }
 
 /** Wraps a canvas game with themed chrome and play flow. */
-export function GameShell({ gameId, children }: Props) {
+export function GameShell({ gameId, children, renderLobby, onSessionReset }: Props) {
   const nav = useNavigate();
   const meta = GAME_BY_ID[gameId];
   const containerRef = useRef<HTMLDivElement>(null);
@@ -82,19 +86,33 @@ export function GameShell({ gameId, children }: Props) {
 
         <div ref={containerRef} className="game-stage relative min-h-0 flex-1 overflow-hidden">
           {!started && score === null && (
-            <div className="game-overlay absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 px-6 text-center">
-              <p className="text-sm font-700 text-ink-soft">{meta.tagline}</p>
-              <button type="button" onClick={start} className="btn px-8">
-                Play
-              </button>
-            </div>
+            renderLobby ? (
+              renderLobby(start)
+            ) : (
+              <div className="game-overlay absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 px-6 text-center">
+                <p className="text-sm font-700 text-ink-soft">{meta.tagline}</p>
+                <button type="button" onClick={start} className="btn px-8">
+                  Play
+                </button>
+              </div>
+            )
           )}
           {score !== null && !started && (
             <div className="game-overlay absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 px-6">
               <p className="game-shell-title font-display text-2xl font-800">
                 Score: {score}
               </p>
-              <button type="button" onClick={start} className="btn">
+              <button
+                type="button"
+                onClick={() => {
+                  onSessionReset?.();
+                  setScore(null);
+                  startedRef.current = false;
+                  setStarted(false);
+                  if (!renderLobby) start();
+                }}
+                className="btn"
+              >
                 Play again
               </button>
               <button type="button" onClick={() => nav("/games")} className="btn-ghost">

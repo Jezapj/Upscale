@@ -1,11 +1,16 @@
 import type { User } from "./types";
 import { GoogleAuthProvider, signInWithCredential } from "firebase/auth";
+import { getAppConfig } from "./appConfig";
 import { cloudConfigured, getFirebaseAuth } from "./firebase";
 
-const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+export const googleConfigured = (): boolean => {
+  const id = getAppConfig().googleClientId;
+  return !!id && id.length > 10;
+};
 
-export const googleConfigured = (): boolean =>
-  !!CLIENT_ID && CLIENT_ID.length > 10;
+function getGoogleClientId(): string | undefined {
+  return getAppConfig().googleClientId;
+}
 
 interface GoogleCredentialPayload {
   sub: string;
@@ -71,11 +76,12 @@ export async function renderGoogleButton(
   container: HTMLElement,
   onUser: (user: User) => void,
 ): Promise<void> {
-  if (!googleConfigured()) return;
+  const clientId = getGoogleClientId();
+  if (!clientId) return;
   await loadGsi();
   const id = window.google!.accounts.id;
   id.initialize({
-    client_id: CLIENT_ID!,
+    client_id: clientId,
     callback: async (resp) => {
       const payload = decodeJwt(resp.credential);
       const user: User = {

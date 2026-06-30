@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -7,6 +7,7 @@ import {
   useLocation,
 } from "react-router-dom";
 import { useStore } from "@/store/useStore";
+import { loadAppConfig } from "@/lib/appConfig";
 import { BackgroundDecor } from "@/components/BackgroundDecor";
 import { Dock } from "@/components/Dock";
 import { ScreenHints } from "@/components/ScreenHints";
@@ -88,12 +89,17 @@ function Loading() {
 
 export default function App() {
   const { ready, user, init } = useStore();
+  const [configReady, setConfigReady] = useState(false);
 
   useEffect(() => {
-    void init();
-  }, [init]);
+    void loadAppConfig().finally(() => setConfigReady(true));
+  }, []);
 
-  if (!ready) return <Loading />;
+  useEffect(() => {
+    if (configReady) void init();
+  }, [configReady, init]);
+
+  if (!configReady || !ready) return <Loading />;
   if (!user) return <LoginScreen />;
 
   return (
