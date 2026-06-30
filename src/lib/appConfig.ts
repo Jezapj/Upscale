@@ -1,4 +1,4 @@
-import type { PublicAppConfig } from "../../server/publicConfig";
+import type { PublicAppConfig } from "../../api/publicConfig";
 
 let cached: PublicAppConfig | null = null;
 let loading: Promise<PublicAppConfig> | null = null;
@@ -10,12 +10,24 @@ export async function loadAppConfig(): Promise<PublicAppConfig> {
   if (cached) return cached;
   if (!loading) {
     loading = fetch("/api/config")
-      .then((res) => (res.ok ? res.json() : emptyConfig()))
-      .then((data: PublicAppConfig) => {
+      .then(async (res) => {
+        if (!res.ok) {
+          console.warn(`Config endpoint returned ${res.status}`);
+          return emptyConfig();
+        }
+        const contentType = res.headers.get("content-type") ?? "";
+        if (!contentType.includes("application/json")) {
+          console.warn("Config endpoint did not return JSON");
+          return emptyConfig();
+        }
+        return (await res.json()) as PublicAppConfig;
+      })
+      .then((data) => {
         cached = data ?? emptyConfig();
         return cached;
       })
-      .catch(() => {
+      .catch((err) => {
+        console.warn("Failed to load app config", err);
         cached = emptyConfig();
         return cached;
       });

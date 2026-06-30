@@ -2,7 +2,7 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "node:path";
-import { getPublicConfig } from "./server/publicConfig";
+import { getPublicConfig } from "./api/publicConfig";
 function apiConfigPlugin() {
     var handler = function (_req, res) {
         res.setHeader("Content-Type", "application/json");
@@ -67,6 +67,7 @@ export default defineConfig(function (_a) {
                 workbox: {
                     globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
                     navigateFallback: "index.html",
+                    navigateFallbackDenylist: [/^\/api\//],
                     cleanupOutdatedCaches: true,
                 },
                 devOptions: {

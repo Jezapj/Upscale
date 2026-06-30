@@ -73,7 +73,8 @@ To enable real Google sign‑in:
    ```
 
 4. Restart the dev server. Config is served from `GET /api/config` (not embedded in the
-   client bundle). On Vercel, set the same variables in the project Environment Settings.
+   client bundle). On Vercel, set the same variables in the project **Environment
+   Variables** (Production + Preview), then **redeploy** so the API picks them up.
 
 > Google sign-in and Firebase **client** IDs are still sent to the browser at runtime
 > (required for OAuth and the Firebase web SDK). True secrets (e.g. service account keys)

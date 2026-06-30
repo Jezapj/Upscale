@@ -2,7 +2,7 @@ import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "node:path";
-import { getPublicConfig } from "./server/publicConfig";
+import { getPublicConfig } from "./api/publicConfig";
 
 function apiConfigPlugin(): Plugin {
   const handler = (
@@ -74,6 +74,7 @@ export default defineConfig(({ mode }) => {
         workbox: {
           globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
           navigateFallback: "index.html",
+          navigateFallbackDenylist: [/^\/api\//],
           cleanupOutdatedCaches: true,
         },
         devOptions: {
