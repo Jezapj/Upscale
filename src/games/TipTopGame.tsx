@@ -14,11 +14,24 @@ interface Pit {
   scored: boolean;
 }
 
+type ObstacleKind = "platform" | "stone" | "tree" | "wall";
+
+interface Obstacle {
+  kind: ObstacleKind;
+  x: number;
+  w: number;
+  h: number;
+  /** Ground-anchored, or floating above terrain. */
+  anchor: "ground" | "float";
+  floatAbove: number;
+}
+
 interface Stage {
   worldW: number;
   pit: Pit;
   groundPhase: number;
   groundAmp: number;
+  obstacles: Obstacle[];
 }
 
 const STAGE_COUNT = 3;
@@ -38,20 +51,91 @@ function mulberry32(seed: number) {
   };
 }
 
+function obstacleY(obs: Obstacle, viewH: number, stage: Stage): number {
+  const base = groundHeight(obs.x + obs.w / 2, viewH, stage);
+  return obs.anchor === "ground" ? base - obs.h : base - obs.floatAbove - obs.h;
+}
+
+function overlapsPit(x: number, w: number, pitX: number, pitW: number, margin = 70): boolean {
+  const half = pitW / 2 + margin;
+  return x + w > pitX - half && x < pitX + half;
+}
+
+function generateObstacles(
+  rand: () => number,
+  worldW: number,
+  pitX: number,
+  pitW: number,
+): Obstacle[] {
+  const kinds: ObstacleKind[] = ["platform", "stone", "tree", "wall"];
+  const count = 3 + Math.floor(rand() * 4);
+  const obstacles: Obstacle[] = [];
+
+  for (let n = 0; n < count; n++) {
+    const kind = kinds[Math.floor(rand() * kinds.length)];
+    let placed = false;
+
+    for (let attempt = 0; attempt < 24; attempt++) {
+      let x = 280 + Math.floor(rand() * (worldW - 380));
+      let w = 0;
+      let h = 0;
+      let anchor: "ground" | "float" = "ground";
+      let floatAbove = 0;
+
+      if (kind === "platform") {
+        w = 90 + Math.floor(rand() * 70);
+        h = 16 + Math.floor(rand() * 10);
+        anchor = rand() > 0.35 ? "float" : "ground";
+        floatAbove = anchor === "float" ? 55 + Math.floor(rand() * 90) : 0;
+        if (anchor === "ground") h = 22 + Math.floor(rand() * 18);
+      } else if (kind === "stone") {
+        w = 38 + Math.floor(rand() * 34);
+        h = w * (0.75 + rand() * 0.35);
+      } else if (kind === "tree") {
+        w = 24 + Math.floor(rand() * 16);
+        h = 72 + Math.floor(rand() * 48);
+      } else {
+        w = 18 + Math.floor(rand() * 14);
+        h = 58 + Math.floor(rand() * 52);
+      }
+
+      if (x + w > worldW - 40) x = worldW - w - 40;
+      if (x < 240) continue;
+      if (overlapsPit(x, w, pitX, pitW)) continue;
+
+      const overlaps = obstacles.some(
+        (o) => x < o.x + o.w + 50 && x + w + 50 > o.x,
+      );
+      if (overlaps) continue;
+
+      obstacles.push({ kind, x, w, h, anchor, floatAbove });
+      placed = true;
+      break;
+    }
+
+    if (!placed && n < count - 1) n--;
+  }
+
+  return obstacles;
+}
+
 function generateStage(seed: number): Stage {
   const rand = mulberry32(seed);
   const worldW = 1800 + Math.floor(rand() * 1400);
   const pitX = 520 + Math.floor(rand() * (worldW - 720));
+  const pitW = 58 + Math.floor(rand() * 22);
+  const pit = {
+    x: pitX,
+    width: pitW,
+    depth: 48 + Math.floor(rand() * 18),
+    scored: false,
+  };
   return {
     worldW,
-    pit: {
-      x: pitX,
-      width: 58 + Math.floor(rand() * 22),
-      depth: 48 + Math.floor(rand() * 18),
-      scored: false,
-    },
+    pit,
     groundPhase: rand() * Math.PI * 2,
     groundAmp: 10 + rand() * 14,
+    obstacles: generateObstacles(rand, worldW, pitX, pitW),
   };
 }
 
@@ -83,6 +167,97 @@ function pitBottomY(pit: Pit, viewH: number, stage: Stage): number {
 function formatTime(ms: number): string {
   const s = ms / 1000;
   return s < 10 ? s.toFixed(1) + "s" : Math.floor(s) + "s";
+}
+
+function resolveCircleAabb(
+  px: number,
+  py: number,
+  r: number,
+  ox: number,
+  oy: number,
+  ow: number,
+  oh: number,
+): { px: number; py: number; hit: boolean; top: boolean } {
+  const nearX = Math.max(ox, Math.min(px, ox + ow));
+  const nearY = Math.max(oy, Math.min(py, oy + oh));
+  const dx = px - nearX;
+  const dy = py - nearY;
+  const distSq = dx * dx + dy * dy;
+  if (distSq >= r * r) return { px, py, hit: false, top: false };
+
+  const dist = Math.sqrt(distSq) || 0.001;
+  const nx = dx / dist;
+  const ny = dy / dist;
+  const overlap = r - dist;
+  const top = ny < -0.45 && Math.abs(nx) < 0.85;
+  return { px: px + nx * overlap, py: py + ny * overlap, hit: true, top };
+}
+
+function drawObstacle(
+  ctx: CanvasRenderingContext2D,
+  obs: Obstacle,
+  sx: number,
+  y: number,
+  isDark: boolean,
+) {
+  if (obs.kind === "platform") {
+    ctx.fillStyle = obs.anchor === "float" ? "#8b7355" : "#6a5540";
+    ctx.fillRect(sx, y, obs.w, obs.h);
+    ctx.fillStyle = obs.anchor === "float" ? "#a08b65" : "#7d6548";
+    ctx.fillRect(sx, y, obs.w, 5);
+    ctx.strokeStyle = "rgba(0,0,0,0.25)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sx, y, obs.w, obs.h);
+  } else if (obs.kind === "stone") {
+    const cx = sx + obs.w / 2;
+    const cy = y + obs.h / 2;
+    ctx.fillStyle = "#6a6a72";
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, obs.w / 2, obs.h / 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#8a8a94";
+    ctx.beginPath();
+    ctx.ellipse(cx - obs.w * 0.12, cy - obs.h * 0.15, obs.w * 0.22, obs.h * 0.18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#4a4a52";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, obs.w / 2, obs.h / 2, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (obs.kind === "tree") {
+    ctx.fillStyle = "#5a4030";
+    ctx.fillRect(sx + obs.w * 0.32, y + obs.h * 0.42, obs.w * 0.36, obs.h * 0.58);
+    const cx = sx + obs.w / 2;
+    const foliageY = y + obs.h * 0.38;
+    ctx.fillStyle = isDark ? "#2d7a42" : "#3a8a50";
+    ctx.beginPath();
+    ctx.moveTo(cx - obs.w * 0.9, foliageY);
+    ctx.lineTo(cx, y);
+    ctx.lineTo(cx + obs.w * 0.9, foliageY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = isDark ? "#358050" : "#48a060";
+    ctx.beginPath();
+    ctx.moveTo(cx - obs.w * 0.65, foliageY - obs.h * 0.12);
+    ctx.lineTo(cx, y - obs.h * 0.08);
+    ctx.lineTo(cx + obs.w * 0.65, foliageY - obs.h * 0.12);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    ctx.fillStyle = isDark ? "#4a4a58" : "#7a7a88";
+    ctx.fillRect(sx, y, obs.w, obs.h);
+    ctx.fillStyle = isDark ? "#5a5a68" : "#9a9aa8";
+    for (let row = 0; row < obs.h / 14; row++) {
+      for (let col = 0; col < obs.w / 14; col++) {
+        if ((row + col) % 2 === 0) {
+          ctx.fillRect(sx + col * 14, y + row * 14, 12, 12);
+        }
+      }
+    }
+    ctx.strokeStyle = "rgba(0,0,0,0.3)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(sx, y, obs.w, obs.h);
+  }
 }
 
 /** Flappy Golf 2 style: flap left/right, 3 random stages with one hole each. */
@@ -227,9 +402,50 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
         }
         if (px > ww - ballR) px = ww - ballR;
 
-        const gY = groundHeight(px, playH, stage);
         let onGround = false;
         let overPit = false;
+
+        for (const obs of stage.obstacles) {
+          const oy = obstacleY(obs, playH, stage);
+          if (obs.kind === "stone") {
+            const cx = obs.x + obs.w / 2;
+            const cy = oy + obs.h / 2;
+            const cr = Math.min(obs.w, obs.h) / 2;
+            const dx = px - cx;
+            const dy = py - cy;
+            const dist = Math.hypot(dx, dy);
+            if (dist < ballR + cr) {
+              const nx = dx / (dist || 1);
+              const ny = dy / (dist || 1);
+              const overlap = ballR + cr - dist;
+              px += nx * overlap;
+              py += ny * overlap;
+              const dot = vx * nx + vy * ny;
+              if (dot < 0) {
+                vx -= nx * dot * 1.4;
+                vy -= ny * dot * 1.4;
+              }
+              vx *= 0.82;
+              vy *= 0.82;
+            }
+          } else {
+            const res = resolveCircleAabb(px, py, ballR, obs.x, oy, obs.w, obs.h);
+            if (res.hit) {
+              px = res.px;
+              py = res.py;
+              if (res.top && vy >= -1) {
+                vy = Math.min(0, vy * -0.2);
+                vx *= 0.9;
+                onGround = true;
+              } else {
+                vx *= -0.5;
+                vy *= -0.4;
+              }
+            }
+          }
+        }
+
+        const gY = groundHeight(px, playH, stage);
 
         const half = pit.width / 2;
         const rimY = groundHeight(pit.x, playH, stage);
@@ -332,6 +548,12 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
       const segStart = Math.floor(camX / 200) * 200;
       for (let wx = segStart; wx < camX + width + 200; wx += 200) {
         drawGroundSegment(wx, 200);
+      }
+
+      for (const obs of stage.obstacles) {
+        const osx = obs.x - camX;
+        if (osx + obs.w < -60 || osx > width + 60) continue;
+        drawObstacle(ctx, obs, osx, obstacleY(obs, playH, stage), palette.isDark);
       }
 
       const sx = pit.x - camX;
