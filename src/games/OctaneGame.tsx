@@ -14,6 +14,53 @@ const REDLINE_END = 9000;
 const SHIFT_PERFECT_MIN = 7000;
 const SHIFT_PERFECT_MAX = 8800;
 const RACE_DISTANCE = 4800;
+const MPH_MAX = 301;
+/** Per-gear top speed (mph). Must shift to exceed each cap. */
+const GEAR_SPEED_CAP = [40, 80, 120, 150, 220, 301];
+/** MPH gained per frame at redline, per gear (60fps baseline). */
+const GEAR_ACCEL = [0.52, 0.44, 0.36, 0.28, 0.22, 0.17];
+const SCENERY_TILE = 1100;
+/** Car height as a fraction of road band height. */
+const CAR_HEIGHT_RATIO = 0.92;
+
+/**
+ * Wheel spin axis on the car sprite (normalized 0–1).
+ * Tweak x/y until each wheel rotates around its own center.
+ */
+const WHEEL_TUNING = {
+  rear: { x: 0.2, y: 0.65 },
+  front: { x: 0.77, y: 0.65 },
+} as const;
+
+/** Above 75% of gear cap, acceleration tapers to 0 at the cap. */
+function gearAccelMultiplier(mph: number, gear: number): number {
+  const cap = GEAR_SPEED_CAP[gear - 1] ?? MPH_MAX;
+  const softStart = cap * 0.75;
+  if (mph <= softStart) return 1;
+  if (mph >= cap) return 0;
+  const t = (mph - softStart) / (cap - softStart);
+  return 1 - t * t;
+}
+
+type SceneryKind = "building" | "tree" | "pole";
+
+interface SceneryItem {
+  x: number;
+  kind: SceneryKind;
+  variant: number;
+}
+
+function tileScenery(tile: number): SceneryItem[] {
+  const v = Math.abs(tile * 7919 + 104729) % 1000;
+  return [
+    { x: 60 + (v % 40), kind: "building", variant: (tile + 1) % 4 },
+    { x: 240 + (v % 60), kind: "tree", variant: tile % 3 },
+    { x: 420 + (v % 50), kind: "pole", variant: 0 },
+    { x: 560 + (v % 70), kind: "tree", variant: (tile + 2) % 3 },
+    { x: 720 + (v % 45), kind: "building", variant: (tile + 2) % 4 },
+    { x: 900 + (v % 55), kind: "tree", variant: (tile + 1) % 3 },
+  ];
+}
 
 function drawGauge(
   ctx: CanvasRenderingContext2D,
@@ -29,6 +76,7 @@ function drawGauge(
   faceColor: string,
   tickColor: string,
   needleColor: string,
+  tickMode: "rpm" | "speed" = "rpm",
 ) {
   const startA = Math.PI * 0.75;
   const endA = Math.PI * 2.25;
@@ -69,7 +117,12 @@ function drawGauge(
     ctx.stroke();
 
     if (i % 2 === 0) {
-      const display = max <= 10 ? i : i * (max / majorTicks / 1000);
+      const display =
+        tickMode === "speed"
+          ? i * (max / majorTicks)
+          : max <= 10
+            ? i
+            : i * (max / majorTicks / 1000);
       ctx.fillStyle = tickColor;
       ctx.font = "bold 9px Nunito, sans-serif";
       ctx.textAlign = "center";
@@ -97,6 +150,25 @@ function drawGauge(
   ctx.font = "bold 13px Nunito, sans-serif";
   ctx.fillText(unit, cx, cy + 8);
   ctx.textAlign = "left";
+}
+
+function drawRotatedWheelLayer(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  carX: number,
+  carY: number,
+  carW: number,
+  carH: number,
+  pivot: { x: number; y: number },
+  angle: number,
+) {
+  const axisX = carX + carW * pivot.x;
+  const axisY = carY + carH * pivot.y;
+  ctx.save();
+  ctx.translate(axisX, axisY);
+  ctx.rotate(angle);
+  ctx.drawImage(img, -carW * pivot.x, -carH * pivot.y, carW, carH);
+  ctx.restore();
 }
 
 function drawCheckeredPedal(
@@ -143,42 +215,99 @@ function drawCheckeredPedal(
   ctx.strokeRect(x, y, w, h);
 }
 
-function drawPixelCar(
+function drawBuilding(
   ctx: CanvasRenderingContext2D,
   x: number,
-  y: number,
-  bodyColor: string,
-  scale: number,
+  groundY: number,
+  variant: number,
+  color: string,
 ) {
-  const cols = [
-    "......bbbbbbbbbbbbbbbb......",
-    "....bbbbbbbbbbbbbbbbbbbb....",
-    "...bbbbbbbbbbbbbbbbbbbbbb...",
-    "..bbbbbbwwwwwwwwwwwwbbbbbb..",
-    ".bbbbbbwwwwwwwwwwwwwwbbbbbb.",
-    "bbbbbbwwwwwwwwwwwwwwwwbbbbbb",
-    "bbbbbbwwwwwwwwwwwwwwwwbbbbbb",
-    "bbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    "bbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    "bbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    "bbwwwwbbbbbbbbbbbbbbwwwwbbbb",
-    "bbwwwwbbbbbbbbbbbbbbwwwwbbbb",
-    "bbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-    "...bbbbbb......bbbbbb...",
-  ];
-  const colorMap: Record<string, string> = {
-    b: bodyColor,
-    w: "#88bbee",
-    ".": "",
-  };
-  cols.forEach((row, ri) => {
-    for (let ci = 0; ci < row.length; ci++) {
-      const ch = row[ci];
-      if (ch === ".") continue;
-      ctx.fillStyle = colorMap[ch] ?? bodyColor;
-      ctx.fillRect(x + ci * scale, y + ri * scale, scale, scale);
+  const w = 48 + variant * 14;
+  const h = 55 + variant * 22;
+  const y = groundY - h;
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = "rgba(255,255,220,0.55)";
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 2 + (variant % 2); col++) {
+      if ((row + col + variant) % 3 !== 0) {
+        ctx.fillRect(x + 8 + col * 18, y + 10 + row * 16, 10, 10);
+      }
     }
-  });
+  }
+  ctx.fillStyle = "rgba(0,0,0,0.2)";
+  ctx.fillRect(x + w - 6, y, 6, h);
+}
+
+function drawTree(ctx: CanvasRenderingContext2D, x: number, groundY: number, variant: number) {
+  const h = 48 + variant * 18;
+  const trunkW = 10;
+  ctx.fillStyle = "#5a4030";
+  ctx.fillRect(x + 8, groundY - h * 0.35, trunkW, h * 0.35);
+  ctx.fillStyle = variant % 2 === 0 ? "#2d7a42" : "#3a8a50";
+  ctx.beginPath();
+  ctx.moveTo(x, groundY - h * 0.3);
+  ctx.lineTo(x + 26, groundY - h);
+  ctx.lineTo(x + 52, groundY - h * 0.3);
+  ctx.closePath();
+  ctx.fill();
+  if (variant === 2) {
+    ctx.beginPath();
+    ctx.moveTo(x + 10, groundY - h * 0.55);
+    ctx.lineTo(x + 30, groundY - h * 0.9);
+    ctx.lineTo(x + 50, groundY - h * 0.55);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function drawPole(ctx: CanvasRenderingContext2D, x: number, top: number, bottom: number) {
+  ctx.strokeStyle = "#555";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x, top);
+  ctx.lineTo(x, bottom);
+  ctx.stroke();
+  ctx.fillStyle = "#444";
+  ctx.fillRect(x - 8, top - 4, 16, 6);
+  ctx.strokeStyle = "#666";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x - 30, top + 8);
+  ctx.lineTo(x + 30, top + 8);
+  ctx.stroke();
+}
+
+function drawSceneryLayer(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  groundY: number,
+  scrollPx: number,
+  parallax: number,
+  horizonTop: number,
+  buildingColor: string,
+  kinds: SceneryKind[],
+) {
+  const world = scrollPx * parallax;
+  const startTile = Math.floor(world / SCENERY_TILE) - 1;
+  const endTile = startTile + Math.ceil(width / SCENERY_TILE) + 2;
+
+  for (let tile = startTile; tile <= endTile; tile++) {
+    const items = tileScenery(tile);
+    for (const item of items) {
+      if (!kinds.includes(item.kind)) continue;
+      const screenX = item.x + tile * SCENERY_TILE - (world % SCENERY_TILE);
+      if (screenX < -120 || screenX > width + 120) continue;
+
+      if (item.kind === "building") {
+        drawBuilding(ctx, screenX, groundY, item.variant, buildingColor);
+      } else if (item.kind === "tree") {
+        drawTree(ctx, screenX, groundY, item.variant);
+      } else if (item.kind === "pole") {
+        drawPole(ctx, screenX, horizonTop, groundY - 8);
+      }
+    }
+  }
 }
 
 /** Pixel drag racer: hold gas, clutch to shift at redline, scrolling road, dashboard gauges. */
@@ -204,12 +333,39 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
     const dashH = height - sceneH;
     const roadY = sceneH * 0.72;
     const roadH = sceneH - roadY;
-    const carScale = 5;
-    const carRows = 14;
-    const carH = carRows * carScale;
-    const carW = 28 * carScale;
-    const carX = width * 0.08;
-    const carY = roadY + roadH * 0.42 - carH;
+    const horizonY = sceneH * 0.38;
+    const carX = width * 0.06;
+
+    const carImg = new Image();
+    const frontWheelImg = new Image();
+    const backWheelImg = new Image();
+    carImg.src = "/OctanePixelCar2.png";
+    frontWheelImg.src = "/FrontWheel.png";
+    backWheelImg.src = "/BackWheel.png";
+
+    let carReady = false;
+    let wheelsReady = false;
+    let carDrawW = 100;
+    let carDrawH = 36;
+    let carY = roadY + roadH * 0.52 - carDrawH;
+    const sizeCar = () => {
+      carDrawH = roadH * CAR_HEIGHT_RATIO;
+      carDrawW = (carImg.naturalWidth / carImg.naturalHeight) * carDrawH;
+      carY = roadY + roadH * 0.52 - carDrawH;
+    };
+    const tryReady = () => {
+      if (carImg.complete && carImg.naturalWidth > 0) sizeCar();
+      carReady = carImg.complete && carImg.naturalWidth > 0;
+      wheelsReady =
+        frontWheelImg.complete &&
+        frontWheelImg.naturalWidth > 0 &&
+        backWheelImg.complete &&
+        backWheelImg.naturalWidth > 0;
+    };
+    carImg.onload = tryReady;
+    frontWheelImg.onload = tryReady;
+    backWheelImg.onload = tryReady;
+    tryReady();
 
     const clutchBtn = { x: 14, y: height - 62, w: 40, h: 40 };
     const brakeBtn = { x: 60, y: height - 62, w: 40, h: 40 };
@@ -218,11 +374,12 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
     const hit = (x: number, y: number, b: typeof gasBtn) =>
       x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
 
-    let rpm = 2200;
+    let rpm = 0;
     let gear = 1;
-    let speed = 0;
+    let mph = 0;
     let distance = 0;
-    let scroll = 0;
+    let scrollPx = 0;
+    let wheelAngle = 0;
     let alive = true;
     let finished = false;
     let shiftFlash = 0;
@@ -232,23 +389,23 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
     let brakeDown = false;
     let gasDown = false;
 
-    const rpmRiseRate = (g: number) => 165 / Math.pow(g, 1.85);
+    const rpmRiseRate = (g: number) => 175 / Math.pow(g, 1.85);
 
     const shift = () => {
       if (!alive || finished || gear >= GEARS) return;
-      if (rpm < SHIFT_PERFECT_MIN * 0.55) {
+      if (rpm < SHIFT_PERFECT_MIN * 0.5) {
         shiftQuality = -1;
         shiftFlash = 22;
-        rpm = Math.max(1800, rpm - 900);
-        speed = Math.max(0, speed - 1.2);
+        rpm = Math.max(0, rpm - 1200);
+        mph = Math.max(0, mph - 4);
         return;
       }
       const perfect = rpm >= SHIFT_PERFECT_MIN && rpm <= SHIFT_PERFECT_MAX;
       shiftQuality = perfect ? 1 : rpm > SHIFT_PERFECT_MAX ? -1 : 0;
       shiftFlash = perfect ? 40 : 18;
       gear++;
-      rpm = perfect ? 3800 + gear * 120 : 4600 + gear * 80;
-      speed += perfect ? 5.5 : rpm > SHIFT_PERFECT_MAX ? 1.5 : 3;
+      rpm = perfect ? 3800 + gear * 100 : rpm > SHIFT_PERFECT_MAX ? 5200 : 4500;
+      mph += perfect ? 14 : rpm > SHIFT_PERFECT_MAX ? 4 : 8;
     };
 
     const onPointerDown = (e: PointerEvent) => {
@@ -315,24 +472,27 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
       if (!finished) {
         if (gasRef.current) {
           rpm += rpmRiseRate(gear) * dt;
-          const gearMult = 1 + (gear - 1) * 0.28;
-          speed += 0.065 * gearMult * dt;
+          const revFactor = rpm / REDLINE_END;
+          const cap = GEAR_SPEED_CAP[gear - 1] ?? MPH_MAX;
+          const accelMult = gearAccelMultiplier(mph, gear);
+          mph += GEAR_ACCEL[gear - 1] * revFactor * accelMult * dt;
+          mph = Math.min(mph, cap);
         } else {
-          rpm -= 75 * dt;
-          speed = Math.max(0, speed - 0.035 * dt);
+          rpm -= 110 * dt;
+          mph = Math.max(0, mph - 0.06 * dt);
         }
         if (brakeDown) {
-          rpm -= 120 * dt;
-          speed = Math.max(0, speed - 0.12 * dt);
+          rpm -= 140 * dt;
+          mph = Math.max(0, mph - 0.35 * dt);
         }
 
-        if (rpm > REDLINE_END) {
-          rpm = REDLINE_END;
-        }
-        rpm = Math.max(1600, Math.min(RPM_MAX, rpm));
+        if (rpm > REDLINE_END) rpm = REDLINE_END;
+        rpm = Math.max(0, Math.min(RPM_MAX, rpm));
+        mph = Math.max(0, Math.min(MPH_MAX, mph));
 
-        distance += speed * dt * 0.42;
-        scroll += speed * dt * 3.2;
+        distance += mph * 0.00745 * dt;
+        scrollPx += mph * 0.22 * dt;
+        wheelAngle += (mph / 7.5) * dt;
 
         if (distance >= RACE_DISTANCE) {
           finished = true;
@@ -350,33 +510,30 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, width, sceneH);
 
-      const cloudScroll = scroll * 0.08;
+      ctx.fillStyle = "#5a9e68";
+      ctx.fillRect(0, horizonY, width, roadY - horizonY);
+
+      const cloudWorld = scrollPx * 0.06;
+      const cloudTile = 900;
       ctx.fillStyle = "rgba(255,255,255,0.85)";
-      for (let i = 0; i < 5; i++) {
-        const cx = ((i * 180 - cloudScroll) % (width + 200)) - 80;
-        const cy = 28 + (i % 3) * 22;
-        ctx.beginPath();
-        ctx.arc(cx, cy, 22, 0, Math.PI * 2);
-        ctx.arc(cx + 24, cy - 6, 18, 0, Math.PI * 2);
-        ctx.arc(cx + 44, cy, 20, 0, Math.PI * 2);
-        ctx.fill();
+      for (let tile = -1; tile <= Math.ceil(width / cloudTile) + 1; tile++) {
+        const base = tile * cloudTile - (cloudWorld % cloudTile);
+        for (let i = 0; i < 3; i++) {
+          const cx = base + 80 + i * 260;
+          const cy = 24 + (i % 3) * 20;
+          if (cx < -100 || cx > width + 100) continue;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 20, 0, Math.PI * 2);
+          ctx.arc(cx + 22, cy - 5, 16, 0, Math.PI * 2);
+          ctx.arc(cx + 40, cy, 18, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
 
-      const poleScroll = scroll * 0.45;
-      for (let i = 0; i < 6; i++) {
-        const px = ((i * 140 - poleScroll) % (width + 160)) - 40;
-        ctx.strokeStyle = "#555";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(px, sceneH * 0.42);
-        ctx.lineTo(px, sceneH * 0.72);
-        ctx.stroke();
-        ctx.fillStyle = "#444";
-        ctx.fillRect(px - 8, sceneH * 0.4, 16, 6);
-      }
+      drawSceneryLayer(ctx, width, roadY - 6, scrollPx, 0.12, horizonY, p.building, ["building"]);
+      drawSceneryLayer(ctx, width, roadY - 4, scrollPx, 0.28, horizonY, p.building, ["tree"]);
+      drawSceneryLayer(ctx, width, roadY - 8, scrollPx, 0.5, horizonY, p.building, ["pole", "tree"]);
 
-      const roadY = sceneH * 0.72;
-      const roadH = sceneH - roadY;
       ctx.fillStyle = p.road;
       ctx.fillRect(0, roadY, width, roadH);
 
@@ -387,7 +544,7 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
       ctx.lineTo(width, roadY + 4);
       ctx.stroke();
 
-      const lineScroll = scroll % 70;
+      const lineScroll = (scrollPx * 1.6) % 70;
       ctx.strokeStyle = "rgba(255,255,255,0.9)";
       ctx.lineWidth = 3;
       ctx.setLineDash([36, 44]);
@@ -399,26 +556,33 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
       }
       ctx.setLineDash([]);
 
-      const finishScroll = width - ((distance / RACE_DISTANCE) * (width * 2.5));
-      if (finishScroll > -60 && finishScroll < width + 60) {
+      const finishOffset = RACE_DISTANCE - distance;
+      const finishScreenX = width * 0.55 + finishOffset * 0.08;
+      if (finishScreenX > -60 && finishScreenX < width + 60) {
         for (let i = 0; i < 8; i++) {
           ctx.fillStyle = i % 2 === 0 ? "#fff" : "#111";
-          ctx.fillRect(finishScroll, roadY, 16, roadH);
+          ctx.fillRect(finishScreenX, roadY, 16, roadH);
         }
       }
 
       ctx.fillStyle = "rgba(0,0,0,0.3)";
       ctx.beginPath();
-      ctx.ellipse(carX + carW * 0.45, roadY + roadH * 0.38, carW * 0.42, 10, 0, 0, Math.PI * 2);
+      ctx.ellipse(carX + carDrawW * 0.45, roadY + roadH * 0.38, carDrawW * 0.4, 10, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      const carColor = shiftFlash > 0 && shiftQuality === 1 ? "#7fffd4" : "#1a1a1a";
-      drawPixelCar(ctx, carX, carY, carColor, carScale);
+      if (carReady) {
+        ctx.drawImage(carImg, carX, carY, carDrawW, carDrawH);
+      }
+
+      if (wheelsReady) {
+        drawRotatedWheelLayer(ctx, backWheelImg, carX, carY, carDrawW, carDrawH, WHEEL_TUNING.rear, wheelAngle);
+        drawRotatedWheelLayer(ctx, frontWheelImg, carX, carY, carDrawW, carDrawH, WHEEL_TUNING.front, wheelAngle);
+      }
 
       if (gasRef.current && !finished) {
         ctx.fillStyle = "rgba(255,180,80,0.7)";
         for (let i = 0; i < 4; i++) {
-          ctx.fillRect(carX - 12 - i * 8 - (scroll % 4), carY + carH * 0.55 + i, 6, 4);
+          ctx.fillRect(carX - 12 - i * 8 - (scrollPx % 4), carY + carDrawH * 0.55 + i, 6, 4);
         }
       }
 
@@ -454,8 +618,23 @@ export function OctaneGame({ width, height, onGameOver }: Props) {
         rpm >= REDLINE_START ? "#ff4444" : "#ffaa44",
       );
 
-      const mph = Math.round(speed * 22);
-      drawGauge(ctx, mphCx, gaugeCy, gaugeR, mph, 160, "MPH", `${mph}`, null, null, face, tick, "#44aaff");
+      const mphDisplay = Math.round(mph);
+      drawGauge(
+        ctx,
+        mphCx,
+        gaugeCy,
+        gaugeR,
+        mphDisplay,
+        MPH_MAX,
+        "MPH",
+        `${mphDisplay}`,
+        null,
+        null,
+        face,
+        tick,
+        "#44aaff",
+        "speed",
+      );
 
       const gearX = width * 0.5;
       const gearTop = dashY + dashH * 0.18;
