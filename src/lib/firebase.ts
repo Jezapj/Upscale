@@ -1,33 +1,38 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
-import { getAppConfig } from "./appConfig";
+
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+};
 
 export function cloudConfigured(): boolean {
-  const f = getAppConfig().firebase;
-  return !!(f?.apiKey && f?.projectId && f?.appId);
+  return !!(
+    firebaseConfig.apiKey &&
+    firebaseConfig.projectId &&
+    firebaseConfig.appId
+  );
 }
 
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
 
-function firebaseConfig() {
-  return getAppConfig().firebase;
-}
-
 export function getFirebaseAuth(): Auth | null {
-  const config = firebaseConfig();
-  if (!config) return null;
-  if (!app) app = initializeApp(config);
+  if (!cloudConfigured()) return null;
+  if (!app) app = initializeApp(firebaseConfig);
   if (!auth) auth = getAuth(app);
   return auth;
 }
 
 export function getFirebaseDb(): Firestore | null {
-  const config = firebaseConfig();
-  if (!config) return null;
-  if (!app) app = initializeApp(config);
+  if (!cloudConfigured()) return null;
+  if (!app) app = initializeApp(firebaseConfig);
   if (!db) db = getFirestore(app);
   return db;
 }

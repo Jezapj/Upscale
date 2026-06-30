@@ -48,8 +48,8 @@ export function LoginScreen() {
           ) : (
             <div className="card w-full px-4 py-3 text-xs font-600 text-ink-soft">
               <span className="font-800 text-ink">Google sign-in is optional.</span>{" "}
-              Set <code className="rounded bg-white/70 px-1">GOOGLE_CLIENT_ID</code> on the
-              server to enable it. For now, jump in as a guest - your data is saved on
+              Add a <code className="rounded bg-white/70 px-1">VITE_GOOGLE_CLIENT_ID</code>{" "}
+              to enable it. For now, jump in as a guest - your data is saved on
               this device.
             </div>
           )}
