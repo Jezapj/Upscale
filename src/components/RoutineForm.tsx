@@ -1,8 +1,12 @@
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Calendar, Trash2 } from "lucide-react";
 import type { CategoryKey, Frequency, Routine } from "@/lib/types";
 import { CATEGORY_LIST, getCategory } from "@/lib/categories";
 import { DOW_LABELS } from "@/lib/dates";
+import {
+  downloadRoutineCalendarEvent,
+  openGoogleCalendarForRoutine,
+} from "@/lib/calendar";
 import { Tile } from "./Tile";
 import { CategoryTile } from "./CategoryTile";
 import { ColorPicker, EmojiPicker, Field, inputClass } from "./Picker";
@@ -88,6 +92,39 @@ export function RoutineForm({
       reminderTime: reminderOn ? reminderTime : undefined,
       archived: initial?.archived,
     });
+  };
+
+  const routineSnapshot = (): Routine | null => {
+    if (!initial || !title.trim()) return null;
+    const frequency: Frequency =
+      freqType === "daily"
+        ? { type: "daily" }
+        : freqType === "weekly"
+          ? { type: "weekly", daysOfWeek: daysOfWeek.length ? daysOfWeek : [1] }
+          : { type: "interval", intervalDays: Math.max(1, intervalDays) };
+    return {
+      ...initial,
+      title: title.trim(),
+      note: note.trim() || undefined,
+      category,
+      icon,
+      color,
+      frequency,
+      hasEnd,
+      endDate: hasEnd ? endDate || undefined : undefined,
+      goalId,
+      reminderTime: reminderOn ? reminderTime : undefined,
+    };
+  };
+
+  const addToCalendar = () => {
+    const routine = routineSnapshot();
+    if (routine) downloadRoutineCalendarEvent(routine);
+  };
+
+  const addToGoogleCalendar = () => {
+    const routine = routineSnapshot();
+    if (routine) openGoogleCalendarForRoutine(routine);
   };
 
   return (
@@ -294,6 +331,30 @@ export function RoutineForm({
           className={inputClass}
         />
       </Field>
+
+      {initial && (
+        <Field
+          label="Calendar"
+          hint="Export a recurring event to Apple Calendar, Outlook, Google Calendar, and others."
+        >
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={addToCalendar}
+              className="btn-ghost text-sm"
+            >
+              <Calendar size={18} /> Download .ics
+            </button>
+            <button
+              type="button"
+              onClick={addToGoogleCalendar}
+              className="btn-ghost text-sm"
+            >
+              <Calendar size={18} /> Google Calendar
+            </button>
+          </div>
+        </Field>
+      )}
 
       <div className="flex gap-2 pt-1">
         {onDelete && (
