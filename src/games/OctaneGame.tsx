@@ -22,9 +22,48 @@ const WHEEL_SPIN_RATE = 100;
 const GEAR_SPEED_CAP = [40, 80, 120, 150, 220, 301];
 /** MPH gained per frame at redline, per gear (60fps baseline). */
 const GEAR_ACCEL = [0.52, 0.44, 0.36, 0.28, 0.22, 0.17];
-const SCENERY_TILE = 1100;
+const SCENERY_TILE = 3200;
+const SAKURA_TILE = 2400;
+/** Roadside tree draw height (px); variants add TREE_VARIANT_STEP each. */
+const TREE_BASE_HEIGHT = 205;
+const TREE_VARIANT_STEP = 46;
+/** Pixels to nudge trees upward (higher = sits higher above the road). */
+const TREE_Y_LIFT = 15;
+const BG_PARALLAX = 0.002;
+const TREE_PARALLAX = 0.92;
+const SAKURA_PARALLAX = 1.82;
+const LIGHT_TILE = 3200;
+const LIGHT_PARALLAX = 1.38;
+/** Crop/zoom factor for background sprites (higher = more zoomed in). */
+const BG_ZOOM = 1.45;
+/** Extend draw height below the scene (top-anchored) so the horizon sits lower without a gap at the top. */
+const BG_EXTEND_DOWN = 0.4;
+/** Chance each run is a night drive (dark + moon / street-light beams). */
+const NIGHT_RUN_CHANCE = 0.94;
 /** Car height as a fraction of road band height. */
 const CAR_HEIGHT_RATIO = 0.92;
+
+/**
+ * Night headlight beams on the road ahead of the car (screen-fixed to the car).
+ * Tweak normalized car coords and reach until the pools line up with the sprite.
+ */
+const HEADLIGHT_TUNING = {
+  left: { x: 0.89, y: 0.57 },
+  right: { x: 0.91, y: 0.55 },
+  /** How far ahead beams reach, as a fraction of screen width from the car front. */
+  reach: 0.66,
+  /** Where beams meet the road: fraction of road band height from road top. */
+  roadAnchor: 0.2,
+  /** Cone half-width at the far end, as a fraction of road band height. */
+  spreadFar: 0.42,
+  /** Cone half-width near the car, as a fraction of road band height. */
+  spreadNear: 0.04,
+  color: { r: 255, g: 246, b: 215 },
+  /** Core beam opacity (screen blend). */
+  alpha: 0.05,
+  /** Wider outer halo opacity multiplier. */
+  outerAlpha: 0.48,
+} as const;
 
 /**
  * Wheel spin axis on the car sprite (normalized 0–1).
@@ -45,7 +84,7 @@ function gearAccelMultiplier(mph: number, gear: number): number {
   return 1 - t * t;
 }
 
-type SceneryKind = "building" | "tree" | "pole";
+type SceneryKind = "tree";
 
 interface SceneryItem {
   x: number;
@@ -53,16 +92,28 @@ interface SceneryItem {
   variant: number;
 }
 
+interface SakuraItem {
+  x: number;
+  variant: number;
+}
+
 function tileScenery(tile: number): SceneryItem[] {
   const v = Math.abs(tile * 7919 + 104729) % 1000;
   return [
-    { x: 60 + (v % 40), kind: "building", variant: (tile + 1) % 4 },
-    { x: 240 + (v % 60), kind: "tree", variant: tile % 3 },
-    { x: 420 + (v % 50), kind: "pole", variant: 0 },
-    { x: 560 + (v % 70), kind: "tree", variant: (tile + 2) % 3 },
-    { x: 720 + (v % 45), kind: "building", variant: (tile + 2) % 4 },
-    { x: 900 + (v % 55), kind: "tree", variant: (tile + 1) % 3 },
+    { x: 60 + (v % 100), kind: "tree", variant: tile % 3 },
+    { x: 1050 + (v % 180), kind: "tree", variant: (tile + 1) % 3 },
+    { x: 2100 + (v % 140), kind: "tree", variant: (tile + 2) % 3 },
   ];
+}
+
+/** Intermittent overhead sakura canopies along the route. */
+function tileSakura(tile: number): SakuraItem | null {
+  const v = Math.abs(tile * 4327 + 91823) % 100;
+  if (v > 26) return null;
+  return {
+    x: 30 + (v * 31) % 420,
+    variant: Math.abs(tile) % 2,
+  };
 }
 
 function drawGauge(
@@ -218,120 +269,321 @@ function drawCheckeredPedal(
   ctx.strokeRect(x, y, w, h);
 }
 
-function drawBuilding(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  groundY: number,
-  variant: number,
-  color: string,
-) {
-  const w = 48 + variant * 14;
-  const h = 55 + variant * 22;
-  const y = groundY - h;
-  ctx.fillStyle = color;
-  ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = "rgba(255,255,220,0.55)";
-  for (let row = 0; row < 3; row++) {
-    for (let col = 0; col < 2 + (variant % 2); col++) {
-      if ((row + col + variant) % 3 !== 0) {
-        ctx.fillRect(x + 8 + col * 18, y + 10 + row * 16, 10, 10);
-      }
-    }
-  }
-  ctx.fillStyle = "rgba(0,0,0,0.2)";
-  ctx.fillRect(x + w - 6, y, 6, h);
+/** Stable sub-tile scroll offset (avoids float drift on long drives). */
+function scrollFrac(scrollPx: number, parallax: number, period: number): {
+  baseTile: number;
+  frac: number;
+} {
+  const scroll = scrollPx * parallax;
+  const baseTile = Math.floor(scroll / period);
+  const frac = scroll - baseTile * period;
+  return { baseTile, frac };
 }
 
-function drawTree(ctx: CanvasRenderingContext2D, x: number, groundY: number, variant: number) {
-  const h = 48 + variant * 18;
-  const trunkW = 10;
-  ctx.fillStyle = "#5a4030";
-  ctx.fillRect(x + 20, groundY - h * 0.35, trunkW, h * 0.35);
-  ctx.fillStyle = variant % 2 === 0 ? "#2d7a42" : "#3a8a50";
+function drawHeadlightCone(
+  ctx: CanvasRenderingContext2D,
+  originX: number,
+  originY: number,
+  farX: number,
+  farY: number,
+  spreadNear: number,
+  spreadFar: number,
+  red: number,
+  green: number,
+  blue: number,
+  alpha: number,
+) {
+  const dx = farX - originX;
+  const dy = farY - originY;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len;
+  const ny = dx / len;
+
+  const nearLx = originX + nx * spreadNear;
+  const nearLy = originY + ny * spreadNear;
+  const nearRx = originX - nx * spreadNear;
+  const nearRy = originY - ny * spreadNear;
+  const farLx = farX + nx * spreadFar;
+  const farLy = farY + ny * spreadFar;
+  const farRx = farX - nx * spreadFar;
+  const farRy = farY - ny * spreadFar;
+
+  const grad = ctx.createLinearGradient(originX, originY, farX, farY);
+  grad.addColorStop(0, `rgba(${red}, ${green}, ${blue}, ${alpha})`);
+  grad.addColorStop(0.35, `rgba(${red}, ${green}, ${blue}, ${alpha * 0.72})`);
+  grad.addColorStop(0.7, `rgba(${red}, ${green}, ${blue}, ${alpha * 0.28})`);
+  grad.addColorStop(1, `rgba(${red}, ${green}, ${blue}, 0)`);
+
+  ctx.fillStyle = grad;
   ctx.beginPath();
-  ctx.moveTo(x, groundY - h * 0.3);
-  ctx.lineTo(x + 26, groundY - h);
-  ctx.lineTo(x + 52, groundY - h * 0.3);
+  ctx.moveTo(nearLx, nearLy);
+  ctx.lineTo(farLx, farLy);
+  ctx.lineTo(farRx, farRy);
+  ctx.lineTo(nearRx, nearRy);
   ctx.closePath();
   ctx.fill();
-  if (variant === 2) {
-    ctx.beginPath();
-    ctx.moveTo(x + 10, groundY - h * 0.55);
-    ctx.lineTo(x + 30, groundY - h * 0.9);
-    ctx.lineTo(x + 50, groundY - h * 0.55);
-    ctx.closePath();
-    ctx.fill();
+}
+
+/** Screen-fixed cones on the road — scroll with the car, not parallax scenery. */
+function drawCarHeadlights(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  roadY: number,
+  roadH: number,
+  carX: number,
+  carY: number,
+  carW: number,
+  carH: number,
+) {
+  const t = HEADLIGHT_TUNING;
+  const carFront = carX + carW;
+  const farX = carFront + width * t.reach;
+  const farY = roadY + roadH * t.roadAnchor;
+  const spreadNear = roadH * t.spreadNear;
+  const spreadFar = roadH * t.spreadFar;
+  const lamps = [t.left, t.right];
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, roadY, width, roadH);
+  ctx.clip();
+  ctx.globalCompositeOperation = "screen";
+
+  for (const lamp of lamps) {
+    const ox = carX + carW * lamp.x;
+    const oy = carY + carH * lamp.y;
+
+    drawHeadlightCone(
+      ctx,
+      ox,
+      oy,
+      farX,
+      farY,
+      spreadNear * 1.35,
+      spreadFar * 1.22,
+      t.color.r,
+      t.color.g,
+      t.color.b,
+      t.alpha * t.outerAlpha,
+    );
+    drawHeadlightCone(
+      ctx,
+      ox,
+      oy,
+      farX,
+      farY,
+      spreadNear,
+      spreadFar,
+      t.color.r,
+      t.color.g,
+      t.color.b,
+      t.alpha,
+    );
+  }
+
+  ctx.globalCompositeOperation = "source-over";
+  ctx.restore();
+}
+
+
+interface TopLightItem {
+  x: number;
+}
+
+/** Overhead lights that scroll in from the top of the screen. */
+function tileTopLights(tile: number): TopLightItem[] {
+  const v = Math.abs(tile * 5821 + 44101) % 100;
+  if (v > 36) return [];
+  return [{ x: 80 + (v * 47) % 720 }];
+}
+
+function drawFeatheredTopLight(
+  ctx: CanvasRenderingContext2D,
+  apexX: number,
+  apexY: number,
+  floorY: number,
+  spread: number,
+  red: number,
+  green: number,
+  blue: number,
+  alpha: number,
+) {
+  const depth = floorY - apexY;
+  const layers = [
+    { spreadMult: 1.18, alphaMult: 0.55, yBias: 0.92 },
+    { spreadMult: 0.8, alphaMult: 0.82, yBias: 0.78 },
+    { spreadMult: 0.5, alphaMult: 1, yBias: 0.65 },
+  ];
+
+  for (const layer of layers) {
+    const radius = spread * layer.spreadMult;
+    const centerY = apexY + depth * layer.yBias;
+    const grad = ctx.createRadialGradient(apexX, apexY, 0, apexX, centerY, radius);
+    grad.addColorStop(0, `rgba(${red}, ${green}, ${blue}, ${alpha * layer.alphaMult})`);
+    grad.addColorStop(0.18, `rgba(${red}, ${green}, ${blue}, ${alpha * layer.alphaMult * 0.72})`);
+    grad.addColorStop(0.42, `rgba(${red}, ${green}, ${blue}, ${alpha * layer.alphaMult * 0.32})`);
+    grad.addColorStop(0.72, `rgba(${red}, ${green}, ${blue}, ${alpha * layer.alphaMult * 0.1})`);
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(apexX - radius, apexY - radius * 0.15, radius * 2, depth + radius);
   }
 }
 
-function drawPole(ctx: CanvasRenderingContext2D, x: number, top: number, bottom: number) {
-  ctx.strokeStyle = "#555";
-  ctx.lineWidth = 3;
+function drawNightScene(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  sceneH: number,
+  roadY: number,
+  roadH: number,
+  scrollPx: number,
+  time: number,
+) {
+  ctx.save();
   ctx.beginPath();
-  ctx.moveTo(x, top);
-  ctx.lineTo(x, bottom + 20);
-  ctx.stroke();
-  ctx.fillStyle = "#444";
-  ctx.fillRect(x - 8, top - 4, 16, 6);
-  ctx.strokeStyle = "#666";
-  ctx.lineWidth = 2;
+  ctx.rect(0, 0, width, sceneH);
+  ctx.clip();
+
+  ctx.fillStyle = "rgba(1, 2, 10, 0.68)";
+  ctx.fillRect(0, 0, width, sceneH);
+
+  ctx.fillStyle = "rgba(0, 0, 8, 0.38)";
+  ctx.fillRect(0, roadY, width, sceneH - roadY);
+
+  const pulse = 0.86 + Math.sin(time * 0.04) * 0.14;
+  ctx.globalCompositeOperation = "screen";
+
+  const { baseTile, frac } = scrollFrac(scrollPx, LIGHT_PARALLAX, LIGHT_TILE);
+  const tilesOnScreen = Math.ceil(width / LIGHT_TILE) + 2;
+  const apexY = -sceneH * 0.04;
+  const floorY = roadY + roadH * 0.68;
+
+  for (let i = -1; i <= tilesOnScreen; i++) {
+    const tileIndex = baseTile + i;
+    const items = tileTopLights(tileIndex);
+    for (const item of items) {
+      const screenX = item.x + i * LIGHT_TILE - frac;
+      if (screenX < -320 || screenX > width + 320) continue;
+
+      drawFeatheredTopLight(
+        ctx,
+        screenX,
+        apexY,
+        floorY,
+        sceneH * 1.02,
+        255,
+        252,
+        248,
+        0.72 * pulse,
+      );
+    }
+  }
+
+  ctx.globalCompositeOperation = "source-over";
+  ctx.restore();
+}
+
+function drawParallaxBackground(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  width: number,
+  sceneH: number,
+  scrollPx: number,
+  rate: number,
+) {
+  if (!img.complete || img.naturalWidth <= 0) return;
+
+  ctx.save();
   ctx.beginPath();
-  ctx.moveTo(x - 30, top + 8);
-  ctx.lineTo(x + 30, top + 8);
-  ctx.stroke();
+  ctx.rect(0, 0, width, sceneH);
+  ctx.clip();
+
+  const scale = (sceneH / img.naturalHeight) * BG_ZOOM;
+  const tileW = img.naturalWidth * scale;
+  const srcH = img.naturalHeight / BG_ZOOM;
+  const srcY = Math.max(0, img.naturalHeight - srcH);
+  const { frac } = scrollFrac(scrollPx, rate, tileW);
+  const tilesOnScreen = Math.ceil(width / tileW) + 2;
+  const destY = 0;
+  const destH = sceneH * (1 + BG_EXTEND_DOWN);
+
+  for (let i = -1; i <= tilesOnScreen; i++) {
+    const x = i * tileW - frac;
+    ctx.drawImage(img, 0, srcY, img.naturalWidth, srcH, x, destY, tileW, destH);
+  }
+
+  ctx.restore();
+}
+
+function drawTreeSprite(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  x: number,
+  roadTop: number,
+  variant: number,
+) {
+  const h = TREE_BASE_HEIGHT + variant * TREE_VARIANT_STEP;
+  const w = (img.naturalWidth / img.naturalHeight) * h;
+  const bury = h * 0.28;
+  const y = roadTop - h + bury - 10 - TREE_Y_LIFT;
+  ctx.drawImage(img, x, y, w, h);
+}
+
+function drawSakuraOverhead(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  roadY: number,
+  roadH: number,
+  scrollPx: number,
+  sakura1: HTMLImageElement,
+  sakura2: HTMLImageElement,
+) {
+  if (!sakura1.complete || !sakura2.complete) return;
+
+  const { baseTile, frac } = scrollFrac(scrollPx, SAKURA_PARALLAX, SAKURA_TILE);
+  const hangH = roadY + roadH * 0.35;
+  const tilesOnScreen = Math.ceil(width / SAKURA_TILE) + 2;
+
+  for (let i = -1; i <= tilesOnScreen; i++) {
+    const tileIndex = baseTile + i;
+    const item = tileSakura(tileIndex);
+    if (!item) continue;
+
+    const img = item.variant === 0 ? sakura1 : sakura2;
+    if (!img.naturalWidth) continue;
+
+    const screenX = item.x + i * SAKURA_TILE - frac;
+    const drawH = hangH;
+    const drawW = (img.naturalWidth / img.naturalHeight) * drawH;
+    if (screenX + drawW < -80 || screenX > width + 80) continue;
+
+    ctx.drawImage(img, screenX, 0, drawW, drawH);
+  }
 }
 
 function drawSceneryLayer(
   ctx: CanvasRenderingContext2D,
   width: number,
-  groundY: number,
+  roadTop: number,
   scrollPx: number,
   parallax: number,
-  horizonTop: number,
-  buildingColor: string,
-  kinds: SceneryKind[],
+  treeImg: HTMLImageElement,
 ) {
-  const offset = scrollPx * parallax;
-  const startTile = Math.floor(offset / SCENERY_TILE) - 1;
-  const endTile = startTile + Math.ceil(width / SCENERY_TILE) + 2;
+  if (!treeImg.complete || treeImg.naturalWidth <= 0) return;
 
-  for (let tile = startTile; tile <= endTile; tile++) {
-    const items = tileScenery(tile);
+  const { baseTile, frac } = scrollFrac(scrollPx, parallax, SCENERY_TILE);
+  const tilesOnScreen = Math.ceil(width / SCENERY_TILE) + 2;
+
+  const maxTreeH = TREE_BASE_HEIGHT + 2 * TREE_VARIANT_STEP;
+  const maxTreeW = (treeImg.naturalWidth / treeImg.naturalHeight) * maxTreeH;
+  const margin = Math.ceil(maxTreeW) + 32;
+
+  for (let i = -1; i <= tilesOnScreen; i++) {
+    const tileIndex = baseTile + i;
+    const items = tileScenery(tileIndex);
     for (const item of items) {
-      if (!kinds.includes(item.kind)) continue;
-      const screenX = item.x + tile * SCENERY_TILE - offset;
-      const margin = item.kind === "building" ? 110 : item.kind === "tree" ? 70 : 50;
+      const screenX = item.x + i * SCENERY_TILE - frac;
       if (screenX + margin < 0 || screenX > width + margin) continue;
-
-      if (item.kind === "building") {
-        drawBuilding(ctx, screenX, groundY, item.variant, buildingColor);
-      } else if (item.kind === "tree") {
-        drawTree(ctx, screenX, groundY, item.variant);
-      } else if (item.kind === "pole") {
-        drawPole(ctx, screenX, horizonTop, groundY - 8);
-      }
-    }
-  }
-}
-
-function drawClouds(ctx: CanvasRenderingContext2D, width: number, scrollPx: number) {
-  const cloudTile = 900;
-  const offset = scrollPx * 0.06;
-  const startTile = Math.floor(offset / cloudTile) - 1;
-  const endTile = startTile + Math.ceil(width / cloudTile) + 2;
-
-  ctx.fillStyle = "rgba(255,255,255,0.85)";
-  for (let tile = startTile; tile <= endTile; tile++) {
-    const base = tile * cloudTile - offset;
-    for (let i = 0; i < 3; i++) {
-      const cx = base + 80 + i * 260;
-      const cy = 24 + (i % 3) * 20;
-      if (cx + 60 < 0 || cx - 20 > width) continue;
-      ctx.beginPath();
-      ctx.arc(cx, cy, 20, 0, Math.PI * 2);
-      ctx.arc(cx + 22, cy - 5, 16, 0, Math.PI * 2);
-      ctx.arc(cx + 40, cy, 18, 0, Math.PI * 2);
-      ctx.fill();
+      drawTreeSprite(ctx, treeImg, screenX, roadTop, item.variant);
     }
   }
 }
@@ -361,15 +613,23 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
     const dashH = height - sceneH;
     const roadY = sceneH * 0.72;
     const roadH = sceneH - roadY;
-    const horizonY = sceneH * 0.38;
     const carX = width * 0.06;
 
     const carImg = new Image();
     const frontWheelImg = new Image();
     const backWheelImg = new Image();
+    const bgImg = new Image();
+    const treeImg = new Image();
+    const sakuraTop1 = new Image();
+    const sakuraTop2 = new Image();
+
     carImg.src = "/OctanePixelCar2.png";
     frontWheelImg.src = "/FrontWheel.png";
     backWheelImg.src = "/BackWheel.png";
+    bgImg.src = Math.random() < 0.5 ? "/bg1.png" : "/bg2.png";
+    treeImg.src = "/tree.png";
+    sakuraTop1.src = "/sakuratop1.png";
+    sakuraTop2.src = "/sakuratop2.png";
 
     let carReady = false;
     let wheelsReady = false;
@@ -394,6 +654,8 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
     frontWheelImg.onload = tryReady;
     backWheelImg.onload = tryReady;
     tryReady();
+
+    const isNight = Math.random() < NIGHT_RUN_CHANCE;
 
     const clutchBtn = { x: 14, y: height - 62, w: 40, h: 40 };
     const brakeBtn = { x: 60, y: height - 62, w: 40, h: 40 };
@@ -531,21 +793,9 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
 
       if (shiftFlash > 0) shiftFlash--;
 
-      const sky = ctx.createLinearGradient(0, 0, 0, sceneH);
-      sky.addColorStop(0, p.skyTop);
-      sky.addColorStop(0.55, p.skyBot);
-      sky.addColorStop(1, "#6ecf8a");
-      ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, width, sceneH);
+      drawParallaxBackground(ctx, bgImg, width, sceneH, scrollPx, BG_PARALLAX);
 
-      ctx.fillStyle = "#5a9e68";
-      ctx.fillRect(0, horizonY, width, roadY - horizonY);
-
-      drawClouds(ctx, width, scrollPx);
-
-      drawSceneryLayer(ctx, width, roadY - 6, scrollPx, 0.12, horizonY, p.building, ["building"]);
-      drawSceneryLayer(ctx, width, roadY - 4, scrollPx, 0.28, horizonY, p.building, ["tree"]);
-      drawSceneryLayer(ctx, width, roadY - 8, scrollPx, 0.5, horizonY, p.building, ["pole", "tree"]);
+      drawSceneryLayer(ctx, width, roadY, scrollPx, TREE_PARALLAX, treeImg);
 
       ctx.fillStyle = p.road;
       ctx.fillRect(0, roadY, width, roadH);
@@ -557,7 +807,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
       ctx.lineTo(width, roadY + 4);
       ctx.stroke();
 
-      const lineScroll = (scrollPx * 1.6) % 70;
+      const lineScroll = scrollFrac(scrollPx, 1.6, 70).frac;
       ctx.strokeStyle = "rgba(255,255,255,0.9)";
       ctx.lineWidth = 3;
       ctx.setLineDash([36, 44]);
@@ -568,6 +818,8 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
         ctx.stroke();
       }
       ctx.setLineDash([]);
+
+      drawSakuraOverhead(ctx, width, roadY, roadH, scrollPx, sakuraTop1, sakuraTop2);
 
       if (isDrag) {
         const finishOffset = raceDistanceM - distance;
@@ -601,7 +853,12 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
         }
       }
 
-      ctx.fillStyle = palette.isDark ? "rgba(8,10,16,0.92)" : "rgba(30,32,38,0.88)";
+      if (isNight) {
+        drawNightScene(ctx, width, sceneH, roadY, roadH, scrollPx, time);
+        drawCarHeadlights(ctx, width, roadY, roadH, carX, carY, carDrawW, carDrawH);
+      }
+
+      ctx.fillStyle = palette.isDark ? "#080a10" : "#1e2026";
       ctx.fillRect(0, dashY, width, dashH);
       ctx.strokeStyle = p.hudBorder;
       ctx.lineWidth = 1;
