@@ -23,6 +23,11 @@ function loadLocal(userId: string): AppData {
   }
 }
 
+/** Instant local read — use before async cloud merge. */
+function readLocalData(userId: string): AppData {
+  return loadLocal(userId);
+}
+
 function saveLocal(userId: string, data: AppData): void {
   try {
     localStorage.setItem(dataKey(userId), JSON.stringify(data));
@@ -49,6 +54,10 @@ export const storage = {
   setUser(user: User | null) {
     if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
     else localStorage.removeItem(USER_KEY);
+  },
+
+  loadLocalData(userId: string): AppData {
+    return readLocalData(userId);
   },
 
   async loadData(userId: string): Promise<AppData> {

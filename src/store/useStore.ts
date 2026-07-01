@@ -19,6 +19,7 @@ import {
   playsRemaining,
   recordGamePlay,
 } from "@/lib/gamePlays";
+import { isCloudUser } from "@/lib/cloudSync";
 
 const uid = () => crypto.randomUUID();
 
@@ -52,6 +53,36 @@ interface StoreState {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
+async function waitForFirebaseAuth(maxMs = 3000): Promise<void> {
+  const auth = getFirebaseAuth();
+  if (!auth || auth.currentUser) return;
+
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(resolve, maxMs);
+    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        clearTimeout(timeout);
+        unsub();
+        resolve();
+      }
+    });
+  });
+}
+
+async function syncUserData(userId: string): Promise<AppData> {
+  if (isCloudUser(userId) && cloudConfigured()) {
+    await waitForFirebaseAuth();
+  }
+  return storage.loadData(userId);
+}
+
+function applyUserData(userId: string, data: AppData) {
+  const { user, refreshToday } = useStore.getState();
+  if (user?.id !== userId) return;
+  useStore.setState({ data });
+  refreshToday();
+}
+
 export const useStore = create<StoreState>((set, get) => {
   // Debounced persistence whenever data changes.
   const persist = () => {
@@ -77,31 +108,24 @@ export const useStore = create<StoreState>((set, get) => {
     async init() {
       const user = storage.getUser();
       if (user) {
-        if (user.provider === "google" && cloudConfigured()) {
-          const auth = getFirebaseAuth();
-          if (auth) {
-            await new Promise<void>((resolve) => {
-              const timeout = setTimeout(resolve, 3000);
-              const unsub = onAuthStateChanged(auth, () => {
-                clearTimeout(timeout);
-                unsub();
-                resolve();
-              });
-            });
-          }
-        }
-        const data = await storage.loadData(user.id);
+        const data = storage.loadLocalData(user.id);
         set({ user, data, today: todayKey() });
         get().refreshToday();
+        void syncUserData(user.id)
+          .then((synced) => applyUserData(user.id, synced))
+          .catch((err) => console.warn("Background sync failed", err));
       }
       set({ ready: true });
     },
 
     async signIn(user) {
       storage.setUser(user);
-      const data = await storage.loadData(user.id);
+      const data = storage.loadLocalData(user.id);
       set({ user, data, today: todayKey() });
       get().refreshToday();
+      void syncUserData(user.id)
+        .then((synced) => applyUserData(user.id, synced))
+        .catch((err) => console.warn("Background sync failed", err));
     },
 
     signOut() {

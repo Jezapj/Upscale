@@ -22,13 +22,30 @@ function hasContent(data: AppData): boolean {
   return data.goals.length > 0 || data.routines.length > 0 || Object.keys(data.logs).length > 0;
 }
 
+const CLOUD_LOAD_TIMEOUT_MS = 8_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("cloud load timeout")), ms);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
 export async function loadCloudData(userId: string): Promise<CloudPayload | null> {
   const db = getFirebaseDb();
   const sub = googleSubFromUserId(userId);
   if (!db || !sub) return null;
 
   try {
-    const snap = await getDoc(doc(db, "userdata", sub));
+    const snap = await withTimeout(getDoc(doc(db, "userdata", sub)), CLOUD_LOAD_TIMEOUT_MS);
     if (!snap.exists()) return null;
     const raw = snap.data() as CloudPayload;
     if (!raw?.data) return null;
