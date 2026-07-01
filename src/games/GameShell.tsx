@@ -4,13 +4,14 @@ import { ArrowLeft } from "lucide-react";
 import type { GameId } from "@/lib/types";
 import { GAME_BY_ID } from "@/lib/games";
 import { GamePaletteProvider } from "./GamePaletteContext";
+import type { GameResult } from "./gameResult";
 
 interface Props {
   gameId: GameId;
   children: (api: {
     width: number;
     height: number;
-    onGameOver: (score: number) => void;
+    onGameOver: (result: number | GameResult) => void;
   }) => React.ReactNode;
   /** Custom pre-play UI (e.g. Octane mode picker). Call `start()` when ready. */
   renderLobby?: (start: () => void) => React.ReactNode;
@@ -42,18 +43,18 @@ export function GameShell({ gameId, children, renderLobby, onSessionReset }: Pro
   const containerRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false);
   const size = useContainerSize(containerRef);
-  const [score, setScore] = useState<number | null>(null);
+  const [result, setResult] = useState<GameResult | null>(null);
   const [started, setStarted] = useState(false);
 
   const start = useCallback(() => {
     if (startedRef.current) return;
     startedRef.current = true;
     setStarted(true);
-    setScore(null);
+    setResult(null);
   }, []);
 
-  const onGameOver = useCallback((s: number) => {
-    setScore(s);
+  const onGameOver = useCallback((input: number | GameResult) => {
+    setResult(typeof input === "number" ? { score: input } : input);
     startedRef.current = false;
     setStarted(false);
   }, []);
@@ -85,7 +86,7 @@ export function GameShell({ gameId, children, renderLobby, onSessionReset }: Pro
         </div>
 
         <div ref={containerRef} className="game-stage relative min-h-0 flex-1 overflow-hidden">
-          {!started && score === null && (
+          {!started && result === null && (
             renderLobby ? (
               renderLobby(start)
             ) : (
@@ -97,16 +98,28 @@ export function GameShell({ gameId, children, renderLobby, onSessionReset }: Pro
               </div>
             )
           )}
-          {score !== null && !started && (
+          {result !== null && !started && (
             <div className="game-overlay absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 px-6">
+              {result.title && (
+                <p className="text-sm font-700 text-ink-soft">{result.title}</p>
+              )}
               <p className="game-shell-title font-display text-2xl font-800">
-                Score: {score}
+                Score: {result.score}
               </p>
+              {result.stats && result.stats.length > 0 && (
+                <div className="flex flex-col gap-1 text-center">
+                  {result.stats.map((stat) => (
+                    <p key={stat.label} className="text-sm font-700 text-ink-soft">
+                      {stat.label}: <span className="text-ink">{stat.value}</span>
+                    </p>
+                  ))}
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => {
                   onSessionReset?.();
-                  setScore(null);
+                  setResult(null);
                   startedRef.current = false;
                   setStarted(false);
                   if (!renderLobby) start();

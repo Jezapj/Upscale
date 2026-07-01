@@ -1,12 +1,13 @@
 import { useEffect, useRef } from "react";
 import { useGamePalette } from "./GamePaletteContext";
 import type { OctaneConfig } from "./octaneConfig";
+import { formatRaceTime, scoreOctaneDrag, type GameResult } from "./gameResult";
 
 interface Props {
   width: number;
   height: number;
   config: OctaneConfig;
-  onGameOver: (score: number) => void;
+  onGameOver: (result: number | GameResult) => void;
 }
 
 const GEARS = 6;
@@ -675,6 +676,8 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
     let shiftFlash = 0;
     let shiftQuality = 0;
     let time = 0;
+    let topMph = 0;
+    const raceStartTime = performance.now();
     let clutchDown = false;
     let brakeDown = false;
     let gasDown = false;
@@ -779,6 +782,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
         if (rpm > REDLINE_END) rpm = REDLINE_END;
         rpm = Math.max(0, Math.min(RPM_MAX, rpm));
         mph = Math.max(0, Math.min(MPH_MAX, mph));
+        topMph = Math.max(topMph, mph);
 
         distance += mph * 0.00745 * dt;
         scrollPx += mph * 0.22 * dt;
@@ -786,8 +790,20 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
 
         if (isDrag && distance >= raceDistanceM) {
           finished = true;
-          const score = Math.round((raceDistanceM / Math.max(time, 1)) * 100);
-          setTimeout(() => onGameOver(score), 800);
+          const elapsedMs = performance.now() - raceStartTime;
+          const score = scoreOctaneDrag(raceDistanceM, elapsedMs, topMph);
+          setTimeout(
+            () =>
+              onGameOver({
+                score,
+                title: "Finish!",
+                stats: [
+                  { label: "Top speed", value: `${Math.round(topMph)} mph` },
+                  { label: "Time", value: formatRaceTime(elapsedMs) },
+                ],
+              }),
+            800,
+          );
         }
       }
 

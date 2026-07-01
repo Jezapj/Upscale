@@ -1,10 +1,11 @@
 import { useEffect, useRef } from "react";
 import { useGamePalette } from "./GamePaletteContext";
+import { formatRaceTime, scoreTipTop, type GameResult } from "./gameResult";
 
 interface Props {
   width: number;
   height: number;
-  onGameOver: (score: number) => void;
+  onGameOver: (result: number | GameResult) => void;
 }
 
 interface Pit {
@@ -285,7 +286,9 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
     const stages = generateStages((Date.now() ^ (width * 7919)) >>> 0);
     let stageIndex = 0;
     let stageFlaps = 0;
+    let totalFlaps = 0;
     let stageStartTime = performance.now();
+    let gameStartTime = stageStartTime;
     let clearFrames = 0;
 
     let px = 120;
@@ -307,10 +310,25 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
       camX = 0;
     };
 
+    const finishRun = (cleared: boolean) => {
+      alive = false;
+      const flaps = totalFlaps + stageFlaps;
+      const totalTimeMs = performance.now() - gameStartTime;
+      const score = scoreTipTop(flaps, totalTimeMs, cleared);
+      onGameOver({
+        score,
+        title: cleared ? "Course complete!" : "Game over",
+        stats: [
+          { label: "Flaps", value: String(flaps) },
+          { label: "Time", value: formatRaceTime(totalTimeMs) },
+        ],
+      });
+    };
+
     const advanceStage = () => {
+      totalFlaps += stageFlaps;
       if (stageIndex >= STAGE_COUNT - 1) {
-        alive = false;
-        onGameOver(STAGE_COUNT);
+        finishRun(true);
         return;
       }
       stageIndex++;
@@ -508,8 +526,7 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
         }
 
         if (py > playH + 80) {
-          alive = false;
-          onGameOver(stageIndex);
+          finishRun(false);
           return;
         }
       }
