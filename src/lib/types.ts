@@ -47,6 +47,8 @@ export interface Routine {
   endDate?: string; // ISO date (YYYY-MM-DD)
   /** Optional goal this routine contributes toward. */
   goalId?: string | null;
+  /** Optional daily reminder time in 24h HH:mm (device local timezone). */
+  reminderTime?: string;
   createdAt: string; // ISO
   archived?: boolean;
 }

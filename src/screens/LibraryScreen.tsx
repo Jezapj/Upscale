@@ -11,6 +11,7 @@ import { Sheet } from "@/components/Sheet";
 import { RoutineForm } from "@/components/RoutineForm";
 import { CATEGORY_LIST, getCategory } from "@/lib/categories";
 import { describeFrequency } from "@/lib/frequency";
+import { formatReminderLabel } from "@/lib/reminders";
 import { computeRoutineStats } from "@/lib/stats";
 import type { CategoryKey, Routine } from "@/lib/types";
 import { useRegisterControls } from "@/store/useControls";
@@ -201,6 +202,9 @@ export function LibraryScreen() {
                         </p>
                         <p className="truncate text-xs font-700 text-ink-faint">
                           {describeFrequency(r.frequency)}
+                          {r.reminderTime
+                            ? ` · ${formatReminderLabel(r.reminderTime)}`
+                            : ""}
                         </p>
                         {goal && (
                           <span

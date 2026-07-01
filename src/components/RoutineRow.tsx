@@ -6,7 +6,8 @@ import { RATING_BY_KEY } from "@/lib/rating";
 import { computeRoutineStats } from "@/lib/stats";
 import { todayKey } from "@/lib/dates";
 import { useStore } from "@/store/useStore";
-import { Flame } from "lucide-react";
+import { Flame, Bell } from "lucide-react";
+import { formatReminderLabel } from "@/lib/reminders";
 
 interface Props {
   routine: Routine;
@@ -40,6 +41,12 @@ export function RoutineRow({ routine, data, showRating = true, onOpen }: Props) 
           </div>
           <div className="flex items-center gap-2 text-xs font-700 text-ink-faint">
             <span>{describeFrequency(routine.frequency)}</span>
+            {routine.reminderTime && (
+              <span className="flex items-center gap-0.5 text-cat-project">
+                <Bell size={12} />
+                {formatReminderLabel(routine.reminderTime)}
+              </span>
+            )}
             {stats.streak > 0 && (
               <span className="flex items-center gap-0.5 text-cat-exercise">
                 <Flame size={12} /> {stats.streak}

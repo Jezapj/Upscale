@@ -1,9 +1,15 @@
-import { useRef } from "react";
-import { LogOut, Download, Upload, Info } from "lucide-react";
+import { useRef, useState } from "react";
+import { LogOut, Download, Upload, Info, Bell } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Sheet } from "./Sheet";
 import { storage } from "@/lib/storage";
 import { emptyAppData } from "@/lib/types";
+import {
+  getNotificationPermission,
+  notificationsSupported,
+  requestNotificationPermission,
+} from "@/lib/notifications";
+import { getReminderPrefs, setReminderPrefs } from "@/lib/reminders";
 
 interface Props {
   open: boolean;
@@ -13,6 +19,26 @@ interface Props {
 export function SettingsSheet({ open, onClose }: Props) {
   const { user, data, signOut } = useStore();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [remindersOn, setRemindersOn] = useState(() => getReminderPrefs().enabled);
+  const [perm, setPerm] = useState(getNotificationPermission);
+
+  const toggleReminders = async () => {
+    if (!notificationsSupported()) return;
+
+    if (!remindersOn) {
+      const next = await requestNotificationPermission();
+      setPerm(next);
+      if (next !== "granted") return;
+      setRemindersOn(true);
+      setReminderPrefs({ enabled: true });
+      return;
+    }
+
+    setRemindersOn(false);
+    setReminderPrefs({ enabled: false });
+  };
+
+  const hasTimedRoutines = data.routines.some((r) => r.reminderTime && !r.archived);
 
   const exportData = () => {
     const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -77,6 +103,44 @@ export function SettingsSheet({ open, onClose }: Props) {
             runs full-screen and works offline.
           </p>
         </div>
+
+        {notificationsSupported() && (
+          <div className="card space-y-3 p-4">
+            <div className="flex items-start gap-3">
+              <Bell size={18} className="mt-0.5 shrink-0 text-cat-project" />
+              <div className="min-w-0 flex-1">
+                <p className="font-800 text-ink">Routine reminders</p>
+                <p className="mt-1 text-sm font-600 text-ink-soft">
+                  Notify you at the time set on each routine (when it is due today).
+                  Works best with the app installed on your home screen.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void toggleReminders()}
+                className={`relative h-8 w-14 shrink-0 rounded-full transition-colors ${
+                  remindersOn ? "bg-cat-chores" : "bg-ink-faint/30"
+                }`}
+              >
+                <span
+                  className="absolute top-1 h-6 w-6 rounded-full bg-white shadow-soft transition-all"
+                  style={{ left: remindersOn ? 28 : 4 }}
+                />
+              </button>
+            </div>
+            {perm === "denied" && (
+              <p className="text-xs font-600 text-cat-exercise">
+                Notifications are blocked in your browser settings. Allow them for
+                Upscale to use reminders.
+              </p>
+            )}
+            {remindersOn && !hasTimedRoutines && (
+              <p className="text-xs font-600 text-ink-faint">
+                Add a reminder time when creating or editing a routine in your Library.
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-2">
           <button onClick={exportData} className="btn-ghost">

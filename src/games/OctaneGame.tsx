@@ -15,9 +15,9 @@ const REDLINE_START = 7500;
 const REDLINE_END = 9000;
 const SHIFT_PERFECT_MIN = 7000;
 const SHIFT_PERFECT_MAX = 8800;
-const MPH_MAX = 301;
+const MPH_MAX = 300;
 /** Wheel rotation rate (lower = slower spin). */
-const WHEEL_SPIN_RATE = 22;
+const WHEEL_SPIN_RATE = 100;
 /** Per-gear top speed (mph). Must shift to exceed each cap. */
 const GEAR_SPEED_CAP = [40, 80, 120, 150, 220, 301];
 /** MPH gained per frame at redline, per gear (60fps baseline). */
@@ -31,8 +31,8 @@ const CAR_HEIGHT_RATIO = 0.92;
  * Tweak x/y until each wheel rotates around its own center.
  */
 const WHEEL_TUNING = {
-  rear: { x: 0.2, y: 0.65 },
-  front: { x: 0.77, y: 0.65 },
+  rear: { x: 0.2, y: 0.63 },
+  front: { x: 0.77, y: 0.64 },
 } as const;
 
 /** Above 75% of gear cap, acceleration tapers to 0 at the cap. */
@@ -246,7 +246,7 @@ function drawTree(ctx: CanvasRenderingContext2D, x: number, groundY: number, var
   const h = 48 + variant * 18;
   const trunkW = 10;
   ctx.fillStyle = "#5a4030";
-  ctx.fillRect(x + 8, groundY - h * 0.35, trunkW, h * 0.35);
+  ctx.fillRect(x + 20, groundY - h * 0.35, trunkW, h * 0.35);
   ctx.fillStyle = variant % 2 === 0 ? "#2d7a42" : "#3a8a50";
   ctx.beginPath();
   ctx.moveTo(x, groundY - h * 0.3);
@@ -269,7 +269,7 @@ function drawPole(ctx: CanvasRenderingContext2D, x: number, top: number, bottom:
   ctx.lineWidth = 3;
   ctx.beginPath();
   ctx.moveTo(x, top);
-  ctx.lineTo(x, bottom);
+  ctx.lineTo(x, bottom + 20);
   ctx.stroke();
   ctx.fillStyle = "#444";
   ctx.fillRect(x - 8, top - 4, 16, 6);

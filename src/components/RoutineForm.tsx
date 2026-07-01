@@ -47,6 +47,10 @@ export function RoutineForm({
   const [goalId, setGoalId] = useState<string | null>(
     initial?.goalId ?? defaultGoalId ?? null,
   );
+  const [reminderOn, setReminderOn] = useState(!!initial?.reminderTime);
+  const [reminderTime, setReminderTime] = useState(
+    initial?.reminderTime ?? "09:00",
+  );
 
   const pickCategory = (k: CategoryKey) => {
     setCategory(k);
@@ -81,6 +85,7 @@ export function RoutineForm({
       hasEnd,
       endDate: hasEnd ? endDate || undefined : undefined,
       goalId,
+      reminderTime: reminderOn ? reminderTime : undefined,
       archived: initial?.archived,
     });
   };
@@ -177,6 +182,36 @@ export function RoutineForm({
             <span className="text-sm font-700 text-ink-soft">days</span>
           </div>
         )}
+      </Field>
+
+      <Field
+        label="Reminder"
+        hint="Optional. Get a notification on this device when the routine is due today."
+      >
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setReminderOn((v) => !v)}
+            className={`relative h-8 w-14 shrink-0 rounded-full transition-colors ${
+              reminderOn ? "bg-cat-chores" : "bg-ink-faint/30"
+            }`}
+          >
+            <span
+              className="absolute top-1 h-6 w-6 rounded-full bg-white shadow-soft transition-all"
+              style={{ left: reminderOn ? 28 : 4 }}
+            />
+          </button>
+          {reminderOn ? (
+            <input
+              type="time"
+              value={reminderTime}
+              onChange={(e) => setReminderTime(e.target.value)}
+              className={`${inputClass} flex-1`}
+            />
+          ) : (
+            <span className="text-sm font-700 text-ink-soft">No reminder</span>
+          )}
+        </div>
       </Field>
 
       <Field

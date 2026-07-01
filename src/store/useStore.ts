@@ -20,6 +20,7 @@ import {
   recordGamePlay,
 } from "@/lib/gamePlays";
 import { isCloudUser } from "@/lib/cloudSync";
+import { clearFiredReminder } from "@/lib/reminders";
 
 const uid = () => crypto.randomUUID();
 
@@ -170,6 +171,7 @@ export const useStore = create<StoreState>((set, get) => {
       return routine;
     },
     updateRoutine(id, patch) {
+      if ("reminderTime" in patch) clearFiredReminder(id);
       mutate((d) => ({
         ...d,
         routines: d.routines.map((r) => (r.id === id ? { ...r, ...patch } : r)),

@@ -12,6 +12,7 @@ import { Dock } from "@/components/Dock";
 import { ScreenHints } from "@/components/ScreenHints";
 import { QuickMenu } from "@/components/QuickMenu";
 import { useKeyboardControls } from "@/hooks/useKeyboardControls";
+import { useRoutineReminders } from "@/hooks/useRoutineReminders";
 import { ThemeSyncEffect } from "@/store/useTheme";
 import { LoginScreen } from "@/screens/LoginScreen";
 import { HomeScreen } from "@/screens/HomeScreen";
@@ -45,6 +46,7 @@ function AppShell() {
   const hideChrome = isCheckin || isPlayingGame;
 
   useKeyboardControls();
+  useRoutineReminders();
 
   return (
     <div id="app-shell" className="app-shell">
