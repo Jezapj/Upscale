@@ -63,6 +63,83 @@ const FLAP_POWER = 5.9;
 const FLAP_ANGLE = (75 * Math.PI) / 180;
 const GROUND_Y = 0.78;
 const STAGE_CLEAR_FRAMES = 50;
+
+/** White tangential hit flash after a flap — tune `size` and `alpha`. */
+const FLAP_IMPACT_TUNING = {
+  size: 4.0,
+  alpha: 0.52,
+  durationMs: 200,
+  /** 1 = fully horizontal at max speed; lower = less speed influence on angle. */
+  speedFlatness: 1.0,
+};
+
+interface FlapImpact {
+  /** Effect direction (flap force, flattened toward horizontal by speed). */
+  forceX: number;
+  forceY: number;
+  ageMs: number;
+}
+
+function flapImpactDirection(
+  forceX: number,
+  forceY: number,
+  speed: number,
+  maxSpd: number,
+  speedFlatness: number,
+): { x: number; y: number } {
+  const t = Math.min(1, speed / maxSpd) * speedFlatness;
+  const x = forceX;
+  const y = forceY * (1 - t);
+  const len = Math.hypot(x, y) || 1;
+  return { x: x / len, y: y / len };
+}
+
+function drawFlapImpact(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  ballR: number,
+  forceX: number,
+  forceY: number,
+  progress: number,
+  tuning: typeof FLAP_IMPACT_TUNING,
+) {
+  const fade = 1 - progress;
+  const alpha = tuning.alpha * fade * fade;
+  if (alpha <= 0.01) return;
+
+  const nx = -forceX;
+  const ny = -forceY;
+  const impactAngle = Math.atan2(ny, nx);
+  const arcSpan = (0.75 + 0.25 * tuning.size) * fade;
+  const innerR = ballR * (0.5 + 0.05 * tuning.size);
+  const outerR = ballR * (1.02 + 0.18 * tuning.size * fade);
+
+  const tx = -ny;
+  const ty = nx;
+  const contactX = cx + nx * ballR * 0.9;
+  const contactY = cy + ny * ballR * 0.9;
+  const streakLen = ballR * (0.95 + 0.35 * tuning.size) * fade;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(cx, cy, outerR, impactAngle - arcSpan / 2, impactAngle + arcSpan / 2);
+  ctx.arc(cx, cy, innerR, impactAngle + arcSpan / 2, impactAngle - arcSpan / 2, true);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 1.5 + 2 * tuning.size * fade;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(contactX - tx * streakLen, contactY - ty * streakLen);
+  ctx.lineTo(contactX + tx * streakLen, contactY + ty * streakLen);
+  ctx.stroke();
+  ctx.restore();
+}
+
 const STAGE_THEMES: StageTheme[] = ["forest", "beach", "mountain", "space"];
 
 const THEME_LABELS: Record<StageTheme, string> = {
@@ -605,6 +682,8 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
     let vy = 0;
     let alive = true;
     let camX = 0;
+    const flapImpacts: FlapImpact[] = [];
+    let lastFrameTime = performance.now();
 
     const currentStage = () => stages[stageIndex];
     const currentPit = () => currentStage().pit;
@@ -650,14 +729,24 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
       if (!alive || clearFrames > 0) return;
       stageFlaps++;
       const angle = dir < 0 ? Math.PI - FLAP_ANGLE : FLAP_ANGLE;
-      vx += Math.cos(angle) * FLAP_POWER;
-      vy -= Math.sin(angle) * FLAP_POWER;
+      const forceX = Math.cos(angle);
+      const forceY = -Math.sin(angle);
+      vx += forceX * FLAP_POWER;
+      vy += forceY * FLAP_POWER;
       const maxSpd = 14;
       const sp = Math.hypot(vx, vy);
       if (sp > maxSpd) {
         vx = (vx / sp) * maxSpd;
         vy = (vy / sp) * maxSpd;
       }
+      const impactDir = flapImpactDirection(
+        forceX,
+        forceY,
+        Math.hypot(vx, vy),
+        maxSpd,
+        FLAP_IMPACT_TUNING.speedFlatness,
+      );
+      flapImpacts.push({ forceX: impactDir.x, forceY: impactDir.y, ageMs: 0 });
     };
 
     const leftBtn = { x: 12, y: playH + 10, w: width / 2 - 18, h: btnH - 12 };
@@ -676,6 +765,8 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
       } else if (hitBtn(x, y, rightBtn)) {
         btnRef.current.right = true;
         flap(1);
+      } else if (y < playH) {
+        flap(x < width / 2 ? -1 : 1);
       }
     };
     const onPointerUp = () => {
@@ -707,6 +798,15 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
 
     const loop = () => {
       if (!alive) return;
+
+      const now = performance.now();
+      const dt = Math.min(32, now - lastFrameTime);
+      lastFrameTime = now;
+
+      for (let i = flapImpacts.length - 1; i >= 0; i--) {
+        flapImpacts[i].ageMs += dt;
+        if (flapImpacts[i].ageMs >= FLAP_IMPACT_TUNING.durationMs) flapImpacts.splice(i, 1);
+      }
 
       const stage = currentStage();
       const pit = currentPit();
@@ -904,6 +1004,19 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
       ctx.strokeStyle = "#aaa";
       ctx.lineWidth = 1.5;
       ctx.stroke();
+      for (const impact of flapImpacts) {
+        const progress = impact.ageMs / FLAP_IMPACT_TUNING.durationMs;
+        drawFlapImpact(
+          ctx,
+          bsx,
+          bsy,
+          ballR,
+          impact.forceX,
+          impact.forceY,
+          progress,
+          FLAP_IMPACT_TUNING,
+        );
+      }
 
       const stageElapsed = performance.now() - stageStartTime;
       ctx.fillStyle = p.hud;
