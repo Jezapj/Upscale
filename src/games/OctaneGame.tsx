@@ -30,11 +30,9 @@ const TREE_BASE_HEIGHT = 205;
 const TREE_VARIANT_STEP = 46;
 /** Pixels to nudge trees upward (higher = sits higher above the road). */
 const TREE_Y_LIFT = 15;
-const BG_PARALLAX = 0.002;
+const BG_PARALLAX = 0.005;
 const TREE_PARALLAX = 0.92;
 const SAKURA_PARALLAX = 1.82;
-const LIGHT_TILE = 3200;
-const LIGHT_PARALLAX = 1.38;
 /** Crop/zoom factor for background sprites (higher = more zoomed in). */
 const BG_ZOOM = 1.45;
 /** Extend draw height below the scene (top-anchored) so the horizon sits lower without a gap at the top. */
@@ -64,6 +62,83 @@ const HEADLIGHT_TUNING = {
   alpha: 0.05,
   /** Wider outer halo opacity multiplier. */
   outerAlpha: 0.48,
+} as const;
+
+/**
+ * Overhead street / moon beams that parallax-scroll onto the road.
+ * Tweak spacing, origin, spread, and color until pools look right on the asphalt.
+ */
+const ROAD_LIGHT_TUNING = {
+  /** Horizontal repeat distance (px) — lower = more lights on screen. */
+  tileSpacing: 3200,
+  /** Scroll speed relative to the car (higher = faster across the screen). */
+  parallax: 1.38,
+  /** 0–1 chance a light spawns in each tile. */
+  spawnChance: 0.37,
+  /** Random horizontal offset within each tile (px). */
+  spawnXMin: 80,
+  spawnXRange: 720,
+  /** Beam origin Y as a fraction of scene height (negative = above the top edge). */
+  apexY: -0.84,
+  /** Where the beam fades out on the road: fraction of road band height from road top. */
+  roadFloor: 4.98,
+  /** Beam spread radius as a fraction of scene height. */
+  spread: 0.8,
+  color: { r: 155, g: 155, b: 255 },
+  /** Core opacity (screen blend); multiplied by the pulse animation. */
+  alpha: 0.99,
+  /** Pulse animation: base brightness and sine-wave amplitude (0 = static). */
+  pulseBase: 0.96,
+  pulseAmount: 0.14,
+  pulseSpeed: 0.04,
+  /** Skip drawing when this far past the left/right screen edge (px). */
+  cullMargin: 320,
+  /** Feathered gradient layers (outer → inner). */
+  layers: [
+    { spreadMult: 0.18, alphaMult: 0.15, yBias: 0.9 },
+    { spreadMult: 0.6, alphaMult: 0.62, yBias: 0.78 },
+    { spreadMult: 0.75, alphaMult: 0.2, yBias: 0.65 },
+  ],
+} as const;
+
+/**
+ * Occasional cinematic lens flare sweeping across the scene (daytime only).
+ * Tweak path, timing, and ghost layout until it feels like sun hitting the lens.
+ */
+const LENS_FLARE_TUNING = {
+  /** Seconds between flare spawn attempts (randomized in this range). */
+  minInterval: 100,
+  maxInterval: 240,
+  /** 0–1 chance to spawn when an attempt fires. */
+  triggerChance: 0.28,
+  /** Seconds for one flare to cross the screen. */
+  duration: 230.6,
+  /** Sun enters/exits as fractions of screen width (1.15 = off right edge). */
+  enterX: 1.18,
+  exitX: -0.22,
+  /** Base vertical position as a fraction of scene height. */
+  y: 0.14,
+  /** Random vertical jitter (± fraction of scene height). */
+  yJitter: 0.06,
+  /** Bright core radius as a fraction of screen width. */
+  coreRadius: 0.29,
+  /** Horizontal anamorphic streak length / height (fractions of screen). */
+  streakLength: 0.62,
+  streakHeight: 0.028,
+  /** Lens ghost offsets from the sun along X (fraction of width) and radii (fraction of width). */
+  ghosts: [
+    { x: -0.2, r: 0.038, a: 0.2 },
+    { x: 0.14, r: 0.024, a: 0.16 },
+    { x: 0.31, r: 0.018, a: 0.12 },
+    { x: -0.36, r: 0.03, a: 0.14 },
+  ],
+  color: { r: 215, g: 212, b: 250 },
+  /** Peak opacity multipliers (screen blend), scaled by pass envelope. */
+  coreAlpha: 0.52,
+  streakAlpha: 0.38,
+  haloAlpha: 0.22,
+  /** Only attempt flares above this speed (mph). */
+  minMph: 20,
 } as const;
 
 /**
@@ -393,9 +468,10 @@ interface TopLightItem {
 
 /** Overhead lights that scroll in from the top of the screen. */
 function tileTopLights(tile: number): TopLightItem[] {
+  const t = ROAD_LIGHT_TUNING;
   const v = Math.abs(tile * 5821 + 44101) % 100;
-  if (v > 36) return [];
-  return [{ x: 80 + (v * 47) % 720 }];
+  if (v > Math.round(t.spawnChance * 100) - 1) return [];
+  return [{ x: t.spawnXMin + (v * 47) % t.spawnXRange }];
 }
 
 function drawFeatheredTopLight(
@@ -410,13 +486,8 @@ function drawFeatheredTopLight(
   alpha: number,
 ) {
   const depth = floorY - apexY;
-  const layers = [
-    { spreadMult: 1.18, alphaMult: 0.55, yBias: 0.92 },
-    { spreadMult: 0.8, alphaMult: 0.82, yBias: 0.78 },
-    { spreadMult: 0.5, alphaMult: 1, yBias: 0.65 },
-  ];
 
-  for (const layer of layers) {
+  for (const layer of ROAD_LIGHT_TUNING.layers) {
     const radius = spread * layer.spreadMult;
     const centerY = apexY + depth * layer.yBias;
     const grad = ctx.createRadialGradient(apexX, apexY, 0, apexX, centerY, radius);
@@ -444,39 +515,111 @@ function drawNightScene(
   ctx.rect(0, 0, width, sceneH);
   ctx.clip();
 
-  ctx.fillStyle = "rgba(1, 2, 10, 0.68)";
+  ctx.fillStyle = "rgba(1, 2, 10, 0.78)";
   ctx.fillRect(0, 0, width, sceneH);
 
   ctx.fillStyle = "rgba(0, 0, 8, 0.38)";
   ctx.fillRect(0, roadY, width, sceneH - roadY);
 
-  const pulse = 0.86 + Math.sin(time * 0.04) * 0.14;
+  const t = ROAD_LIGHT_TUNING;
+  const pulse = t.pulseBase + Math.sin(time * t.pulseSpeed) * t.pulseAmount;
   ctx.globalCompositeOperation = "screen";
 
-  const { baseTile, frac } = scrollFrac(scrollPx, LIGHT_PARALLAX, LIGHT_TILE);
-  const tilesOnScreen = Math.ceil(width / LIGHT_TILE) + 2;
-  const apexY = -sceneH * 0.04;
-  const floorY = roadY + roadH * 0.68;
+  const { baseTile, frac } = scrollFrac(scrollPx, t.parallax, t.tileSpacing);
+  const tilesOnScreen = Math.ceil(width / t.tileSpacing) + 2;
+  const apexY = sceneH * t.apexY;
+  const floorY = roadY + roadH * t.roadFloor;
+  const spread = sceneH * t.spread;
 
   for (let i = -1; i <= tilesOnScreen; i++) {
     const tileIndex = baseTile + i;
     const items = tileTopLights(tileIndex);
     for (const item of items) {
-      const screenX = item.x + i * LIGHT_TILE - frac;
-      if (screenX < -320 || screenX > width + 320) continue;
+      const screenX = item.x + i * t.tileSpacing - frac;
+      if (screenX < -t.cullMargin || screenX > width + t.cullMargin) continue;
 
       drawFeatheredTopLight(
         ctx,
         screenX,
         apexY,
         floorY,
-        sceneH * 1.02,
-        255,
-        252,
-        248,
-        0.72 * pulse,
+        spread,
+        t.color.r,
+        t.color.g,
+        t.color.b,
+        t.alpha * pulse,
       );
     }
+  }
+
+  ctx.globalCompositeOperation = "source-over";
+  ctx.restore();
+}
+
+interface LensFlarePass {
+  startTime: number;
+  yOffset: number;
+}
+
+function drawLensFlare(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  sceneH: number,
+  progress: number,
+  yOffset: number,
+) {
+  const t = LENS_FLARE_TUNING;
+  const envelope = Math.sin(progress * Math.PI);
+  if (envelope <= 0.001) return;
+
+  const sunX = width * (t.enterX + (t.exitX - t.enterX) * progress);
+  const sunY = sceneH * (t.y + yOffset);
+  const { r, g, b } = t.color;
+  const alpha = envelope;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, width, sceneH);
+  ctx.clip();
+  ctx.globalCompositeOperation = "screen";
+
+  const streakW = width * t.streakLength * alpha;
+  const streakH = Math.max(2, sceneH * t.streakHeight);
+  const streakGrad = ctx.createLinearGradient(sunX - streakW * 0.5, sunY, sunX + streakW * 0.5, sunY);
+  streakGrad.addColorStop(0, "rgba(0,0,0,0)");
+  streakGrad.addColorStop(0.35, `rgba(${r},${g},${b},${t.streakAlpha * alpha * 0.45})`);
+  streakGrad.addColorStop(0.5, `rgba(255,255,255,${t.streakAlpha * alpha})`);
+  streakGrad.addColorStop(0.65, `rgba(${r},${g},${b},${t.streakAlpha * alpha * 0.45})`);
+  streakGrad.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = streakGrad;
+  ctx.fillRect(sunX - streakW * 0.5, sunY - streakH * 0.5, streakW, streakH);
+
+  const haloR = width * t.coreRadius * 2.4;
+  const haloGrad = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, haloR);
+  haloGrad.addColorStop(0, `rgba(255,255,255,${t.haloAlpha * alpha})`);
+  haloGrad.addColorStop(0.35, `rgba(${r},${g},${b},${t.haloAlpha * alpha * 0.55})`);
+  haloGrad.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = haloGrad;
+  ctx.fillRect(sunX - haloR, sunY - haloR, haloR * 2, haloR * 2);
+
+  const coreR = width * t.coreRadius;
+  const coreGrad = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, coreR);
+  coreGrad.addColorStop(0, `rgba(255,255,255,${t.coreAlpha * alpha})`);
+  coreGrad.addColorStop(0.25, `rgba(${r},${g},${b},${t.coreAlpha * alpha * 0.85})`);
+  coreGrad.addColorStop(0.65, `rgba(${r},${g},${b},${t.coreAlpha * alpha * 0.2})`);
+  coreGrad.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = coreGrad;
+  ctx.fillRect(sunX - coreR, sunY - coreR, coreR * 2, coreR * 2);
+
+  for (const ghost of t.ghosts) {
+    const gx = sunX + width * ghost.x;
+    const gr = width * ghost.r;
+    const ghostGrad = ctx.createRadialGradient(gx, sunY, 0, gx, sunY, gr);
+    ghostGrad.addColorStop(0, `rgba(255,255,255,${ghost.a * alpha})`);
+    ghostGrad.addColorStop(0.4, `rgba(${r},${g},${b},${ghost.a * alpha * 0.45})`);
+    ghostGrad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = ghostGrad;
+    ctx.fillRect(gx - gr, sunY - gr, gr * 2, gr * 2);
   }
 
   ctx.globalCompositeOperation = "source-over";
@@ -682,6 +825,11 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
     let brakeDown = false;
     let gasDown = false;
 
+    let flareCooldown =
+      LENS_FLARE_TUNING.minInterval +
+      Math.random() * (LENS_FLARE_TUNING.maxInterval - LENS_FLARE_TUNING.minInterval);
+    let activeFlare: LensFlarePass | null = null;
+
     const rpmRiseRate = (g: number) => 175 / Math.pow(g, 1.85);
 
     const shift = () => {
@@ -872,6 +1020,32 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
       if (isNight) {
         drawNightScene(ctx, width, sceneH, roadY, roadH, scrollPx, time);
         drawCarHeadlights(ctx, width, roadY, roadH, carX, carY, carDrawW, carDrawH);
+      } else {
+        if (activeFlare) {
+          const elapsed = time - activeFlare.startTime;
+          const progress = elapsed / LENS_FLARE_TUNING.duration;
+          if (progress >= 1) {
+            activeFlare = null;
+            flareCooldown =
+              LENS_FLARE_TUNING.minInterval +
+              Math.random() * (LENS_FLARE_TUNING.maxInterval - LENS_FLARE_TUNING.minInterval);
+          } else {
+            drawLensFlare(ctx, width, sceneH, progress, activeFlare.yOffset);
+          }
+        } else {
+          flareCooldown -= dt;
+          if (flareCooldown <= 0) {
+            flareCooldown =
+              LENS_FLARE_TUNING.minInterval +
+              Math.random() * (LENS_FLARE_TUNING.maxInterval - LENS_FLARE_TUNING.minInterval);
+            if (mph >= LENS_FLARE_TUNING.minMph && Math.random() < LENS_FLARE_TUNING.triggerChance) {
+              activeFlare = {
+                startTime: time,
+                yOffset: (Math.random() * 2 - 1) * LENS_FLARE_TUNING.yJitter,
+              };
+            }
+          }
+        }
       }
 
       ctx.fillStyle = palette.isDark ? "#080a10" : "#1e2026";
