@@ -5,6 +5,9 @@ import type { GameId } from "@/lib/types";
 import { GAME_BY_ID } from "@/lib/games";
 import { GamePaletteProvider } from "./GamePaletteContext";
 import type { GameResult } from "./gameResult";
+import { useStore } from "@/store/useStore";
+import { getGameScores } from "@/lib/gameLeaderboard";
+import { GameLeaderboardList } from "@/components/GameLeaderboardList";
 
 interface Props {
   gameId: GameId;
@@ -17,6 +20,8 @@ interface Props {
   renderLobby?: (start: () => void) => React.ReactNode;
   /** Called when the player chooses Play again (e.g. clear mode config). */
   onSessionReset?: () => void;
+  /** Default leaderboard key when not set on the game result. */
+  leaderboardKey?: string;
 }
 
 function useContainerSize(ref: React.RefObject<HTMLDivElement | null>) {
@@ -37,27 +42,60 @@ function useContainerSize(ref: React.RefObject<HTMLDivElement | null>) {
 }
 
 /** Wraps a canvas game with themed chrome and play flow. */
-export function GameShell({ gameId, children, renderLobby, onSessionReset }: Props) {
+export function GameShell({
+  gameId,
+  children,
+  renderLobby,
+  onSessionReset,
+  leaderboardKey: defaultLeaderboardKey,
+}: Props) {
   const nav = useNavigate();
   const meta = GAME_BY_ID[gameId];
   const containerRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false);
   const size = useContainerSize(containerRef);
   const [result, setResult] = useState<GameResult | null>(null);
+  const [isNewBest, setIsNewBest] = useState(false);
+  const [activeBoardKey, setActiveBoardKey] = useState(defaultLeaderboardKey ?? gameId);
   const [started, setStarted] = useState(false);
+
+  const lobbyBoardKey = defaultLeaderboardKey ?? gameId;
+  const user = useStore((s) => s.user);
+  const recordGameScore = useStore((s) => s.recordGameScore);
+  const lobbyEntries = useStore((s) => getGameScores(s.data, lobbyBoardKey));
 
   const start = useCallback(() => {
     if (startedRef.current) return;
     startedRef.current = true;
     setStarted(true);
     setResult(null);
+    setIsNewBest(false);
   }, []);
 
-  const onGameOver = useCallback((input: number | GameResult) => {
-    setResult(typeof input === "number" ? { score: input } : input);
-    startedRef.current = false;
-    setStarted(false);
-  }, []);
+  const onGameOver = useCallback(
+    (input: number | GameResult) => {
+      const normalized = typeof input === "number" ? { score: input } : input;
+      const boardKey = normalized.leaderboardKey ?? defaultLeaderboardKey ?? gameId;
+      setActiveBoardKey(boardKey);
+
+      const meta: Record<string, string> = {};
+      for (const stat of normalized.stats ?? []) {
+        meta[stat.label] = stat.value;
+      }
+
+      let newBest = false;
+      if (user) {
+        newBest = recordGameScore(boardKey, normalized.score, Object.keys(meta).length ? meta : undefined);
+      }
+      setIsNewBest(newBest);
+      setResult(normalized);
+      startedRef.current = false;
+      setStarted(false);
+    },
+    [defaultLeaderboardKey, gameId, recordGameScore, user],
+  );
+
+  const boardEntries = useStore((s) => getGameScores(s.data, activeBoardKey));
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -92,6 +130,9 @@ export function GameShell({ gameId, children, renderLobby, onSessionReset }: Pro
             ) : (
               <div className="game-overlay absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 px-6 text-center">
                 <p className="text-sm font-700 text-ink-soft">{meta.tagline}</p>
+                {user && lobbyEntries.length > 0 && (
+                  <GameLeaderboardList entries={lobbyEntries} compact />
+                )}
                 <button type="button" onClick={start} className="btn px-8">
                   Play
                 </button>
@@ -99,12 +140,15 @@ export function GameShell({ gameId, children, renderLobby, onSessionReset }: Pro
             )
           )}
           {result !== null && !started && (
-            <div className="game-overlay absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 px-6">
+            <div className="game-overlay absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 overflow-y-auto px-6 py-8">
               {result.title && (
                 <p className="text-sm font-700 text-ink-soft">{result.title}</p>
               )}
+              {isNewBest && (
+                <p className="text-sm font-800 text-accent">New personal best!</p>
+              )}
               <p className="game-shell-title font-display text-2xl font-800">
-                Score: {result.score}
+                Score: {result.score.toLocaleString()}
               </p>
               {result.stats && result.stats.length > 0 && (
                 <div className="flex flex-col gap-1 text-center">
@@ -115,11 +159,17 @@ export function GameShell({ gameId, children, renderLobby, onSessionReset }: Pro
                   ))}
                 </div>
               )}
+              {user ? (
+                <GameLeaderboardList entries={boardEntries} highlightScore={result.score} compact />
+              ) : (
+                <p className="text-xs font-700 text-ink-faint">Sign in to save scores to your leaderboard.</p>
+              )}
               <button
                 type="button"
                 onClick={() => {
                   onSessionReset?.();
                   setResult(null);
+                  setIsNewBest(false);
                   startedRef.current = false;
                   setStarted(false);
                   if (!renderLobby) start();

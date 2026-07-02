@@ -40,10 +40,13 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
 
     const lanes = 4;
     const laneW = width / lanes;
-    const hitY = height - 100;
-    const perfectH = 18;
-    const goodH = 36;
+    const hitY = height - Math.max(72, height * 0.14);
+    const timingScale = Math.min(1.2, Math.max(1, 520 / height));
+    const perfectH = 22 * timingScale;
+    const goodH = 50 * timingScale;
+    const missPadding = 14;
     const tileH = 52;
+    const isPortrait = height > width;
 
     let tiles: Tile[] = [];
     let score = 0;
@@ -136,7 +139,7 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
       }
 
       for (const t of tiles) {
-        if (!t.hit && !t.missed && t.y > hitY + goodH + 8) {
+        if (!t.hit && !t.missed && t.y > hitY + goodH + missPadding) {
           t.missed = true;
           combo = 0;
           alive = false;
@@ -259,15 +262,20 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
         }
       }
 
-      // HUD
+      // HUD — center combo on portrait so it stays visible
+      const hudX = isPortrait ? width / 2 : 16;
+      const scoreY = isPortrait ? 30 : 36;
+      const comboY = isPortrait ? 54 : 58;
+      ctx.textAlign = isPortrait ? "center" : "left";
       ctx.fillStyle = palette.isDark ? "#fff" : palette.tiptop.hud;
       ctx.font = "bold 22px Nunito, sans-serif";
-      ctx.fillText(String(score), 16, 36);
-      if (combo > 2) {
+      ctx.fillText(String(score), hudX, scoreY);
+      if (combo >= 1) {
         ctx.fillStyle = "#c084fc";
         ctx.font = "bold 14px Nunito, sans-serif";
-        ctx.fillText(`${combo}x combo`, 16, 56);
+        ctx.fillText(`${combo}x combo`, hudX, comboY);
       }
+      ctx.textAlign = "left";
 
       raf = requestAnimationFrame(loop);
     };

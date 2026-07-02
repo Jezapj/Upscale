@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type {
   AppData,
   GameId,
+  GameScoreEntry,
   Goal,
   Rating,
   Routine,
@@ -19,6 +20,7 @@ import {
   playsRemaining,
   recordGamePlay,
 } from "@/lib/gamePlays";
+import { recordGameScore as mergeGameScore, getGameScores } from "@/lib/gameLeaderboard";
 import { isCloudUser } from "@/lib/cloudSync";
 import { clearFiredReminder } from "@/lib/reminders";
 
@@ -50,6 +52,13 @@ interface StoreState {
   gamePlaysLeft: (gameId: GameId) => number;
   canPlay: (gameId: GameId) => boolean;
   consumePlay: (gameId: GameId) => boolean;
+
+  recordGameScore: (
+    key: string,
+    score: number,
+    meta?: Record<string, string>,
+  ) => boolean;
+  getLeaderboard: (key: string) => GameScoreEntry[];
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -242,6 +251,20 @@ export const useStore = create<StoreState>((set, get) => {
       if (!canPlayGame(data, gameId, today)) return false;
       mutate((d) => recordGamePlay(d, gameId, today));
       return true;
+    },
+
+    recordGameScore(key, score, meta) {
+      let isNewBest = false;
+      mutate((d) => {
+        const { data, isNewBest: best } = mergeGameScore(d, key, score, meta);
+        isNewBest = best;
+        return data;
+      });
+      return isNewBest;
+    },
+
+    getLeaderboard(key) {
+      return getGameScores(get().data, key);
     },
   };
 });

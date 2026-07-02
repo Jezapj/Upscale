@@ -84,6 +84,8 @@ export interface AppData {
   gamePremium?: boolean;
   /** ISO timestamp of last local/cloud save (for sync). */
   syncedAt?: string;
+  /** Per-game high scores keyed by game id or sub-key (e.g. `octane:402`). */
+  gameScores?: Record<string, GameScoreEntry[]>;
   version: number;
 }
 
@@ -92,6 +94,15 @@ export type GameId = "tiptop" | "octane" | "dissiada";
 export interface GamePlaysState {
   date: string;
   counts: Record<GameId, number>;
+}
+
+/** A single saved high-score run for an arcade game. */
+export interface GameScoreEntry {
+  score: number;
+  /** ISO timestamp when the run ended. */
+  playedAt: string;
+  /** Optional context (e.g. Octane race distance label). */
+  meta?: Record<string, string>;
 }
 
 export interface User {

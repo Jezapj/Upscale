@@ -945,7 +945,9 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
               onGameOver({
                 score,
                 title: "Finish!",
+                leaderboardKey: `octane:${raceDistanceM}`,
                 stats: [
+                  { label: "Distance", value: config.raceLabel },
                   { label: "Top speed", value: `${Math.round(topMph)} mph` },
                   { label: "Time", value: formatRaceTime(elapsedMs) },
                 ],

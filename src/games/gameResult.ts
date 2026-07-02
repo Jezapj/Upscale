@@ -7,6 +7,8 @@ export interface GameResult {
   score: number;
   stats?: GameStat[];
   title?: string;
+  /** Storage key override (e.g. `octane:402` for drag distances). */
+  leaderboardKey?: string;
 }
 
 export function formatRaceTime(ms: number): string {
