@@ -8,6 +8,8 @@ interface Props {
   onGameOver: (result: number | GameResult) => void;
 }
 
+type StageTheme = "forest" | "beach" | "mountain" | "space";
+
 interface Pit {
   x: number;
   width: number;
@@ -15,7 +17,7 @@ interface Pit {
   scored: boolean;
 }
 
-type ObstacleKind = "platform" | "stone" | "tree" | "wall";
+type ObstacleKind = "platform" | "stone" | "tree" | "wall" | "flag";
 
 interface Obstacle {
   kind: ObstacleKind;
@@ -27,20 +29,108 @@ interface Obstacle {
   floatAbove: number;
 }
 
+interface ThemeCloud {
+  x: number;
+  y: number;
+  w: number;
+}
+
+interface ThemeStar {
+  x: number;
+  y: number;
+  size: number;
+  alpha: number;
+}
+
 interface Stage {
   worldW: number;
   pit: Pit;
   groundPhase: number;
   groundAmp: number;
   obstacles: Obstacle[];
+  theme: StageTheme;
+  gravity: number;
+  clouds: ThemeCloud[];
+  stars: ThemeStar[];
+  /** Pre-rendered sky layer (built once per stage). */
+  backdrop: HTMLCanvasElement | null;
 }
 
 const STAGE_COUNT = 3;
 const GRAVITY = 0.21;
+const SPACE_GRAVITY = 0.13;
 const FLAP_POWER = 5.9;
 const FLAP_ANGLE = (75 * Math.PI) / 180;
 const GROUND_Y = 0.78;
 const STAGE_CLEAR_FRAMES = 50;
+const STAGE_THEMES: StageTheme[] = ["forest", "beach", "mountain", "space"];
+
+const THEME_LABELS: Record<StageTheme, string> = {
+  forest: "Forest",
+  beach: "Beach",
+  mountain: "Mountain",
+  space: "Space",
+};
+
+interface ThemePalette {
+  skyTop: string;
+  skyBot: string;
+  rough: string;
+  fairway: string;
+  fairwayStripe: string;
+  cup: string;
+  cupInner: string;
+}
+
+const THEME_PALETTES: Record<StageTheme, ThemePalette> = {
+  forest: {
+    skyTop: "",
+    skyBot: "",
+    rough: "",
+    fairway: "",
+    fairwayStripe: "",
+    cup: "",
+    cupInner: "",
+  },
+  beach: {
+    skyTop: "#6ec8f0",
+    skyBot: "#b8e8ff",
+    rough: "#c9a96a",
+    fairway: "#e8d49a",
+    fairwayStripe: "#dcc080",
+    cup: "#2a7aaa",
+    cupInner: "#1a5a88",
+  },
+  mountain: {
+    skyTop: "#7eb8e8",
+    skyBot: "#c8e4f8",
+    rough: "#4a3828",
+    fairway: "#7a5c40",
+    fairwayStripe: "#6a4c30",
+    cup: "#3a2a18",
+    cupInner: "#2a1a10",
+  },
+  space: {
+    skyTop: "#020818",
+    skyBot: "#0a1840",
+    rough: "#3a3a48",
+    fairway: "#9a9aa8",
+    fairwayStripe: "#7a7a88",
+    cup: "#4a4a58",
+    cupInner: "#2a2a38",
+  },
+};
+
+function themePalette(theme: StageTheme, fallback: ThemePalette): ThemePalette {
+  if (theme === "forest") return fallback;
+  return THEME_PALETTES[theme];
+}
+
+/** True when any part of the ball overlaps the pit horizontally (lenient margins). */
+function ballOverlapsPitX(px: number, ballR: number, pit: Pit): boolean {
+  const half = pit.width / 2 + ballR * 0.3;
+  return px + ballR > pit.x - half && px - ballR < pit.x + half;
+}
 
 function mulberry32(seed: number) {
   let s = seed | 0;
@@ -67,13 +157,15 @@ function generateObstacles(
   worldW: number,
   pitX: number,
   pitW: number,
+  theme: StageTheme,
 ): Obstacle[] {
   const kinds: ObstacleKind[] = ["platform", "stone", "tree", "wall"];
   const count = 3 + Math.floor(rand() * 4);
   const obstacles: Obstacle[] = [];
 
   for (let n = 0; n < count; n++) {
-    const kind = kinds[Math.floor(rand() * kinds.length)];
+    let kind = kinds[Math.floor(rand() * kinds.length)];
+    if (theme === "space" && kind === "tree") kind = "flag";
     let placed = false;
 
     for (let attempt = 0; attempt < 24; attempt++) {
@@ -95,6 +187,9 @@ function generateObstacles(
       } else if (kind === "tree") {
         w = 24 + Math.floor(rand() * 16);
         h = 72 + Math.floor(rand() * 48);
+      } else if (kind === "flag") {
+        w = 34 + Math.floor(rand() * 22);
+        h = 78 + Math.floor(rand() * 44);
       } else {
         w = 18 + Math.floor(rand() * 14);
         h = 58 + Math.floor(rand() * 52);
@@ -120,23 +215,56 @@ function generateObstacles(
   return obstacles;
 }
 
+function generateThemeDecor(
+  rand: () => number,
+  theme: StageTheme,
+  worldW: number,
+): { clouds: ThemeCloud[]; stars: ThemeStar[] } {
+  const clouds: ThemeCloud[] =
+    theme === "mountain"
+      ? Array.from({ length: 7 }, () => ({
+          x: rand() * worldW,
+          y: 0.06 + rand() * 0.18,
+          w: 44 + rand() * 50,
+        }))
+      : [];
+
+  const stars: ThemeStar[] =
+    theme === "space"
+      ? Array.from({ length: 55 }, () => ({
+          x: rand(),
+          y: rand() * 0.82,
+          size: rand() > 0.86 ? 2 : 1,
+          alpha: 0.35 + rand() * 0.65,
+        }))
+      : [];
+  return { clouds, stars };
+}
+
 function generateStage(seed: number): Stage {
   const rand = mulberry32(seed);
   const worldW = 1800 + Math.floor(rand() * 1400);
   const pitX = 520 + Math.floor(rand() * (worldW - 720));
   const pitW = 58 + Math.floor(rand() * 22);
+  const theme = STAGE_THEMES[Math.floor(rand() * STAGE_THEMES.length)];
   const pit = {
     x: pitX,
     width: pitW,
     depth: 48 + Math.floor(rand() * 18),
     scored: false,
   };
+  const decor = generateThemeDecor(rand, theme, worldW);
   return {
     worldW,
     pit,
     groundPhase: rand() * Math.PI * 2,
     groundAmp: 10 + rand() * 14,
-    obstacles: generateObstacles(rand, worldW, pitX, pitW),
+    obstacles: generateObstacles(rand, worldW, pitX, pitW, theme),
+    theme,
+    gravity: theme === "space" ? SPACE_GRAVITY : GRAVITY,
+    clouds: decor.clouds,
+    stars: decor.stars,
+    backdrop: null,
   };
 }
 
@@ -154,11 +282,13 @@ function groundHeight(worldY: number, viewH: number, stage: Stage): number {
 
 function pitSurfaceY(pit: Pit, worldX: number, viewH: number, stage: Stage): number | null {
   const half = pit.width / 2;
-  if (worldX < pit.x - half || worldX > pit.x + half) return null;
-  const edge = pit.x - half;
-  const t = (worldX - edge) / pit.width;
+  const left = pit.x - half;
+  const right = pit.x + half;
+  if (worldX < left - 40 || worldX > right + 40) return null;
+  const cx = Math.max(left, Math.min(right, worldX));
+  const t = (cx - left) / pit.width;
   const bowl = Math.sin(t * Math.PI);
-  return groundHeight(worldX, viewH, stage) + bowl * pit.depth;
+  return groundHeight(cx, viewH, stage) + bowl * pit.depth;
 }
 
 function pitBottomY(pit: Pit, viewH: number, stage: Stage): number {
@@ -192,6 +322,141 @@ function resolveCircleAabb(
   const overlap = r - dist;
   const top = ny < -0.45 && Math.abs(nx) < 0.85;
   return { px: px + nx * overlap, py: py + ny * overlap, hit: true, top };
+}
+
+function buildStageBackdrop(
+  stage: Stage,
+  width: number,
+  playH: number,
+  forestPal: ThemePalette,
+): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = width;
+  c.height = playH;
+  const bctx = c.getContext("2d");
+  if (!bctx) return c;
+
+  const pal = themePalette(stage.theme, forestPal);
+  const sky = bctx.createLinearGradient(0, 0, 0, playH);
+  sky.addColorStop(0, pal.skyTop);
+  sky.addColorStop(1, pal.skyBot);
+  bctx.fillStyle = sky;
+  bctx.fillRect(0, 0, width, playH);
+
+  if (stage.theme === "space") {
+    for (const star of stage.stars) {
+      bctx.fillStyle = `rgba(255,255,255,${star.alpha})`;
+      bctx.fillRect(star.x * width, star.y * playH, star.size, star.size);
+    }
+    const earthX = width * 0.7;
+    const earthY = playH * 0.28;
+    const earthR = playH * 0.14;
+    bctx.fillStyle = "#3a9858";
+    bctx.beginPath();
+    bctx.arc(earthX, earthY, earthR, 0, Math.PI * 2);
+    bctx.fill();
+    bctx.fillStyle = "#2a78c8";
+    bctx.beginPath();
+    bctx.arc(earthX - earthR * 0.2, earthY - earthR * 0.1, earthR * 0.55, 0, Math.PI * 2);
+    bctx.fill();
+    const sunX = width * 0.16;
+    const sunY = playH * 0.16;
+    const sunR = playH * 0.08;
+    bctx.fillStyle = "rgba(255,220,100,0.35)";
+    bctx.beginPath();
+    bctx.arc(sunX, sunY, sunR * 2, 0, Math.PI * 2);
+    bctx.fill();
+    bctx.fillStyle = "#ffe060";
+    bctx.beginPath();
+    bctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
+    bctx.fill();
+  }
+
+  return c;
+}
+
+function drawThemeBackdrop(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  playH: number,
+  camX: number,
+  stage: Stage,
+) {
+  if (stage.backdrop) {
+    ctx.drawImage(stage.backdrop, 0, 0);
+  }
+
+  if (stage.theme === "beach") {
+    const horizon = playH * 0.48;
+    ctx.fillStyle = "#2a90c8";
+    ctx.fillRect(0, horizon, width, playH - horizon);
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.lineWidth = 2;
+    for (let w = 0; w < 2; w++) {
+      ctx.beginPath();
+      for (let x = 0; x <= width; x += 18) {
+        const y = horizon + 12 + w * 11 + Math.sin((x + camX * 0.35) * 0.022 + w) * 4;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  } else if (stage.theme === "mountain") {
+    const layers = [
+      { color: "#6a7a88", parallax: 0.12, scale: 0.36 },
+      { color: "#4a5a68", parallax: 0.3, scale: 0.44 },
+    ];
+    for (const layer of layers) {
+      const baseY = playH * GROUND_Y;
+      ctx.fillStyle = layer.color;
+      ctx.beginPath();
+      ctx.moveTo(0, playH);
+      for (let x = 0; x <= width + 2; x += 48) {
+        const wx = x + camX * layer.parallax;
+        const peak =
+          baseY -
+          playH * layer.scale * 0.26 -
+          Math.abs(Math.sin(wx * 0.004 + stage.groundPhase)) * playH * layer.scale * 0.2;
+        ctx.lineTo(x, peak);
+      }
+      ctx.lineTo(width, playH);
+      ctx.closePath();
+      ctx.fill();
+    }
+    for (const cloud of stage.clouds) {
+      const cx = cloud.x - camX * 0.15;
+      if (cx < -100 || cx > width + 100) continue;
+      const cy = cloud.y * playH;
+      const cw = cloud.w;
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, cw * 0.48, 14, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx - cw * 0.22, cy + 5, cw * 0.28, 11, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx + cw * 0.26, cy + 3, cw * 0.32, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawVisibleGround(
+  ctx: CanvasRenderingContext2D,
+  camX: number,
+  width: number,
+  playH: number,
+  stage: Stage,
+  pal: ThemePalette,
+) {
+  ctx.fillStyle = pal.fairway;
+  ctx.beginPath();
+  ctx.moveTo(0, playH);
+  const startGx = Math.floor(camX / 20) * 20;
+  const endGx = camX + width + 20;
+  for (let gx = startGx; gx <= endGx; gx += 20) {
+    ctx.lineTo(gx - camX, groundHeight(gx, playH, stage));
+  }
+  ctx.lineTo(width, playH);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function drawObstacle(
@@ -244,6 +509,36 @@ function drawObstacle(
     ctx.lineTo(cx + obs.w * 0.65, foliageY - obs.h * 0.12);
     ctx.closePath();
     ctx.fill();
+  } else if (obs.kind === "flag") {
+    const groundY = y + obs.h;
+    const poleX = sx + obs.w * 0.2;
+    const poleTop = y + obs.h * 0.06;
+    const flagW = obs.w * 0.78;
+    const flagH = obs.h * 0.24;
+
+    ctx.fillStyle = "#7a7a84";
+    ctx.fillRect(poleX - 5, groundY - 6, 10, 6);
+
+    ctx.strokeStyle = "#b8b8c0";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(poleX, groundY - 2);
+    ctx.lineTo(poleX, poleTop);
+    ctx.stroke();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(poleX, poleTop);
+    ctx.lineTo(poleX + flagW, poleTop + flagH * 0.32);
+    ctx.lineTo(poleX + flagW * 0.9, poleTop + flagH);
+    ctx.lineTo(poleX, poleTop + flagH * 0.72);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.strokeStyle = "rgba(0,0,0,0.18)";
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
   } else {
     ctx.fillStyle = isDark ? "#4a4a58" : "#7a7a88";
     ctx.fillRect(sx, y, obs.w, obs.h);
@@ -284,6 +579,19 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
     const playH = height - btnH - 8;
 
     const stages = generateStages((Date.now() ^ (width * 7919)) >>> 0);
+    const forestPal: ThemePalette = {
+      skyTop: p.skyTop,
+      skyBot: p.skyBot,
+      rough: p.rough,
+      fairway: p.fairway,
+      fairwayStripe: p.fairwayStripe,
+      cup: p.cup,
+      cupInner: p.cupInner,
+    };
+    for (const stage of stages) {
+      stage.backdrop = buildStageBackdrop(stage, width, playH, forestPal);
+    }
+    const themePals = stages.map((s) => themePalette(s.theme, forestPal));
     let stageIndex = 0;
     let stageFlaps = 0;
     let totalFlaps = 0;
@@ -408,7 +716,7 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
         clearFrames--;
         if (clearFrames === 0) advanceStage();
       } else {
-        vy += GRAVITY;
+        vy += stage.gravity;
         vx *= 0.996;
         vy *= 0.9992;
         px += vx;
@@ -467,8 +775,7 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
 
         const half = pit.width / 2;
         const rimY = groundHeight(pit.x, playH, stage);
-        const inPitX = px > pit.x - half + ballR * 0.35 && px < pit.x + half - ballR * 0.35;
-        const onPitFloor = px > pit.x - half + ballR * 0.15 && px < pit.x + half - ballR * 0.15;
+        const overlapsPit = ballOverlapsPitX(px, ballR, pit);
 
         if (px > pit.x - half - ballR && px < pit.x + half + ballR) {
           overPit = true;
@@ -477,18 +784,22 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
         const surface = pitSurfaceY(pit, px, playH, stage);
         const bottomY = pitBottomY(pit, playH, stage);
         const nearLip =
-          Math.abs(px - (pit.x - half)) < ballR + 2 || Math.abs(px - (pit.x + half)) < ballR + 2;
+          Math.abs(px - (pit.x - half)) < ballR + 4 || Math.abs(px - (pit.x + half)) < ballR + 4;
 
         if (pit.scored) {
-          if (inPitX && surface !== null && py + ballR >= surface - 1) {
+          if (overlapsPit && surface !== null && py + ballR >= surface - 2) {
             py = surface - ballR;
             vy *= 0.15;
             vx *= 0.7;
             onGround = true;
           }
-        } else if (onPitFloor && surface !== null) {
-          if (py + ballR >= surface - 2) {
-            const settled = py + ballR >= bottomY - 6 && Math.abs(vy) < 12 && Math.abs(vx) < 9;
+        } else if (overlapsPit && surface !== null) {
+          if (py + ballR >= surface - 8) {
+            const nearBottom = py + ballR >= bottomY - 28;
+            const settled =
+              nearBottom &&
+              Math.abs(vy) < 22 &&
+              Math.abs(vx) < 18;
             if (settled) {
               pit.scored = true;
               vy = 0;
@@ -498,12 +809,12 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
               clearFrames = STAGE_CLEAR_FRAMES;
             } else {
               py = surface - ballR;
-              vy *= -0.18;
-              vx *= 0.88;
+              vy *= -0.15;
+              vx *= 0.9;
               onGround = true;
             }
           }
-        } else if (nearLip && py + ballR >= rimY - ballR * 0.6) {
+        } else if (!overlapsPit && nearLip && py + ballR >= rimY - ballR * 0.5) {
           const lip = px < pit.x ? pit.x - half : pit.x + half;
           const nx = px < pit.x ? -1 : 1;
           if (Math.abs(px - lip) < ballR + 6) {
@@ -533,39 +844,10 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
 
       camX = Math.max(0, Math.min(ww - width, px - width * 0.38));
 
-      const sky = ctx.createLinearGradient(0, 0, 0, playH);
-      sky.addColorStop(0, p.skyTop);
-      sky.addColorStop(1, p.skyBot);
-      ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, width, playH);
+      const pal = themePals[stageIndex];
 
-      const drawGroundSegment = (wx: number, segW: number) => {
-        const sx = wx - camX;
-        if (sx > width + 20 || sx + segW < -20) return;
-        ctx.fillStyle = p.rough;
-        ctx.fillRect(sx, 0, segW, playH);
-        ctx.fillStyle = p.fairway;
-        ctx.beginPath();
-        ctx.moveTo(sx, playH);
-        for (let i = 0; i <= segW; i += 6) {
-          const gx = wx + i;
-          ctx.lineTo(sx + i, groundHeight(gx, playH, stage));
-        }
-        ctx.lineTo(sx + segW, playH);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = p.fairwayStripe;
-        for (let i = 0; i < segW; i += 40) {
-          const gx = wx + i;
-          const gy = groundHeight(gx, playH, stage);
-          ctx.fillRect(sx + i, gy, 20, playH - gy);
-        }
-      };
-
-      const segStart = Math.floor(camX / 200) * 200;
-      for (let wx = segStart; wx < camX + width + 200; wx += 200) {
-        drawGroundSegment(wx, 200);
-      }
+      drawThemeBackdrop(ctx, width, playH, camX, stage);
+      drawVisibleGround(ctx, camX, width, playH, stage, pal);
 
       for (const obs of stage.obstacles) {
         const osx = obs.x - camX;
@@ -578,10 +860,10 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
         const rimY = groundHeight(pit.x, playH, stage);
         const halfW = pit.width / 2;
 
-        ctx.fillStyle = p.cupInner;
+        ctx.fillStyle = pal.cupInner;
         ctx.beginPath();
         ctx.moveTo(sx - halfW, rimY);
-        for (let i = 0; i <= pit.width; i += 4) {
+        for (let i = 0; i <= pit.width; i += 8) {
           const gx = pit.x - halfW + i;
           const sy = pitSurfaceY(pit, gx, playH, stage) ?? rimY;
           ctx.lineTo(sx - halfW + i, sy);
@@ -590,7 +872,7 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
         ctx.closePath();
         ctx.fill();
 
-        ctx.strokeStyle = p.cup;
+        ctx.strokeStyle = pal.cup;
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.arc(sx - halfW, rimY, 4, 0, Math.PI * 2);
@@ -626,7 +908,7 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
       const stageElapsed = performance.now() - stageStartTime;
       ctx.fillStyle = p.hud;
       ctx.font = "bold 18px Nunito, sans-serif";
-      ctx.fillText(`Stage ${stageIndex + 1}/${STAGE_COUNT}`, 14, 26);
+      ctx.fillText(`Stage ${stageIndex + 1}/${STAGE_COUNT} · ${THEME_LABELS[stage.theme]}`, 14, 26);
       ctx.font = "bold 15px Nunito, sans-serif";
       ctx.fillText(`Flaps: ${stageFlaps}`, 14, 48);
       ctx.fillText(`Time: ${formatTime(stageElapsed)}`, 14, 68);
