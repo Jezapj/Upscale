@@ -38,7 +38,7 @@ const BG_ZOOM = 1.45;
 /** Extend draw height below the scene (top-anchored) so the horizon sits lower without a gap at the top. */
 const BG_EXTEND_DOWN = 0.4;
 /** Chance each run is a night drive (dark + moon / street-light beams). */
-const NIGHT_RUN_CHANCE = 0.94;
+const NIGHT_RUN_CHANCE = 0.24;
 /** Car height as a fraction of road band height. */
 const CAR_HEIGHT_RATIO = 0.92;
 
