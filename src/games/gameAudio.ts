@@ -2,8 +2,12 @@ import {
   DISSIADA_NOTE_HZ,
   DISSIADA_SOUND,
   OCTANE_REV_GEAR_PITCH,
+  OCTANE_REDLINE,
+  OCTANE_IDLE_MIX,
+  OCTANE_SAMPLES,
   OCTANE_SOUND,
   TIPTOP_SOUND,
+  type SampleClip,
   type SoundTiming,
 } from "./gameSoundConfigs";
 
@@ -172,13 +176,88 @@ export function playTipTopHoleIn() {
   clink.stop(t0 + config.duration);
 }
 
+const sampleBuffers = new Map<string, AudioBuffer>();
+let octaneSamplesReady: Promise<void> | null = null;
+
+function clampClip(buffer: AudioBuffer, config: SampleClip) {
+  const start = Math.min(Math.max(0, config.startTime), buffer.duration - 0.05);
+  const end = Math.min(Math.max(start + 0.1, config.endTime), buffer.duration);
+  return { start, end };
+}
+
+async function ensureOctaneSamples(audioCtx: AudioContext): Promise<void> {
+  if (octaneSamplesReady) return octaneSamplesReady;
+  octaneSamplesReady = (async () => {
+    const urls = [...new Set(Object.values(OCTANE_SAMPLES).map((c) => c.src))];
+    await Promise.all(
+      urls.map(async (src) => {
+        if (sampleBuffers.has(src)) return;
+        const res = await fetch(src);
+        if (!res.ok) throw new Error(`Failed to load ${src}`);
+        const arr = await res.arrayBuffer();
+        sampleBuffers.set(src, await audioCtx.decodeAudioData(arr));
+      }),
+    );
+  })();
+  return octaneSamplesReady;
+}
+
+function playClip(audioCtx: AudioContext, config: SampleClip, playbackRate = 1) {
+  const buffer = sampleBuffers.get(config.src);
+  if (!buffer) return;
+
+  const { start: clipStart, end: clipEnd } = clampClip(buffer, config);
+  const playLen = Math.min(config.duration, clipEnd - clipStart);
+  if (playLen <= 0.02) return;
+
+  const source = audioCtx.createBufferSource();
+  const gain = audioCtx.createGain();
+  source.buffer = buffer;
+  source.playbackRate.value = playbackRate;
+  source.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  const t0 = audioCtx.currentTime;
+  const peak = Math.max(0.0001, config.volume);
+  const fadeAt = t0 + Math.max(0.02, playLen - 0.14);
+
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.015);
+  gain.gain.setValueAtTime(peak, fadeAt);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t0 + playLen);
+
+  source.start(t0, clipStart, playLen);
+  source.stop(t0 + playLen + 0.05);
+}
+
+function startSampleLoop(
+  audioCtx: AudioContext,
+  config: SampleClip,
+): { source: AudioBufferSourceNode; gain: GainNode } | null {
+  const buffer = sampleBuffers.get(config.src);
+  if (!buffer) return null;
+
+  const { start, end } = clampClip(buffer, config);
+  const source = audioCtx.createBufferSource();
+  const gain = audioCtx.createGain();
+  source.buffer = buffer;
+  source.loop = true;
+  source.loopStart = start;
+  source.loopEnd = end;
+  gain.gain.value = 0;
+  source.connect(gain);
+  gain.connect(audioCtx.destination);
+  source.start(0, start);
+  return { source, gain };
+}
+
 export function playOctaneRevShift(gear: number) {
   const audioCtx = ctx();
   if (!audioCtx) return;
 
   const config = OCTANE_SOUND.revShift;
   const pitch = OCTANE_REV_GEAR_PITCH[Math.min(gear, OCTANE_REV_GEAR_PITCH.length - 1)] ?? 1;
-  const t0 = audioCtx.currentTime + config.startTime;
+  const t0 = audioCtx.currentTime;
   const base = 90 * pitch;
 
   const osc = audioCtx.createOscillator();
@@ -204,38 +283,54 @@ export function playOctaneNitroPerfect() {
   const audioCtx = ctx();
   if (!audioCtx) return;
 
-  const config = OCTANE_SOUND.nitroPerfect;
-  const t0 = audioCtx.currentTime + config.startTime;
+  const nitroCfg = OCTANE_SOUND.nitroPerfect;
+  const sweepCfg = OCTANE_SOUND.nitroSweep;
+  const t0 = audioCtx.currentTime;
+
+  const burst = audioCtx.createOscillator();
+  const burstGain = audioCtx.createGain();
+  const burstFilter = audioCtx.createBiquadFilter();
+  burst.type = "sawtooth";
+  burst.frequency.setValueAtTime(160, t0);
+  burst.frequency.exponentialRampToValueAtTime(680, t0 + nitroCfg.endTime * 0.45);
+  burst.frequency.exponentialRampToValueAtTime(220, t0 + nitroCfg.endTime);
+  burstFilter.type = "lowpass";
+  burstFilter.frequency.setValueAtTime(900, t0);
+  burstFilter.frequency.exponentialRampToValueAtTime(2800, t0 + nitroCfg.endTime * 0.4);
+  burst.connect(burstFilter);
+  burstFilter.connect(burstGain);
+  burstGain.connect(audioCtx.destination);
+  scheduleGainEnvelope(audioCtx, burstGain, nitroCfg);
+  burst.start(t0);
+  burst.stop(t0 + nitroCfg.duration);
 
   const whoosh = audioCtx.createBufferSource();
   whoosh.buffer = getNoise(audioCtx);
   const whooshFilter = audioCtx.createBiquadFilter();
   whooshFilter.type = "bandpass";
-  whooshFilter.frequency.setValueAtTime(400, t0);
-  whooshFilter.frequency.exponentialRampToValueAtTime(1800, t0 + config.endTime * 0.6);
+  const whooshT0 = t0 + sweepCfg.startTime;
+  whooshFilter.frequency.setValueAtTime(400, whooshT0);
+  whooshFilter.frequency.exponentialRampToValueAtTime(1800, whooshT0 + sweepCfg.endTime * 0.6);
   whooshFilter.Q.value = 1.2;
   const whooshGain = audioCtx.createGain();
   whoosh.connect(whooshFilter);
   whooshFilter.connect(whooshGain);
   whooshGain.connect(audioCtx.destination);
-  scheduleGainEnvelope(audioCtx, whooshGain, config);
+  scheduleGainEnvelope(audioCtx, whooshGain, sweepCfg);
 
   const sweep = audioCtx.createOscillator();
   const sweepGain = audioCtx.createGain();
   sweep.type = "square";
-  sweep.frequency.setValueAtTime(120, t0);
-  sweep.frequency.exponentialRampToValueAtTime(520, t0 + config.endTime * 0.45);
+  sweep.frequency.setValueAtTime(120, whooshT0);
+  sweep.frequency.exponentialRampToValueAtTime(520, whooshT0 + sweepCfg.endTime * 0.45);
   sweep.connect(sweepGain);
   sweepGain.connect(audioCtx.destination);
-  scheduleGainEnvelope(audioCtx, sweepGain, {
-    ...config,
-    volume: config.volume * 0.35,
-  });
+  scheduleGainEnvelope(audioCtx, sweepGain, sweepCfg);
 
-  whoosh.start(t0);
-  whoosh.stop(t0 + config.duration);
-  sweep.start(t0);
-  sweep.stop(t0 + config.duration);
+  whoosh.start(whooshT0);
+  whoosh.stop(whooshT0 + sweepCfg.duration);
+  sweep.start(whooshT0);
+  sweep.stop(whooshT0 + sweepCfg.duration);
 }
 
 export function playOctaneBadShift() {
@@ -243,7 +338,7 @@ export function playOctaneBadShift() {
   if (!audioCtx) return;
 
   const config = OCTANE_SOUND.badShift;
-  const t0 = audioCtx.currentTime + config.startTime;
+  const t0 = audioCtx.currentTime;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.type = "square";
@@ -256,15 +351,27 @@ export function playOctaneBadShift() {
   osc.stop(t0 + config.duration);
 }
 
+/** Call on first user input so car samples are decoded before shifting. */
+export function preloadOctaneAudio() {
+  const audioCtx = ctx();
+  if (audioCtx) void ensureOctaneSamples(audioCtx);
+}
+
 export interface OctaneEngineHandle {
   update: (rpm: number, gasDown: boolean, gear: number) => void;
   stop: () => void;
 }
 
-/** Continuous engine rumble — call `update` each frame, `stop` on unmount. */
+/** Continuous engine: CarIdle base + procedural rumble + CarRev at redline. */
 export function createOctaneEngineSound(): OctaneEngineHandle | null {
   const audioCtx = ctx();
   if (!audioCtx) return null;
+
+  let stopped = false;
+  let idleGain: GainNode | null = null;
+  let idleSource: AudioBufferSourceNode | null = null;
+  let revGain: GainNode | null = null;
+  let revSource: AudioBufferSourceNode | null = null;
 
   const rumble = audioCtx.createOscillator();
   const rumbleGain = audioCtx.createGain();
@@ -291,24 +398,67 @@ export function createOctaneEngineSound(): OctaneEngineHandle | null {
   rumble.start();
   noise.start();
 
-  let stopped = false;
+  void ensureOctaneSamples(audioCtx).then(() => {
+    if (stopped) return;
+
+    playClip(audioCtx, OCTANE_SAMPLES.startup);
+
+    const idle = startSampleLoop(audioCtx, OCTANE_SAMPLES.idle);
+    const rev = startSampleLoop(audioCtx, OCTANE_SAMPLES.revLoop);
+    if (!idle || !rev) return;
+
+    idleSource = idle.source;
+    idleGain = idle.gain;
+    revSource = rev.source;
+    revGain = rev.gain;
+
+    const t = audioCtx.currentTime;
+    idleGain.gain.setValueAtTime(OCTANE_SAMPLES.idle.volume * 0.4, t);
+    revGain.gain.setValueAtTime(0, t);
+  });
 
   return {
     update(rpm: number, gasDown: boolean, gear: number) {
       if (stopped) return;
-      const rev = Math.min(1, rpm / 9000);
+
+      const rev = Math.min(1, rpm / OCTANE_REDLINE.end);
+      const redlineT = Math.max(
+        0,
+        Math.min(1, (rpm - OCTANE_REDLINE.start) / (OCTANE_REDLINE.end - OCTANE_REDLINE.start)),
+      );
       const gearBoost = 1 + (gear - 1) * 0.06;
+      const t = audioCtx.currentTime;
+      const isIdling = !gasDown;
+      const synthMix = isIdling ? OCTANE_IDLE_MIX.synthOffGas : OCTANE_IDLE_MIX.synthOnGas;
+
+      if (idleGain) {
+        const idleMix = isIdling
+          ? OCTANE_IDLE_MIX.idleOffGas
+          : OCTANE_IDLE_MIX.idleOnGas * (0.55 + (1 - rev) * 0.35);
+        idleGain.gain.setTargetAtTime(OCTANE_SAMPLES.idle.volume * idleMix, t, 0.06);
+      }
+
+      if (revGain && revSource) {
+        const revCfg = OCTANE_SAMPLES.revLoop;
+        const revMul = isIdling ? OCTANE_IDLE_MIX.revOffGas : 1;
+        const revTarget = revCfg.volume * redlineT * revMul;
+        revGain.gain.setTargetAtTime(revTarget, t, 0.05);
+        const rate = 0.92 + redlineT * 0.12;
+        revSource.playbackRate.setTargetAtTime(rate, t, 0.06);
+      }
+
       const targetRumble =
         (gasDown ? OCTANE_SOUND.engine.volume : OCTANE_SOUND.engineIdle.volume) *
         (0.35 + rev * 0.85) *
-        gearBoost;
+        gearBoost *
+        synthMix;
       const targetNoise =
         (gasDown ? OCTANE_SOUND.engine.volume : OCTANE_SOUND.engineIdle.volume) *
         (0.2 + rev * 0.55) *
-        gearBoost;
+        gearBoost *
+        synthMix;
       const freq = 42 + rev * 110 + gear * 8;
 
-      const t = audioCtx.currentTime;
       rumbleGain.gain.setTargetAtTime(targetRumble, t, 0.06);
       noiseGain.gain.setTargetAtTime(targetNoise, t, 0.06);
       rumble.frequency.setTargetAtTime(freq, t, 0.05);
@@ -318,8 +468,12 @@ export function createOctaneEngineSound(): OctaneEngineHandle | null {
       if (stopped) return;
       stopped = true;
       const t = audioCtx.currentTime;
+      idleGain?.gain.setTargetAtTime(0.0001, t, 0.05);
+      revGain?.gain.setTargetAtTime(0.0001, t, 0.05);
       rumbleGain.gain.setTargetAtTime(0.0001, t, 0.04);
       noiseGain.gain.setTargetAtTime(0.0001, t, 0.04);
+      idleSource?.stop(t + 0.2);
+      revSource?.stop(t + 0.2);
       rumble.stop(t + 0.15);
       noise.stop(t + 0.15);
     },

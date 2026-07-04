@@ -7,6 +7,7 @@ import {
   playOctaneBadShift,
   playOctaneNitroPerfect,
   playOctaneRevShift,
+  preloadOctaneAudio,
   unlockGameAudio,
 } from "./gameAudio";
 
@@ -842,6 +843,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
     const shift = () => {
       if (!alive || finished || gear >= GEARS) return;
       unlockGameAudio();
+      preloadOctaneAudio();
       if (rpm < SHIFT_PERFECT_MIN * 0.5) {
         shiftQuality = -1;
         shiftFlash = 22;
@@ -864,6 +866,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
     const onPointerDown = (e: PointerEvent) => {
       e.preventDefault();
       unlockGameAudio();
+      preloadOctaneAudio();
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -898,6 +901,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
       if (e.code === "Space" || e.code === "ArrowUp") {
         e.preventDefault();
         unlockGameAudio();
+        preloadOctaneAudio();
         gasRef.current = true;
       }
       if (e.code === "ShiftLeft" || e.code === "KeyE") {
