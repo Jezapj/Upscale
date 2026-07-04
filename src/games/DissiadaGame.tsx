@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useGamePalette } from "./GamePaletteContext";
+import { playDissiadaNote, unlockGameAudio } from "./gameAudio";
 
 interface Props {
   width: number;
@@ -74,10 +75,12 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
 
     const tapLane = (lane: number) => {
       if (!alive) return;
+      unlockGameAudio();
       laneFlash[lane] = 14;
 
       const quality = judgeTile(lane);
       if (!quality) {
+        playDissiadaNote(lane, "miss");
         tapFx.push({ lane, t: 24, quality: "miss" });
         combo = 0;
         alive = false;
@@ -96,6 +99,7 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
       }
 
       tapFx.push({ lane, t: 20, quality });
+      playDissiadaNote(lane, quality);
       if (quality === "perfect") {
         score += 2;
         combo++;

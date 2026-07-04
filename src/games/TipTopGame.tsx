@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useGamePalette } from "./GamePaletteContext";
 import { formatRaceTime, scoreTipTop, type GameResult } from "./gameResult";
+import { playTipTopFlap, playTipTopHoleIn, unlockGameAudio } from "./gameAudio";
 
 interface Props {
   width: number;
@@ -727,6 +728,7 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
 
     const flap = (dir: -1 | 1) => {
       if (!alive || clearFrames > 0) return;
+      unlockGameAudio();
       stageFlaps++;
       const angle = dir < 0 ? Math.PI - FLAP_ANGLE : FLAP_ANGLE;
       const forceX = Math.cos(angle);
@@ -747,6 +749,7 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
         FLAP_IMPACT_TUNING.speedFlatness,
       );
       flapImpacts.push({ forceX: impactDir.x, forceY: impactDir.y, ageMs: 0 });
+      playTipTopFlap();
     };
 
     const leftBtn = { x: 12, y: playH + 10, w: width / 2 - 18, h: btnH - 12 };
@@ -907,6 +910,7 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
               py = surface - ballR;
               onGround = true;
               clearFrames = STAGE_CLEAR_FRAMES;
+              playTipTopHoleIn();
             } else {
               py = surface - ballR;
               vy *= -0.15;

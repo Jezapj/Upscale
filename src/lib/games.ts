@@ -26,9 +26,9 @@ export const GAMES: GameMeta[] = [
   {
     id: "octane",
     name: "Octane",
-    tagline: "Drag race or free ride — rev to redline",
+    tagline: "Drag race or free ride - rev to redline",
     color: "#ff7a59",
-    controls: "Hold gas · Tap clutch at redline to shift",
+    controls: "Hold gas pedal (shift) · Tap clutch pedal (L-Shift) at redline to shift",
   },
   {
     id: "dissiada",

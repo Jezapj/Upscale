@@ -2,6 +2,13 @@ import { useEffect, useRef } from "react";
 import { useGamePalette } from "./GamePaletteContext";
 import type { OctaneConfig } from "./octaneConfig";
 import { formatRaceTime, scoreOctaneDrag, type GameResult } from "./gameResult";
+import {
+  createOctaneEngineSound,
+  playOctaneBadShift,
+  playOctaneNitroPerfect,
+  playOctaneRevShift,
+  unlockGameAudio,
+} from "./gameAudio";
 
 interface Props {
   width: number;
@@ -110,7 +117,7 @@ const LENS_FLARE_TUNING = {
   minInterval: 100,
   maxInterval: 240,
   /** 0–1 chance to spawn when an attempt fires. */
-  triggerChance: 0.28,
+  triggerChance: 0.68,
   /** Seconds for one flare to cross the screen. */
   duration: 230.6,
   /** Sun enters/exits as fractions of screen width (1.15 = off right edge). */
@@ -834,9 +841,11 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
 
     const shift = () => {
       if (!alive || finished || gear >= GEARS) return;
+      unlockGameAudio();
       if (rpm < SHIFT_PERFECT_MIN * 0.5) {
         shiftQuality = -1;
         shiftFlash = 22;
+        playOctaneBadShift();
         rpm = Math.max(0, rpm - 1200);
         mph = Math.max(0, mph - 4);
         return;
@@ -845,12 +854,16 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
       shiftQuality = perfect ? 1 : rpm > SHIFT_PERFECT_MAX ? -1 : 0;
       shiftFlash = perfect ? 40 : 18;
       gear++;
+      playOctaneRevShift(gear);
+      if (perfect) playOctaneNitroPerfect();
+      else if (rpm > SHIFT_PERFECT_MAX) playOctaneBadShift();
       rpm = perfect ? 3800 + gear * 100 : rpm > SHIFT_PERFECT_MAX ? 5200 : 4500;
       mph += perfect ? 14 : rpm > SHIFT_PERFECT_MAX ? 4 : 8;
     };
 
     const onPointerDown = (e: PointerEvent) => {
       e.preventDefault();
+      unlockGameAudio();
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -884,6 +897,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === "Space" || e.code === "ArrowUp") {
         e.preventDefault();
+        unlockGameAudio();
         gasRef.current = true;
       }
       if (e.code === "ShiftLeft" || e.code === "KeyE") {
@@ -903,6 +917,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
 
     let raf = 0;
     let last = performance.now();
+    const engineSound = createOctaneEngineSound();
 
     const loop = (now: number) => {
       if (!alive) return;
@@ -958,6 +973,8 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
       }
 
       if (shiftFlash > 0) shiftFlash--;
+
+      engineSound?.update(rpm, gasRef.current, gear);
 
       drawParallaxBackground(ctx, bgImg, width, sceneH, scrollPx, BG_PARALLAX);
 
@@ -1171,6 +1188,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
     raf = requestAnimationFrame(loop);
     return () => {
       cancelAnimationFrame(raf);
+      engineSound?.stop();
       canvas.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("pointerup", onPointerUp);
       canvas.removeEventListener("pointerleave", onLeave);
