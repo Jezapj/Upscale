@@ -46,7 +46,7 @@ const BG_ZOOM = 1.45;
 /** Extend draw height below the scene (top-anchored) so the horizon sits lower without a gap at the top. */
 const BG_EXTEND_DOWN = 0.4;
 /** Chance each run is a night drive (dark + moon / street-light beams). */
-const NIGHT_RUN_CHANCE = 0.24;
+const NIGHT_RUN_CHANCE = 0.94;
 /** Car height as a fraction of road band height. */
 const CAR_HEIGHT_RATIO = 0.92;
 
@@ -78,7 +78,7 @@ const HEADLIGHT_TUNING = {
  */
 const ROAD_LIGHT_TUNING = {
   /** Horizontal repeat distance (px) — lower = more lights on screen. */
-  tileSpacing: 3200,
+  tileSpacing: 1200,
   /** Scroll speed relative to the car (higher = faster across the screen). */
   parallax: 1.38,
   /** 0–1 chance a light spawns in each tile. */
@@ -87,9 +87,9 @@ const ROAD_LIGHT_TUNING = {
   spawnXMin: 80,
   spawnXRange: 720,
   /** Beam origin Y as a fraction of scene height (negative = above the top edge). */
-  apexY: -0.84,
+  apexY: -1.24,
   /** Where the beam fades out on the road: fraction of road band height from road top. */
-  roadFloor: 4.98,
+  roadFloor: 5.98,
   /** Beam spread radius as a fraction of scene height. */
   spread: 0.8,
   color: { r: 155, g: 155, b: 255 },
@@ -108,6 +108,26 @@ const ROAD_LIGHT_TUNING = {
     { spreadMult: 0.75, alphaMult: 0.2, yBias: 0.65 },
   ],
 } as const;
+
+/** Night overhead beam → reflective sweep on the car body (front → rear) */
+const CAR_GLINT_TUNING = {
+  /** Width of the moving highlight band (fraction of car width) */
+  bandWidth: 0.2,
+  /** How far past the body the sweep stays visible (fraction of car width) */
+  sweepOvershoot: 0.94,
+  /** Overall glint intensity multiplier */
+  strength: 0.22,
+  /** Peak brightness at band center (screen blend) */
+  specularPeak: 0.52,
+  /** Vertical bias - brighter on upper body panels */
+  roofBias: 0.92,
+} as const;
+
+interface CarGlintPass {
+  /** 0 = rear (left), 1 = front (right) — band center along the body */
+  sweepPos: number;
+  strength: number;
+}
 
 /**
  * Occasional cinematic lens flare sweeping across the scene (daytime only).
@@ -474,6 +494,30 @@ interface TopLightItem {
   x: number;
 }
 
+function roadLightPulse(time: number): number {
+  const t = ROAD_LIGHT_TUNING;
+  return t.pulseBase + Math.sin(time * t.pulseSpeed) * t.pulseAmount;
+}
+
+function forEachTopLight(
+  width: number,
+  scrollPx: number,
+  fn: (screenX: number) => void,
+) {
+  const t = ROAD_LIGHT_TUNING;
+  const { baseTile, frac } = scrollFrac(scrollPx, t.parallax, t.tileSpacing);
+  const tilesOnScreen = Math.ceil(width / t.tileSpacing) + 2;
+
+  for (let i = -1; i <= tilesOnScreen; i++) {
+    const tileIndex = baseTile + i;
+    for (const item of tileTopLights(tileIndex)) {
+      const screenX = item.x + i * t.tileSpacing - frac;
+      if (screenX < -t.cullMargin || screenX > width + t.cullMargin) continue;
+      fn(screenX);
+    }
+  }
+}
+
 /** Overhead lights that scroll in from the top of the screen. */
 function tileTopLights(tile: number): TopLightItem[] {
   const t = ROAD_LIGHT_TUNING;
@@ -509,6 +553,108 @@ function drawFeatheredTopLight(
   }
 }
 
+function collectCarGlintPasses(
+  scrollPx: number,
+  time: number,
+  carX: number,
+  carW: number,
+  width: number,
+): CarGlintPass[] {
+  const pulse = roadLightPulse(time);
+  const passes: CarGlintPass[] = [];
+  const overshoot = CAR_GLINT_TUNING.sweepOvershoot;
+
+  forEachTopLight(width, scrollPx, (screenX) => {
+    const sweepPos = (screenX - carX) / carW;
+    if (sweepPos < -overshoot || sweepPos > 1 + overshoot) return;
+
+    let edgeFade = 1;
+    if (sweepPos < 0) {
+      edgeFade = 1 - -sweepPos / overshoot;
+    } else if (sweepPos > 1) {
+      edgeFade = 1 - (sweepPos - 1) / overshoot;
+    }
+
+    const strength = edgeFade * pulse * CAR_GLINT_TUNING.strength;
+    if (strength > 0.04) {
+      passes.push({ sweepPos, strength: Math.min(1, strength) });
+    }
+  });
+
+  return passes;
+}
+
+let glintScratch: HTMLCanvasElement | null = null;
+let glintScratchCtx: CanvasRenderingContext2D | null = null;
+
+function getGlintScratch(w: number, h: number) {
+  const iw = Math.max(1, Math.ceil(w));
+  const ih = Math.max(1, Math.ceil(h));
+  if (!glintScratch || glintScratch.width !== iw || glintScratch.height !== ih) {
+    glintScratch = document.createElement("canvas");
+    glintScratch.width = iw;
+    glintScratch.height = ih;
+    glintScratchCtx = glintScratch.getContext("2d");
+  }
+  return { canvas: glintScratch, ctx: glintScratchCtx };
+}
+
+function drawCarTopLightReflection(
+  ctx: CanvasRenderingContext2D,
+  carImg: HTMLImageElement,
+  carX: number,
+  carY: number,
+  carW: number,
+  carH: number,
+  passes: CarGlintPass[],
+) {
+  if (passes.length === 0) return;
+
+  const scratch = getGlintScratch(carW, carH);
+  const sctx = scratch.ctx;
+  if (!sctx) return;
+
+  const { r, g, b } = ROAD_LIGHT_TUNING.color;
+  const halfBand = carW * CAR_GLINT_TUNING.bandWidth * 0.5;
+  const roofEnd = carH * CAR_GLINT_TUNING.roofBias;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+
+  for (const pass of passes) {
+    const bandCenter = pass.sweepPos * carW;
+    const peak = pass.strength * CAR_GLINT_TUNING.specularPeak;
+
+    sctx.clearRect(0, 0, carW, carH);
+    sctx.globalCompositeOperation = "source-over";
+
+    const bandGrad = sctx.createLinearGradient(bandCenter - halfBand, 0, bandCenter + halfBand, 0);
+    bandGrad.addColorStop(0, "rgba(0,0,0,0)");
+    bandGrad.addColorStop(0.32, `rgba(${r},${g},${b},${peak * 0.25})`);
+    bandGrad.addColorStop(0.5, `rgba(255,255,255,${peak})`);
+    bandGrad.addColorStop(0.68, `rgba(${r},${g},${b},${peak * 0.25})`);
+    bandGrad.addColorStop(1, "rgba(0,0,0,0)");
+    sctx.fillStyle = bandGrad;
+    sctx.fillRect(bandCenter - halfBand, 0, halfBand * 2, carH);
+
+    const roofGrad = sctx.createLinearGradient(0, 0, 0, carH);
+    roofGrad.addColorStop(0, `rgba(255,255,255,${peak * 0.35})`);
+    roofGrad.addColorStop(roofEnd / carH, `rgba(255,255,255,${peak * 0.08})`);
+    roofGrad.addColorStop(1, "rgba(0,0,0,0)");
+    sctx.globalCompositeOperation = "lighter";
+    sctx.fillStyle = roofGrad;
+    sctx.fillRect(bandCenter - halfBand, 0, halfBand * 2, carH);
+
+    sctx.globalCompositeOperation = "destination-in";
+    sctx.drawImage(carImg, 0, 0, carW, carH);
+
+    ctx.drawImage(scratch.canvas, carX, carY);
+  }
+
+  ctx.globalCompositeOperation = "source-over";
+  ctx.restore();
+}
+
 function drawNightScene(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -523,42 +669,33 @@ function drawNightScene(
   ctx.rect(0, 0, width, sceneH);
   ctx.clip();
 
-  ctx.fillStyle = "rgba(1, 2, 10, 0.78)";
+  ctx.fillStyle = "rgba(1, 2, 10, 0.88)";
   ctx.fillRect(0, 0, width, sceneH);
 
   ctx.fillStyle = "rgba(0, 0, 8, 0.38)";
   ctx.fillRect(0, roadY, width, sceneH - roadY);
 
   const t = ROAD_LIGHT_TUNING;
-  const pulse = t.pulseBase + Math.sin(time * t.pulseSpeed) * t.pulseAmount;
+  const pulse = roadLightPulse(time);
   ctx.globalCompositeOperation = "screen";
 
-  const { baseTile, frac } = scrollFrac(scrollPx, t.parallax, t.tileSpacing);
-  const tilesOnScreen = Math.ceil(width / t.tileSpacing) + 2;
   const apexY = sceneH * t.apexY;
   const floorY = roadY + roadH * t.roadFloor;
   const spread = sceneH * t.spread;
 
-  for (let i = -1; i <= tilesOnScreen; i++) {
-    const tileIndex = baseTile + i;
-    const items = tileTopLights(tileIndex);
-    for (const item of items) {
-      const screenX = item.x + i * t.tileSpacing - frac;
-      if (screenX < -t.cullMargin || screenX > width + t.cullMargin) continue;
-
-      drawFeatheredTopLight(
-        ctx,
-        screenX,
-        apexY,
-        floorY,
-        spread,
-        t.color.r,
-        t.color.g,
-        t.color.b,
-        t.alpha * pulse,
-      );
-    }
-  }
+  forEachTopLight(width, scrollPx, (screenX) => {
+    drawFeatheredTopLight(
+      ctx,
+      screenX,
+      apexY,
+      floorY,
+      spread,
+      t.color.r,
+      t.color.g,
+      t.color.b,
+      t.alpha * pulse,
+    );
+  });
 
   ctx.globalCompositeOperation = "source-over";
   ctx.restore();
@@ -1042,6 +1179,10 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
 
       if (isNight) {
         drawNightScene(ctx, width, sceneH, roadY, roadH, scrollPx, time);
+        const glintPasses = collectCarGlintPasses(scrollPx, time, carX, carDrawW, width);
+        if (carReady) {
+          drawCarTopLightReflection(ctx, carImg, carX, carY, carDrawW, carDrawH, glintPasses);
+        }
         drawCarHeadlights(ctx, width, roadY, roadH, carX, carY, carDrawW, carDrawH);
       } else {
         if (activeFlare) {
