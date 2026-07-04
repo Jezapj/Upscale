@@ -50,8 +50,17 @@ const NIGHT_RUN_CHANCE = 0.94;
 /** Car height as a fraction of road band height. */
 const CAR_HEIGHT_RATIO = 0.92;
 
+/** Center-lane dashed markings (world-locked to road scroll) */
+const ROAD_MARKINGS = {
+  dashLength: 180,
+  dashGap: 102,
+  yRatio: 0.55,
+  lineWidth: 5,
+  /** 1 = scrolls with road distance; keep at 1 for painted-on-road feel */
+  scrollRate: 1,
+} as const;
+
 /**
- * Night headlight beams on the road ahead of the car (screen-fixed to the car).
  * Tweak normalized car coords and reach until the pools line up with the sprite.
  */
 const HEADLIGHT_TUNING = {
@@ -62,14 +71,14 @@ const HEADLIGHT_TUNING = {
   /** Where beams meet the road: fraction of road band height from road top. */
   roadAnchor: 0.2,
   /** Cone half-width at the far end, as a fraction of road band height. */
-  spreadFar: 0.42,
+  spreadFar: 0.32,
   /** Cone half-width near the car, as a fraction of road band height. */
   spreadNear: 0.04,
-  color: { r: 255, g: 246, b: 215 },
+  color: { r: 155, g: 146, b: 215 },
   /** Core beam opacity (screen blend). */
-  alpha: 0.05,
+  alpha: 0.08,
   /** Wider outer halo opacity multiplier. */
-  outerAlpha: 0.48,
+  outerAlpha: 0.68,
 } as const;
 
 /**
@@ -91,21 +100,21 @@ const ROAD_LIGHT_TUNING = {
   /** Where the beam fades out on the road: fraction of road band height from road top. */
   roadFloor: 5.98,
   /** Beam spread radius as a fraction of scene height. */
-  spread: 0.8,
+  spread: 0.7,
   color: { r: 155, g: 155, b: 255 },
   /** Core opacity (screen blend); multiplied by the pulse animation. */
   alpha: 0.99,
   /** Pulse animation: base brightness and sine-wave amplitude (0 = static). */
-  pulseBase: 0.96,
+  pulseBase: 0.99,
   pulseAmount: 0.14,
   pulseSpeed: 0.04,
   /** Skip drawing when this far past the left/right screen edge (px). */
   cullMargin: 320,
   /** Feathered gradient layers (outer → inner). */
   layers: [
-    { spreadMult: 0.18, alphaMult: 0.15, yBias: 0.9 },
+    { spreadMult: 0.18, alphaMult: 0.05, yBias: 0.9 },
     { spreadMult: 0.6, alphaMult: 0.62, yBias: 0.78 },
-    { spreadMult: 0.75, alphaMult: 0.2, yBias: 0.65 },
+    { spreadMult: 0.75, alphaMult: 0.3, yBias: 0.65 },
   ],
 } as const;
 
@@ -1124,37 +1133,22 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
       ctx.fillStyle = p.road;
       ctx.fillRect(0, roadY, width, roadH);
 
-      ctx.strokeStyle = p.line;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(0, roadY + 4);
-      ctx.lineTo(width, roadY + 4);
-      ctx.stroke();
+      const markY = roadY + roadH * ROAD_MARKINGS.yRatio;
+      const spacing = ROAD_MARKINGS.dashLength + ROAD_MARKINGS.dashGap;
+      const offset =
+        ((scrollPx * ROAD_MARKINGS.scrollRate) % spacing + spacing) % spacing;
 
-      const lineScroll = scrollFrac(scrollPx, 1.6, 70).frac;
-      ctx.strokeStyle = "rgba(255,255,255,0.9)";
-      ctx.lineWidth = 3;
-      ctx.setLineDash([36, 44]);
-      for (let lx = -lineScroll; lx < width + 70; lx += 80) {
+      ctx.strokeStyle = "rgba(255,255,255,0.92)";
+      ctx.lineWidth = ROAD_MARKINGS.lineWidth;
+      ctx.lineCap = "butt";
+      for (let lx = -offset; lx < width + ROAD_MARKINGS.dashLength; lx += spacing) {
         ctx.beginPath();
-        ctx.moveTo(lx, roadY + roadH * 0.55);
-        ctx.lineTo(lx + 36, roadY + roadH * 0.55);
+        ctx.moveTo(lx, markY);
+        ctx.lineTo(lx + ROAD_MARKINGS.dashLength, markY);
         ctx.stroke();
       }
-      ctx.setLineDash([]);
 
       drawSakuraOverhead(ctx, width, roadY, roadH, scrollPx, sakuraTop1, sakuraTop2);
-
-      if (isDrag) {
-        const finishOffset = raceDistanceM - distance;
-        const finishScreenX = width * 0.55 + finishOffset * 0.08;
-        if (finishScreenX > -60 && finishScreenX < width + 60) {
-          for (let i = 0; i < 8; i++) {
-            ctx.fillStyle = i % 2 === 0 ? "#fff" : "#111";
-            ctx.fillRect(finishScreenX, roadY, 16, roadH);
-          }
-        }
-      }
 
       ctx.fillStyle = "rgba(0,0,0,0.3)";
       ctx.beginPath();
