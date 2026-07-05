@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Moon, Sun, X } from "lucide-react";
+import { ChevronRight, Moon, Music, Sun, X } from "lucide-react";
 import { useControls } from "@/store/useControls";
+import { useBackgroundMusic, useBackgroundTrack } from "@/store/useBackgroundMusic";
 import { useTheme } from "@/store/useTheme";
 
 /** Quick options menu (B) - dark mode toggle and future shortcuts. */
@@ -9,6 +10,8 @@ export function QuickMenu() {
   const open = useControls((s) => s.quickMenuOpen);
   const setOpen = useControls((s) => s.setQuickMenuOpen);
   const { theme, toggleTheme } = useTheme();
+  const { volume, setVolume, cycleTrack } = useBackgroundMusic();
+  const track = useBackgroundTrack();
   const [shell, setShell] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -95,6 +98,51 @@ export function QuickMenu() {
             />
           </span>
         </button>
+
+        <div className="quick-menu-row mt-2 rounded-tile px-4 py-3.5">
+          <div className="flex items-center gap-3">
+            <span
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl"
+              style={{
+                background: isDark
+                  ? "linear-gradient(135deg, #f472b6 0%, #fb923c 100%)"
+                  : "linear-gradient(180deg, #fce7f3, #fed7aa)",
+                boxShadow: isDark
+                  ? "0 8px 20px -6px rgba(244,114,182,0.45)"
+                  : "inset 0 1px 0 rgba(255,255,255,0.9)",
+              }}
+            >
+              <Music size={20} className={isDark ? "text-white" : "text-ink-soft"} strokeWidth={2.4} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-800 text-ink">Music</p>
+              <button
+                type="button"
+                onClick={cycleTrack}
+                className="mt-0.5 flex w-full items-center gap-1 text-left text-xs font-700 text-ink-faint transition-colors active:text-ink"
+              >
+                <span className="truncate">{track.label}</span>
+                <ChevronRight size={14} className="shrink-0 opacity-70" />
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center gap-3">
+            <span className="w-7 text-right text-[11px] font-800 tabular-nums text-ink-faint">
+              {Math.round(volume * 100)}
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={Math.round(volume * 100)}
+              onChange={(e) => setVolume(Number(e.target.value) / 100)}
+              aria-label="Music volume"
+              className="h-2 flex-1 cursor-pointer accent-[#c084fc]"
+            />
+          </div>
+        </div>
 
         <p className="mt-3 px-1 text-center text-[11px] font-700 text-ink-faint">
           Hold L + T for settings · L + B / R + B to switch tabs

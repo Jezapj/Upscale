@@ -11,6 +11,7 @@ import { BackgroundDecor } from "@/components/BackgroundDecor";
 import { Dock } from "@/components/Dock";
 import { ScreenHints } from "@/components/ScreenHints";
 import { QuickMenu } from "@/components/QuickMenu";
+import { BackgroundMusicPlayer } from "@/components/BackgroundMusicPlayer";
 import { useKeyboardControls } from "@/hooks/useKeyboardControls";
 import { useRoutineReminders } from "@/hooks/useRoutineReminders";
 import { ThemeSyncEffect } from "@/store/useTheme";
@@ -51,6 +52,7 @@ function AppShell() {
   return (
     <div id="app-shell" className="app-shell">
       <ThemeSyncEffect />
+      <BackgroundMusicPlayer />
       <BackgroundDecor />
       <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
         <Routes>
