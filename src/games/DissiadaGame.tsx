@@ -20,7 +20,6 @@ interface TapFx {
   t: number;
   maxT: number;
   quality: "perfect" | "good" | "miss";
-  tileY: number;
   edgeHighlight: boolean;
   fullFlash: boolean;
 }
@@ -90,7 +89,6 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
           t: 24,
           maxT: 24,
           quality: "miss",
-          tileY: hitY - tileH / 2,
           edgeHighlight: false,
           fullFlash: false,
         });
@@ -100,13 +98,11 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
         return;
       }
 
-      let hitTileY = hitY - tileH / 2;
       for (const t of tiles) {
         if (t.lane !== lane || t.hit || t.missed) continue;
         const tileCenter = t.y + tileH / 2;
         const dist = Math.abs(tileCenter - hitY);
         if (dist <= goodH) {
-          hitTileY = t.y;
           t.hit = true;
           break;
         }
@@ -123,7 +119,6 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
         t: fxDuration,
         maxT: fxDuration,
         quality,
-        tileY: hitTileY,
         edgeHighlight,
         fullFlash,
       });
@@ -278,13 +273,14 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
         const tileX = fx.lane * laneW + 8;
         const tileW = laneW - 16;
         const tileDrawH = tileH - 4;
+        const idealTileY = hitY - tileH / 2;
         const progress = 1 - fx.t / fx.maxT;
 
         if (fx.edgeHighlight || fx.fullFlash) {
           if (fx.fullFlash) {
             const flashAlpha = (1 - progress) ** 1.4 * 0.9;
             ctx.fillStyle = `rgba(255,255,255,${flashAlpha})`;
-            ctx.fillRect(tileX, fx.tileY, tileW, tileDrawH);
+            ctx.fillRect(tileX, idealTileY, tileW, tileDrawH);
           }
           if (fx.edgeHighlight) {
             const edgeAlpha = (1 - progress) ** 0.85 * 0.95;
@@ -293,7 +289,7 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
             ctx.lineWidth = 2.5 + progress * 5;
             ctx.strokeRect(
               tileX - spread * 0.35,
-              fx.tileY - spread * 0.35,
+              idealTileY - spread * 0.35,
               tileW + spread * 0.7,
               tileDrawH + spread * 0.7,
             );
