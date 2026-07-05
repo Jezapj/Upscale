@@ -20,7 +20,26 @@ export interface SampleClip extends SoundTiming {
 export const DISSIADA_SOUND = {
   note: { volume: 0.3, startTime: 0, endTime: 0.16, duration: 0.2 },
   noteMiss: { volume: 0.22, startTime: 0, endTime: 0.09, duration: 0.11 },
-} as const satisfies Record<string, SoundTiming>;
+  /** Harmonic layer level relative to harmonic.volume */
+  harmonicVolume: 1,
+  /** Longer tail for combo harmonics */
+  harmonic: { volume: 0.2, startTime: 0, endTime: 0.45, duration: 0.58 },
+  harmonicChorus: { detuneCents: 5, voiceWet: 0.4 },
+  harmonicReverb: { wet: 0.42, duration: 1.15, decay: 2.6 },
+} as const satisfies Record<string, SoundTiming | number | { detuneCents: number; voiceWet: number } | { wet: number; duration: number; decay: number }>;
+
+/** Combo milestones — extra harmonic above base (equal temperament) */
+export const DISSIADA_COMBO_HARMONICS = [
+  { minCombo: 10, semitones: 4 },
+  { minCombo: 20, semitones: 7 },
+  { minCombo: 30, semitones: 12 },
+] as const;
+
+/** Combo visual milestones — white hit feedback */
+export const DISSIADA_COMBO_VISUALS = {
+  edgeHighlight: DISSIADA_COMBO_HARMONICS[0].minCombo,
+  fullFlash: DISSIADA_COMBO_HARMONICS[1].minCombo,
+} as const;
 
 /** Per-lane base frequencies (Hz) */
 export const DISSIADA_NOTE_HZ = [261.63, 293.66, 349.23, 392.0] as const;

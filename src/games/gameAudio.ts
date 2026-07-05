@@ -1,4 +1,5 @@
 import {
+  DISSIADA_COMBO_HARMONICS,
   DISSIADA_NOTE_HZ,
   DISSIADA_SOUND,
   OCTANE_REV_GEAR_PITCH,
@@ -50,27 +51,50 @@ function makeNoiseBuffer(audioCtx: AudioContext, seconds = 1): AudioBuffer {
 }
 
 let noiseBuffer: AudioBuffer | null = null;
+let dissiadaReverbImpulse: AudioBuffer | null = null;
 
 function getNoise(audioCtx: AudioContext): AudioBuffer {
   if (!noiseBuffer) noiseBuffer = makeNoiseBuffer(audioCtx);
   return noiseBuffer;
 }
 
-export function playDissiadaNote(lane: number, quality: "perfect" | "good" | "miss") {
-  const audioCtx = ctx();
-  if (!audioCtx) return;
+function getDissiadaReverbImpulse(audioCtx: AudioContext): AudioBuffer {
+  const cfg = DISSIADA_SOUND.harmonicReverb;
+  if (
+    !dissiadaReverbImpulse ||
+    dissiadaReverbImpulse.sampleRate !== audioCtx.sampleRate
+  ) {
+    const len = Math.ceil(audioCtx.sampleRate * cfg.duration);
+    dissiadaReverbImpulse = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
+    for (let c = 0; c < 2; c++) {
+      const data = dissiadaReverbImpulse.getChannelData(c);
+      for (let i = 0; i < len; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / len) ** cfg.decay;
+      }
+    }
+  }
+  return dissiadaReverbImpulse;
+}
 
-  const config = quality === "miss" ? DISSIADA_SOUND.noteMiss : DISSIADA_SOUND.note;
-  const baseHz = DISSIADA_NOTE_HZ[Math.max(0, Math.min(3, lane))] ?? 261.63;
-  const hz =
-    quality === "perfect" ? baseHz * 1.02 : quality === "miss" ? baseHz * 0.82 : baseHz;
+function semitoneRatio(semitones: number): number {
+  return 2 ** (semitones / 12);
+}
 
+function scheduleDissiadaVoice(
+  audioCtx: AudioContext,
+  hz: number,
+  quality: "perfect" | "good" | "miss",
+  config: SoundTiming,
+  volumeScale: number,
+  wave: OscillatorType,
+  filterHz: number,
+) {
   const t0 = audioCtx.currentTime + config.startTime;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   const filter = audioCtx.createBiquadFilter();
 
-  osc.type = quality === "miss" ? "sawtooth" : "triangle";
+  osc.type = wave;
   osc.frequency.setValueAtTime(hz, t0);
   if (quality === "perfect") {
     osc.frequency.exponentialRampToValueAtTime(hz * 0.998, t0 + config.endTime);
@@ -79,16 +103,114 @@ export function playDissiadaNote(lane: number, quality: "perfect" | "good" | "mi
   }
 
   filter.type = "lowpass";
-  filter.frequency.setValueAtTime(quality === "perfect" ? 3200 : 2400, t0);
+  filter.frequency.setValueAtTime(filterHz, t0);
   filter.Q.value = 0.7;
 
   osc.connect(filter);
   filter.connect(gain);
   gain.connect(audioCtx.destination);
-  scheduleGainEnvelope(audioCtx, gain, config);
+  scheduleGainEnvelope(audioCtx, gain, {
+    ...config,
+    volume: config.volume * volumeScale,
+  });
 
   osc.start(t0);
   osc.stop(t0 + config.duration);
+}
+
+function scheduleDissiadaHarmonic(
+  audioCtx: AudioContext,
+  hz: number,
+  quality: "perfect" | "good",
+  volumeScale: number,
+) {
+  const config = DISSIADA_SOUND.harmonic;
+  const chorus = DISSIADA_SOUND.harmonicChorus;
+  const reverbCfg = DISSIADA_SOUND.harmonicReverb;
+  const t0 = audioCtx.currentTime + config.startTime;
+
+  const merge = audioCtx.createGain();
+  merge.gain.value = 1;
+
+  const detunes = [0, chorus.detuneCents, -chorus.detuneCents];
+  for (const cents of detunes) {
+    const osc = audioCtx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(hz, t0);
+    osc.detune.setValueAtTime(cents, t0);
+    if (quality === "perfect") {
+      osc.frequency.exponentialRampToValueAtTime(hz * 0.998, t0 + config.endTime);
+    } else {
+      osc.frequency.exponentialRampToValueAtTime(hz * 0.72, t0 + config.endTime);
+    }
+
+    const voiceGain = audioCtx.createGain();
+    voiceGain.gain.value = cents === 0 ? 1 : chorus.voiceWet;
+    osc.connect(voiceGain);
+    voiceGain.connect(merge);
+    osc.start(t0);
+    osc.stop(t0 + config.duration);
+  }
+
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(4200, t0);
+  filter.Q.value = 0.6;
+  merge.connect(filter);
+
+  const dryGain = audioCtx.createGain();
+  dryGain.gain.value = 1 - reverbCfg.wet;
+  const wetGain = audioCtx.createGain();
+  wetGain.gain.value = reverbCfg.wet;
+
+  const convolver = audioCtx.createConvolver();
+  convolver.buffer = getDissiadaReverbImpulse(audioCtx);
+
+  const masterGain = audioCtx.createGain();
+  filter.connect(dryGain);
+  dryGain.connect(masterGain);
+  filter.connect(convolver);
+  convolver.connect(wetGain);
+  wetGain.connect(masterGain);
+  masterGain.connect(audioCtx.destination);
+
+  scheduleGainEnvelope(
+    audioCtx,
+    masterGain,
+    { ...config, volume: config.volume * volumeScale },
+    0.01,
+  );
+}
+
+export function playDissiadaNote(
+  lane: number,
+  quality: "perfect" | "good" | "miss",
+  combo = 0,
+) {
+  const audioCtx = ctx();
+  if (!audioCtx) return;
+
+  const config = quality === "miss" ? DISSIADA_SOUND.noteMiss : DISSIADA_SOUND.note;
+  const baseHz = DISSIADA_NOTE_HZ[Math.max(0, Math.min(3, lane))] ?? 261.63;
+  const hz =
+    quality === "perfect" ? baseHz * 1.02 : quality === "miss" ? baseHz * 0.82 : baseHz;
+
+  const baseWave: OscillatorType = quality === "miss" ? "sawtooth" : "triangle";
+  const baseFilter = quality === "perfect" ? 3200 : 2400;
+  scheduleDissiadaVoice(audioCtx, hz, quality, config, 1, baseWave, baseFilter);
+
+  if (quality === "miss") return;
+
+  const harmonicVolume = DISSIADA_SOUND.harmonicVolume;
+  for (const harmonic of DISSIADA_COMBO_HARMONICS) {
+    if (combo < harmonic.minCombo) continue;
+    scheduleDissiadaHarmonic(
+      audioCtx,
+      hz * semitoneRatio(harmonic.semitones),
+      quality,
+      harmonicVolume,
+    );
+  }
 }
 
 export function playTipTopFlap() {

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useGamePalette } from "./GamePaletteContext";
 import { playDissiadaNote, unlockGameAudio } from "./gameAudio";
-
+import { DISSIADA_COMBO_VISUALS } from "./gameSoundConfigs";
 interface Props {
   width: number;
   height: number;
@@ -18,7 +18,11 @@ interface Tile {
 interface TapFx {
   lane: number;
   t: number;
+  maxT: number;
   quality: "perfect" | "good" | "miss";
+  tileY: number;
+  edgeHighlight: boolean;
+  fullFlash: boolean;
 }
 
 /** Piano tiles with hit zone guide, lane highlights, and tight timing. */
@@ -81,25 +85,49 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
       const quality = judgeTile(lane);
       if (!quality) {
         playDissiadaNote(lane, "miss");
-        tapFx.push({ lane, t: 24, quality: "miss" });
+        tapFx.push({
+          lane,
+          t: 24,
+          maxT: 24,
+          quality: "miss",
+          tileY: hitY - tileH / 2,
+          edgeHighlight: false,
+          fullFlash: false,
+        });
         combo = 0;
         alive = false;
         onGameOver(score);
         return;
       }
 
+      let hitTileY = hitY - tileH / 2;
       for (const t of tiles) {
         if (t.lane !== lane || t.hit || t.missed) continue;
         const tileCenter = t.y + tileH / 2;
         const dist = Math.abs(tileCenter - hitY);
         if (dist <= goodH) {
+          hitTileY = t.y;
           t.hit = true;
           break;
         }
       }
 
-      tapFx.push({ lane, t: 20, quality });
-      playDissiadaNote(lane, quality);
+      const noteCombo =
+        quality === "perfect" ? combo + 1 : Math.max(1, combo);
+      const edgeHighlight = noteCombo >= DISSIADA_COMBO_VISUALS.edgeHighlight;
+      const fullFlash = noteCombo >= DISSIADA_COMBO_VISUALS.fullFlash;
+      const fxDuration = fullFlash ? 22 : edgeHighlight ? 26 : 20;
+
+      tapFx.push({
+        lane,
+        t: fxDuration,
+        maxT: fxDuration,
+        quality,
+        tileY: hitTileY,
+        edgeHighlight,
+        fullFlash,
+      });
+      playDissiadaNote(lane, quality, noteCombo);
       if (quality === "perfect") {
         score += 2;
         combo++;
@@ -247,14 +275,39 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
       // Tap feedback
       for (const fx of tapFx) {
         const cx = fx.lane * laneW + laneW / 2;
-        const alpha = fx.t / 20;
+        const tileX = fx.lane * laneW + 8;
+        const tileW = laneW - 16;
+        const tileDrawH = tileH - 4;
+        const progress = 1 - fx.t / fx.maxT;
+
+        if (fx.edgeHighlight || fx.fullFlash) {
+          if (fx.fullFlash) {
+            const flashAlpha = (1 - progress) ** 1.4 * 0.9;
+            ctx.fillStyle = `rgba(255,255,255,${flashAlpha})`;
+            ctx.fillRect(tileX, fx.tileY, tileW, tileDrawH);
+          }
+          if (fx.edgeHighlight) {
+            const edgeAlpha = (1 - progress) ** 0.85 * 0.95;
+            const spread = progress * 10;
+            ctx.strokeStyle = `rgba(255,255,255,${edgeAlpha})`;
+            ctx.lineWidth = 2.5 + progress * 5;
+            ctx.strokeRect(
+              tileX - spread * 0.35,
+              fx.tileY - spread * 0.35,
+              tileW + spread * 0.7,
+              tileDrawH + spread * 0.7,
+            );
+          }
+        }
+
+        const alpha = fx.t / fx.maxT;
         const color =
           fx.quality === "perfect" ? "#5cd0a8" : fx.quality === "good" ? "#ffb43d" : "#ff5a5a";
         ctx.strokeStyle = color;
         ctx.lineWidth = 3;
         ctx.globalAlpha = alpha;
         ctx.beginPath();
-        ctx.arc(cx, hitY, 28 + (20 - fx.t), 0, Math.PI * 2);
+        ctx.arc(cx, hitY, 28 + (fx.maxT - fx.t), 0, Math.PI * 2);
         ctx.stroke();
         ctx.globalAlpha = 1;
         if (fx.quality !== "miss") {
