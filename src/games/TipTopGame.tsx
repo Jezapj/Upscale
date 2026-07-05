@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { useGamePalette } from "./GamePaletteContext";
 import { formatRaceTime, scoreTipTop, type GameResult } from "./gameResult";
 import { playTipTopFlap, playTipTopHoleIn, unlockGameAudio } from "./gameAudio";
+import { frameDecay, frameScale, MAX_PHYSICS_STEPS, renderLerp } from "./gameLoop";
 
 interface Props {
   width: number;
@@ -527,9 +528,9 @@ function drawVisibleGround(
   ctx.fillStyle = pal.fairway;
   ctx.beginPath();
   ctx.moveTo(0, playH);
-  const startGx = Math.floor(camX / 20) * 20;
-  const endGx = camX + width + 20;
-  for (let gx = startGx; gx <= endGx; gx += 20) {
+  const startGx = Math.floor(camX / 12) * 12;
+  const endGx = camX + width + 12;
+  for (let gx = startGx; gx <= endGx; gx += 12) {
     ctx.lineTo(gx - camX, groundHeight(gx, playH, stage));
   }
   ctx.lineTo(width, playH);
@@ -639,24 +640,51 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const palette = useGamePalette();
   const btnRef = useRef({ left: false, right: false });
+  const sizeRef = useRef({ width, height });
+  const onGameOverRef = useRef(onGameOver);
+  const paletteRef = useRef(palette);
+
+  sizeRef.current = { width, height };
+  onGameOverRef.current = onGameOver;
+  paletteRef.current = palette;
 
   useEffect(() => {
-    const p = palette.tiptop;
+    const p = paletteRef.current.tiptop;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    ctx.scale(dpr, dpr);
+    ctx.imageSmoothingEnabled = true;
 
     const ballR = 11;
     const btnH = 56;
-    const playH = height - btnH - 8;
 
-    const stages = generateStages((Date.now() ^ (width * 7919)) >>> 0);
+    let canvasW = 0;
+    let canvasH = 0;
+
+    const resizeCanvas = (w: number, h: number) => {
+      if (w === canvasW && h === canvasH) return;
+      canvasW = w;
+      canvasH = h;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    const getLayout = () => {
+      const { width: w, height: h } = sizeRef.current;
+      return { width: w, height: h, playH: h - btnH - 8, btnH };
+    };
+
+    const { width: initW, playH: initPlayH } = (() => {
+      const { width: w, height: h } = sizeRef.current;
+      return { width: w, playH: h - btnH - 8 };
+    })();
+
+    resizeCanvas(sizeRef.current.width, sizeRef.current.height);
+
+    const stages = generateStages((Date.now() ^ (initW * 7919)) >>> 0);
     const forestPal: ThemePalette = {
       skyTop: p.skyTop,
       skyBot: p.skyBot,
@@ -666,9 +694,12 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
       cup: p.cup,
       cupInner: p.cupInner,
     };
-    for (const stage of stages) {
-      stage.backdrop = buildStageBackdrop(stage, width, playH, forestPal);
-    }
+    const rebuildBackdrops = (w: number, playH: number) => {
+      for (const stage of stages) {
+        stage.backdrop = buildStageBackdrop(stage, w, playH, forestPal);
+      }
+    };
+    rebuildBackdrops(initW, initPlayH);
     const themePals = stages.map((s) => themePalette(s.theme, forestPal));
     let stageIndex = 0;
     let stageFlaps = 0;
@@ -678,24 +709,28 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
     let clearFrames = 0;
 
     let px = 120;
-    let py = playH * 0.35;
+    let py = initPlayH * 0.35;
     let vx = 0;
     let vy = 0;
     let alive = true;
-    let camX = 0;
+    let renderCamX = 0;
     const flapImpacts: FlapImpact[] = [];
     let lastFrameTime = performance.now();
+    let physicsAccum = 0;
+    let prevPx = px;
+    let prevPy = py;
 
     const currentStage = () => stages[stageIndex];
     const currentPit = () => currentStage().pit;
     const worldW = () => currentStage().worldW;
 
     const resetBall = () => {
+      const { playH } = getLayout();
       px = 120;
       py = playH * 0.35;
       vx = 0;
       vy = 0;
-      camX = 0;
+      renderCamX = 0;
     };
 
     const finishRun = (cleared: boolean) => {
@@ -703,7 +738,7 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
       const flaps = totalFlaps + stageFlaps;
       const totalTimeMs = performance.now() - gameStartTime;
       const score = scoreTipTop(flaps, totalTimeMs, cleared);
-      onGameOver({
+      onGameOverRef.current({
         score,
         title: cleared ? "Course complete!" : "Game over",
         stats: [
@@ -752,13 +787,23 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
       playTipTopFlap();
     };
 
-    const leftBtn = { x: 12, y: playH + 10, w: width / 2 - 18, h: btnH - 12 };
-    const rightBtn = { x: width / 2 + 6, y: playH + 10, w: width / 2 - 18, h: btnH - 12 };
+    const hitBtn = (
+      x: number,
+      y: number,
+      b: { x: number; y: number; w: number; h: number },
+    ) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
 
-    const hitBtn = (x: number, y: number, b: typeof leftBtn) =>
-      x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+    const getButtons = () => {
+      const { width, playH, btnH: bh } = getLayout();
+      return {
+        left: { x: 12, y: playH + 10, w: width / 2 - 18, h: bh - 12 },
+        right: { x: width / 2 + 6, y: playH + 10, w: width / 2 - 18, h: bh - 12 },
+      };
+    };
 
     const onPointerDown = (e: PointerEvent) => {
+      const { width, playH } = getLayout();
+      const { left: leftBtn, right: rightBtn } = getButtons();
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -797,17 +842,167 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
 
+    let lastPlayH = initPlayH;
+    let lastWidth = initW;
+
+    const syncLayout = () => {
+      const layout = getLayout();
+      resizeCanvas(layout.width, layout.height);
+      if (layout.playH !== lastPlayH || layout.width !== lastWidth) {
+        rebuildBackdrops(layout.width, layout.playH);
+        lastPlayH = layout.playH;
+        lastWidth = layout.width;
+      }
+      return layout;
+    };
+
+    const stepPhysics = (stepDt: number): boolean => {
+      const { playH } = getLayout();
+      const stage = currentStage();
+      const pit = currentPit();
+      const ww = worldW();
+
+      vy += stage.gravity * stepDt;
+      vx *= frameDecay(0.996, stepDt);
+      vy *= frameDecay(0.9992, stepDt);
+      px += vx * stepDt;
+      py += vy * stepDt;
+
+      if (px < ballR) {
+        px = ballR;
+        vx = Math.abs(vx) * 0.3;
+      }
+      if (px > ww - ballR) px = ww - ballR;
+
+      let onGround = false;
+      let overPit = false;
+
+      for (const obs of stage.obstacles) {
+        const oy = obstacleY(obs, playH, stage);
+        if (obs.kind === "stone") {
+          const cx = obs.x + obs.w / 2;
+          const cy = oy + obs.h / 2;
+          const cr = Math.min(obs.w, obs.h) / 2;
+          const dx = px - cx;
+          const dy = py - cy;
+          const dist = Math.hypot(dx, dy);
+          if (dist < ballR + cr) {
+            const nx = dx / (dist || 1);
+            const ny = dy / (dist || 1);
+            const overlap = ballR + cr - dist;
+            px += nx * overlap;
+            py += ny * overlap;
+            const dot = vx * nx + vy * ny;
+            if (dot < 0) {
+              vx -= nx * dot * 1.4;
+              vy -= ny * dot * 1.4;
+            }
+            vx *= 0.82;
+            vy *= 0.82;
+          }
+        } else {
+          const res = resolveCircleAabb(px, py, ballR, obs.x, oy, obs.w, obs.h);
+          if (res.hit) {
+            px = res.px;
+            py = res.py;
+            if (res.top && vy >= -1) {
+              vy = Math.min(0, vy * -0.2);
+              vx *= 0.9;
+              onGround = true;
+            } else {
+              vx *= -0.5;
+              vy *= -0.4;
+            }
+          }
+        }
+      }
+
+      const gY = groundHeight(px, playH, stage);
+      const half = pit.width / 2;
+      const rimY = groundHeight(pit.x, playH, stage);
+      const overlapsPit = ballOverlapsPitX(px, ballR, pit);
+
+      if (px > pit.x - half - ballR && px < pit.x + half + ballR) {
+        overPit = true;
+      }
+
+      const surface = pitSurfaceY(pit, px, playH, stage);
+      const bottomY = pitBottomY(pit, playH, stage);
+      const nearLip =
+        Math.abs(px - (pit.x - half)) < ballR + 4 || Math.abs(px - (pit.x + half)) < ballR + 4;
+
+      if (pit.scored) {
+        if (overlapsPit && surface !== null && py + ballR >= surface - 2) {
+          py = surface - ballR;
+          vy *= 0.15;
+          vx *= 0.7;
+          onGround = true;
+        }
+      } else if (overlapsPit && surface !== null) {
+        if (py + ballR >= surface - 8) {
+          const nearBottom = py + ballR >= bottomY - 28;
+          const settled =
+            nearBottom &&
+            Math.abs(vy) < 22 &&
+            Math.abs(vx) < 18;
+          if (settled) {
+            pit.scored = true;
+            vy = 0;
+            vx *= 0.15;
+            py = surface - ballR;
+            onGround = true;
+            clearFrames = STAGE_CLEAR_FRAMES;
+            playTipTopHoleIn();
+          } else {
+            py = surface - ballR;
+            vy *= -0.15;
+            vx *= 0.9;
+            onGround = true;
+          }
+        }
+      } else if (!overlapsPit && nearLip && py + ballR >= rimY - ballR * 0.5) {
+        const lip = px < pit.x ? pit.x - half : pit.x + half;
+        const nx = px < pit.x ? -1 : 1;
+        if (Math.abs(px - lip) < ballR + 6) {
+          px = lip + nx * (ballR + 2);
+          vx = nx * Math.max(2.5, Math.abs(vx) * 0.7);
+          vy = -Math.abs(vy) * 0.4 - 2;
+        }
+      }
+
+      if (!onGround && !overPit && py + ballR >= gY) {
+        py = gY - ballR;
+        vy *= -0.35;
+        vx *= 0.92;
+        if (Math.abs(vy) < 0.8 && Math.abs(vx) < 0.5) vy = 0;
+      }
+
+      if (py < ballR) {
+        py = ballR;
+        vy = Math.abs(vy) * 0.4;
+      }
+
+      if (py > playH + 80) {
+        finishRun(false);
+        return true;
+      }
+      return false;
+    };
+
     let raf = 0;
 
-    const loop = () => {
+    const loop = (now: number) => {
       if (!alive) return;
 
-      const now = performance.now();
-      const dt = Math.min(32, now - lastFrameTime);
+      const deltaMs = Math.min(50, now - lastFrameTime);
       lastFrameTime = now;
+      const dt = frameScale(deltaMs);
+      const { width, height, playH } = syncLayout();
+      const palette = paletteRef.current;
+      const p = palette.tiptop;
 
       for (let i = flapImpacts.length - 1; i >= 0; i--) {
-        flapImpacts[i].ageMs += dt;
+        flapImpacts[i].ageMs += deltaMs;
         if (flapImpacts[i].ageMs >= FLAP_IMPACT_TUNING.durationMs) flapImpacts.splice(i, 1);
       }
 
@@ -815,138 +1010,40 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
       const pit = currentPit();
       const ww = worldW();
 
+      let camX = renderCamX;
+      let renderPx = px;
+      let renderPy = py;
+
       if (clearFrames > 0) {
-        clearFrames--;
-        if (clearFrames === 0) advanceStage();
+        clearFrames -= dt;
+        if (clearFrames <= 0) advanceStage();
+        const targetCamX = Math.max(0, Math.min(ww - width, px - width * 0.38));
+        renderCamX += (targetCamX - renderCamX) * Math.min(1, 0.1 + dt * 0.12);
+        camX = renderCamX;
       } else {
-        vy += stage.gravity;
-        vx *= 0.996;
-        vy *= 0.9992;
-        px += vx;
-        py += vy;
-
-        if (px < ballR) {
-          px = ballR;
-          vx = Math.abs(vx) * 0.3;
+        physicsAccum += dt;
+        let steps = 0;
+        while (physicsAccum >= 1 && steps < MAX_PHYSICS_STEPS) {
+          prevPx = px;
+          prevPy = py;
+          if (stepPhysics(1)) return;
+          physicsAccum -= 1;
+          steps++;
         }
-        if (px > ww - ballR) px = ww - ballR;
+        if (steps >= MAX_PHYSICS_STEPS) physicsAccum = 0;
 
-        let onGround = false;
-        let overPit = false;
-
-        for (const obs of stage.obstacles) {
-          const oy = obstacleY(obs, playH, stage);
-          if (obs.kind === "stone") {
-            const cx = obs.x + obs.w / 2;
-            const cy = oy + obs.h / 2;
-            const cr = Math.min(obs.w, obs.h) / 2;
-            const dx = px - cx;
-            const dy = py - cy;
-            const dist = Math.hypot(dx, dy);
-            if (dist < ballR + cr) {
-              const nx = dx / (dist || 1);
-              const ny = dy / (dist || 1);
-              const overlap = ballR + cr - dist;
-              px += nx * overlap;
-              py += ny * overlap;
-              const dot = vx * nx + vy * ny;
-              if (dot < 0) {
-                vx -= nx * dot * 1.4;
-                vy -= ny * dot * 1.4;
-              }
-              vx *= 0.82;
-              vy *= 0.82;
-            }
-          } else {
-            const res = resolveCircleAabb(px, py, ballR, obs.x, oy, obs.w, obs.h);
-            if (res.hit) {
-              px = res.px;
-              py = res.py;
-              if (res.top && vy >= -1) {
-                vy = Math.min(0, vy * -0.2);
-                vx *= 0.9;
-                onGround = true;
-              } else {
-                vx *= -0.5;
-                vy *= -0.4;
-              }
-            }
-          }
+        if (physicsAccum > 0 && steps === 0) {
+          renderPx = px + vx * physicsAccum;
+          renderPy = py + vy * physicsAccum;
+        } else {
+          renderPx = renderLerp(prevPx, px, physicsAccum);
+          renderPy = renderLerp(prevPy, py, physicsAccum);
         }
 
-        const gY = groundHeight(px, playH, stage);
-
-        const half = pit.width / 2;
-        const rimY = groundHeight(pit.x, playH, stage);
-        const overlapsPit = ballOverlapsPitX(px, ballR, pit);
-
-        if (px > pit.x - half - ballR && px < pit.x + half + ballR) {
-          overPit = true;
-        }
-
-        const surface = pitSurfaceY(pit, px, playH, stage);
-        const bottomY = pitBottomY(pit, playH, stage);
-        const nearLip =
-          Math.abs(px - (pit.x - half)) < ballR + 4 || Math.abs(px - (pit.x + half)) < ballR + 4;
-
-        if (pit.scored) {
-          if (overlapsPit && surface !== null && py + ballR >= surface - 2) {
-            py = surface - ballR;
-            vy *= 0.15;
-            vx *= 0.7;
-            onGround = true;
-          }
-        } else if (overlapsPit && surface !== null) {
-          if (py + ballR >= surface - 8) {
-            const nearBottom = py + ballR >= bottomY - 28;
-            const settled =
-              nearBottom &&
-              Math.abs(vy) < 22 &&
-              Math.abs(vx) < 18;
-            if (settled) {
-              pit.scored = true;
-              vy = 0;
-              vx *= 0.15;
-              py = surface - ballR;
-              onGround = true;
-              clearFrames = STAGE_CLEAR_FRAMES;
-              playTipTopHoleIn();
-            } else {
-              py = surface - ballR;
-              vy *= -0.15;
-              vx *= 0.9;
-              onGround = true;
-            }
-          }
-        } else if (!overlapsPit && nearLip && py + ballR >= rimY - ballR * 0.5) {
-          const lip = px < pit.x ? pit.x - half : pit.x + half;
-          const nx = px < pit.x ? -1 : 1;
-          if (Math.abs(px - lip) < ballR + 6) {
-            px = lip + nx * (ballR + 2);
-            vx = nx * Math.max(2.5, Math.abs(vx) * 0.7);
-            vy = -Math.abs(vy) * 0.4 - 2;
-          }
-        }
-
-        if (!onGround && !overPit && py + ballR >= gY) {
-          py = gY - ballR;
-          vy *= -0.35;
-          vx *= 0.92;
-          if (Math.abs(vy) < 0.8 && Math.abs(vx) < 0.5) vy = 0;
-        }
-
-        if (py < ballR) {
-          py = ballR;
-          vy = Math.abs(vy) * 0.4;
-        }
-
-        if (py > playH + 80) {
-          finishRun(false);
-          return;
-        }
+        const targetCamX = Math.max(0, Math.min(ww - width, renderPx - width * 0.38));
+        renderCamX += (targetCamX - renderCamX) * Math.min(1, 0.1 + dt * 0.12);
+        camX = renderCamX;
       }
-
-      camX = Math.max(0, Math.min(ww - width, px - width * 0.38));
 
       const pal = themePals[stageIndex];
 
@@ -995,11 +1092,11 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
         }
       }
 
-      const bsx = px - camX;
-      const bsy = py;
+      const bsx = renderPx - camX;
+      const bsy = renderPy;
       ctx.fillStyle = "rgba(0,0,0,0.18)";
       ctx.beginPath();
-      ctx.ellipse(bsx + 2, groundHeight(px, playH, stage) + 3, ballR, ballR * 0.35, 0, 0, Math.PI * 2);
+      ctx.ellipse(bsx + 2, groundHeight(renderPx, playH, stage) + 3, ballR, ballR * 0.35, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = p.ball;
       ctx.beginPath();
@@ -1044,7 +1141,12 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
         ctx.textAlign = "left";
       }
 
-      const drawBtn = (b: typeof leftBtn, label: string, active: boolean) => {
+      const { left: leftBtn, right: rightBtn } = getButtons();
+      const drawBtn = (
+        b: { x: number; y: number; w: number; h: number },
+        label: string,
+        active: boolean,
+      ) => {
         ctx.fillStyle = active ? "rgba(92, 208, 168, 0.55)" : "rgba(255,255,255,0.18)";
         ctx.strokeStyle = active ? "#5cd0a8" : "rgba(255,255,255,0.35)";
         ctx.lineWidth = 2;
@@ -1074,7 +1176,7 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [width, height, onGameOver, palette]);
+  }, []);
 
   return (
     <canvas

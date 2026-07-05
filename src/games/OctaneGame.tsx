@@ -891,27 +891,69 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gasRef = useRef(false);
   const palette = useGamePalette();
-  const isDrag = config.mode === "drag";
-  const raceDistanceM = config.raceDistanceM;
+  const sizeRef = useRef({ width, height });
+  const onGameOverRef = useRef(onGameOver);
+  const paletteRef = useRef(palette);
+  const configRef = useRef(config);
+
+  sizeRef.current = { width, height };
+  onGameOverRef.current = onGameOver;
+  paletteRef.current = palette;
+  configRef.current = config;
 
   useEffect(() => {
-    const p = palette.octane;
+    const sessionConfig = configRef.current;
+    const sessionIsDrag = sessionConfig.mode === "drag";
+    const sessionRaceDistanceM = sessionConfig.raceDistanceM;
+    const p = paletteRef.current.octane;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    ctx.scale(dpr, dpr);
+    let canvasW = 0;
+    let canvasH = 0;
 
-    const sceneH = height * 0.58;
-    const dashY = sceneH;
-    const dashH = height - sceneH;
-    const roadY = sceneH * 0.72;
-    const roadH = sceneH - roadY;
-    const carX = width * 0.06;
+    const resizeCanvas = (w: number, h: number) => {
+      if (w === canvasW && h === canvasH) return;
+      canvasW = w;
+      canvasH = h;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    const getLayout = () => {
+      const { width: w, height: h } = sizeRef.current;
+      const sceneH = h * 0.58;
+      const dashY = sceneH;
+      const dashH = h - sceneH;
+      const roadY = sceneH * 0.72;
+      const roadH = sceneH - roadY;
+      return {
+        width: w,
+        height: h,
+        sceneH,
+        dashY,
+        dashH,
+        roadY,
+        roadH,
+        carX: w * 0.06,
+        clutchBtn: { x: 14, y: h - 62, w: 40, h: 40 },
+        brakeBtn: { x: 60, y: h - 62, w: 40, h: 40 },
+        gasBtn: { x: w - 62, y: h - 98, w: 48, h: 76 },
+      };
+    };
+
+    const syncLayout = () => {
+      const layout = getLayout();
+      resizeCanvas(layout.width, layout.height);
+      if (carReady) sizeCar();
+      return layout;
+    };
+
+    resizeCanvas(sizeRef.current.width, sizeRef.current.height);
 
     const carImg = new Image();
     const frontWheelImg = new Image();
@@ -933,8 +975,9 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
     let wheelsReady = false;
     let carDrawW = 100;
     let carDrawH = 36;
-    let carY = roadY + roadH * 0.52 - carDrawH;
+    let carY = 0;
     const sizeCar = () => {
+      const { roadY, roadH } = getLayout();
       carDrawH = roadH * CAR_HEIGHT_RATIO;
       carDrawW = (carImg.naturalWidth / carImg.naturalHeight) * carDrawH;
       carY = roadY + roadH * 0.52 - carDrawH;
@@ -955,11 +998,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
 
     const isNight = Math.random() < NIGHT_RUN_CHANCE;
 
-    const clutchBtn = { x: 14, y: height - 62, w: 40, h: 40 };
-    const brakeBtn = { x: 60, y: height - 62, w: 40, h: 40 };
-    const gasBtn = { x: width - 62, y: height - 98, w: 48, h: 76 };
-
-    const hit = (x: number, y: number, b: typeof gasBtn) =>
+    const hit = (x: number, y: number, b: { x: number; y: number; w: number; h: number }) =>
       x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
 
     let rpm = 0;
@@ -1013,6 +1052,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
       e.preventDefault();
       unlockGameAudio();
       preloadOctaneAudio();
+      const { clutchBtn, brakeBtn, gasBtn } = getLayout();
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -1027,6 +1067,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
       }
     };
     const onPointerUp = (e: PointerEvent) => {
+      const { clutchBtn, brakeBtn, gasBtn } = getLayout();
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -1075,6 +1116,21 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
       last = now;
       time += dt;
 
+      const {
+        width,
+        height,
+        sceneH,
+        dashY,
+        dashH,
+        roadY,
+        roadH,
+        carX,
+        clutchBtn,
+        brakeBtn,
+        gasBtn,
+      } = syncLayout();
+      const palette = paletteRef.current;
+
       if (!finished) {
         if (gasRef.current) {
           rpm += rpmRiseRate(gear) * dt;
@@ -1101,18 +1157,18 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
         scrollPx += mph * 0.22 * dt;
         wheelAngle += (mph / WHEEL_SPIN_RATE) * dt;
 
-        if (isDrag && distance >= raceDistanceM) {
+        if (sessionIsDrag && distance >= sessionRaceDistanceM) {
           finished = true;
           const elapsedMs = performance.now() - raceStartTime;
-          const score = scoreOctaneDrag(raceDistanceM, elapsedMs, topMph);
+          const score = scoreOctaneDrag(sessionRaceDistanceM, elapsedMs, topMph);
           setTimeout(
             () =>
-              onGameOver({
+              onGameOverRef.current({
                 score,
                 title: "Finish!",
-                leaderboardKey: `octane:${raceDistanceM}`,
+                leaderboardKey: `octane:${sessionRaceDistanceM}`,
                 stats: [
-                  { label: "Distance", value: config.raceLabel },
+                  { label: "Distance", value: sessionConfig.raceLabel },
                   { label: "Top speed", value: `${Math.round(topMph)} mph` },
                   { label: "Time", value: formatRaceTime(elapsedMs) },
                 ],
@@ -1122,7 +1178,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
         }
       }
 
-      if (shiftFlash > 0) shiftFlash--;
+      if (shiftFlash > 0) shiftFlash -= dt;
 
       engineSound?.update(rpm, gasRef.current, gear);
 
@@ -1278,8 +1334,8 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
       ctx.fillStyle = tick;
       ctx.font = "bold 11px Nunito, sans-serif";
       ctx.fillText(`${Math.round(distance)}m`, 14, dashY + 16);
-      if (isDrag) {
-        ctx.fillText(`${raceDistanceM}m`, width - 58, dashY + 16);
+      if (sessionIsDrag) {
+        ctx.fillText(`${sessionRaceDistanceM}m`, width - 58, dashY + 16);
       } else {
         ctx.textAlign = "right";
         ctx.fillText("Free ride", width - 14, dashY + 16);
@@ -1334,7 +1390,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [width, height, config, onGameOver, palette, isDrag, raceDistanceM]);
+  }, []);
 
   return (
     <canvas

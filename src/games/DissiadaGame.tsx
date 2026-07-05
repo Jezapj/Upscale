@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import { useGamePalette } from "./GamePaletteContext";
 import { playDissiadaNote, unlockGameAudio } from "./gameAudio";
 import { DISSIADA_COMBO_VISUALS } from "./gameSoundConfigs";
+import { frameScale } from "./gameLoop";
+
 interface Props {
   width: number;
   height: number;
@@ -24,33 +26,69 @@ interface TapFx {
   fullFlash: boolean;
 }
 
+const LANES = 4;
+const TILE_H = 52;
+const MISS_PADDING = 14;
+const LANE_KEYS = ["D", "F", "J", "K"];
+
 /** Piano tiles with hit zone guide, lane highlights, and tight timing. */
 export function DissiadaGame({ width, height, onGameOver }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const palette = useGamePalette();
+  const sizeRef = useRef({ width, height });
+  const onGameOverRef = useRef(onGameOver);
+  const paletteRef = useRef(palette);
+
+  sizeRef.current = { width, height };
+  onGameOverRef.current = onGameOver;
+  paletteRef.current = palette;
 
   useEffect(() => {
-    const p = palette.dissiada;
-    const laneColors = p.laneColors;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    ctx.scale(dpr, dpr);
+    let canvasW = 0;
+    let canvasH = 0;
+    let lastLayoutHitY = 0;
 
-    const lanes = 4;
-    const laneW = width / lanes;
-    const hitY = height - Math.max(72, height * 0.14);
-    const timingScale = Math.min(1.2, Math.max(1, 520 / height));
-    const perfectH = 22 * timingScale;
-    const goodH = 50 * timingScale;
-    const missPadding = 14;
-    const tileH = 52;
-    const isPortrait = height > width;
+    const resizeCanvas = (w: number, h: number) => {
+      if (w === canvasW && h === canvasH) return;
+      canvasW = w;
+      canvasH = h;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    const getLayout = () => {
+      const { width: w, height: h } = sizeRef.current;
+      const timingScale = Math.min(1.2, Math.max(1, 520 / h));
+      return {
+        width: w,
+        height: h,
+        laneW: w / LANES,
+        hitY: h - Math.max(72, h * 0.14),
+        perfectH: 22 * timingScale,
+        goodH: 50 * timingScale,
+        isPortrait: h > w,
+      };
+    };
+
+    const syncLayout = () => {
+      const layout = getLayout();
+      resizeCanvas(layout.width, layout.height);
+      if (lastLayoutHitY > 0 && layout.hitY !== lastLayoutHitY) {
+        const scale = layout.hitY / lastLayoutHitY;
+        for (const t of tiles) {
+          if (!t.hit) t.y *= scale;
+        }
+      }
+      lastLayoutHitY = layout.hitY;
+      return layout;
+    };
 
     let tiles: Tile[] = [];
     let score = 0;
@@ -61,13 +99,16 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
     let laneFlash = [0, 0, 0, 0];
     const tapFx: TapFx[] = [];
 
-    const laneKeys = ["D", "F", "J", "K"];
-
-    const judgeTile = (lane: number): TapFx["quality"] | null => {
+    const judgeTile = (
+      lane: number,
+      hitY: number,
+      perfectH: number,
+      goodH: number,
+    ): TapFx["quality"] | null => {
       let best: { tile: Tile; dist: number } | null = null;
       for (const t of tiles) {
         if (t.lane !== lane || t.hit || t.missed) continue;
-        const tileCenter = t.y + tileH / 2;
+        const tileCenter = t.y + TILE_H / 2;
         const dist = Math.abs(tileCenter - hitY);
         if (!best || dist < best.dist) best = { tile: t, dist: dist };
       }
@@ -78,10 +119,11 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
 
     const tapLane = (lane: number) => {
       if (!alive) return;
+      const { hitY, perfectH, goodH } = getLayout();
       unlockGameAudio();
       laneFlash[lane] = 14;
 
-      const quality = judgeTile(lane);
+      const quality = judgeTile(lane, hitY, perfectH, goodH);
       if (!quality) {
         playDissiadaNote(lane, "miss");
         tapFx.push({
@@ -94,13 +136,13 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
         });
         combo = 0;
         alive = false;
-        onGameOver(score);
+        onGameOverRef.current(score);
         return;
       }
 
       for (const t of tiles) {
         if (t.lane !== lane || t.hit || t.missed) continue;
-        const tileCenter = t.y + tileH / 2;
+        const tileCenter = t.y + TILE_H / 2;
         const dist = Math.abs(tileCenter - hitY);
         if (dist <= goodH) {
           t.hit = true;
@@ -134,9 +176,10 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
     };
 
     const onPointer = (e: PointerEvent) => {
+      const { laneW } = getLayout();
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
-      tapLane(Math.min(lanes - 1, Math.max(0, Math.floor(x / laneW))));
+      tapLane(Math.min(LANES - 1, Math.max(0, Math.floor(x / laneW))));
     };
     const onKey = (e: KeyboardEvent) => {
       const map: Record<string, number> = { KeyD: 0, KeyF: 1, KeyJ: 2, KeyK: 3 };
@@ -149,47 +192,53 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
     window.addEventListener("keydown", onKey);
 
     let raf = 0;
+    let lastFrame = performance.now();
 
-    const loop = () => {
+    const loop = (now: number) => {
       if (!alive) return;
 
-      spawnTimer++;
+      const dt = frameScale(now - lastFrame);
+      lastFrame = now;
+      const { width, height, laneW, hitY, perfectH, goodH, isPortrait } = syncLayout();
+      const p = paletteRef.current.dissiada;
+      const laneColors = p.laneColors;
+      const pal = paletteRef.current;
+
+      spawnTimer += dt;
       const spawnRate = Math.max(14, 32 - Math.floor(score / 8));
       if (spawnTimer >= spawnRate) {
-        spawnTimer = 0;
-        const lane = Math.floor(Math.random() * lanes);
-        tiles.push({ lane, y: -tileH - 10, hit: false, missed: false });
+        spawnTimer -= spawnRate;
+        const lane = Math.floor(Math.random() * LANES);
+        tiles.push({ lane, y: -TILE_H - 10, hit: false, missed: false });
       }
 
       for (const t of tiles) {
-        if (!t.hit && !t.missed) t.y += speed;
+        if (!t.hit && !t.missed) t.y += speed * dt;
       }
 
       for (const t of tiles) {
-        if (!t.hit && !t.missed && t.y > hitY + goodH + missPadding) {
+        if (!t.hit && !t.missed && t.y > hitY + goodH + MISS_PADDING) {
           t.missed = true;
           combo = 0;
           alive = false;
-          onGameOver(score);
+          onGameOverRef.current(score);
           return;
         }
       }
       tiles = tiles.filter((t) => t.y < height + 40 && !t.missed);
 
-      for (let i = 0; i < lanes; i++) {
-        if (laneFlash[i] > 0) laneFlash[i]--;
+      for (let i = 0; i < LANES; i++) {
+        if (laneFlash[i] > 0) laneFlash[i] = Math.max(0, laneFlash[i] - dt);
       }
       for (let i = tapFx.length - 1; i >= 0; i--) {
-        tapFx[i].t--;
+        tapFx[i].t -= dt;
         if (tapFx[i].t <= 0) tapFx.splice(i, 1);
       }
 
-      // Background
       ctx.fillStyle = p.bg;
       ctx.fillRect(0, 0, width, height);
 
-      // Lanes
-      for (let i = 0; i < lanes; i++) {
+      for (let i = 0; i < LANES; i++) {
         const x = i * laneW;
         const flash = laneFlash[i] / 14;
         ctx.fillStyle =
@@ -206,23 +255,20 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
         }
       }
 
-      // Lane dividers
       ctx.strokeStyle = p.divider;
       ctx.lineWidth = 1;
-      for (let i = 1; i < lanes; i++) {
+      for (let i = 1; i < LANES; i++) {
         ctx.beginPath();
         ctx.moveTo(i * laneW, 0);
         ctx.lineTo(i * laneW, height);
         ctx.stroke();
       }
 
-      // Hit zone guide
       const guideTop = hitY - goodH;
       const guideBot = hitY + goodH;
       ctx.fillStyle = p.guideZone;
       ctx.fillRect(0, guideTop, width, guideBot - guideTop);
 
-      // Perfect zone (bright center line)
       ctx.fillStyle = p.perfectZone;
       ctx.fillRect(0, hitY - perfectH, width, perfectH * 2);
       ctx.strokeStyle = p.hitLine;
@@ -234,21 +280,19 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Lane key labels at hit line
       ctx.font = "bold 11px Nunito, sans-serif";
       ctx.textAlign = "center";
-      for (let i = 0; i < lanes; i++) {
+      for (let i = 0; i < LANES; i++) {
         ctx.fillStyle = p.label;
-        ctx.fillText(laneKeys[i], i * laneW + laneW / 2, hitY + goodH + 22);
+        ctx.fillText(LANE_KEYS[i], i * laneW + laneW / 2, hitY + goodH + 22);
       }
       ctx.textAlign = "left";
 
-      // Tiles
       for (const t of tiles) {
         if (t.hit || t.missed) continue;
         const x = t.lane * laneW + 8;
         const w = laneW - 16;
-        const dist = Math.abs(t.y + tileH / 2 - hitY);
+        const dist = Math.abs(t.y + TILE_H / 2 - hitY);
         const glow = dist < goodH ? 1 - dist / goodH : 0;
 
         if (glow > 0) {
@@ -256,24 +300,23 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
           ctx.shadowBlur = 12 * glow;
         }
 
-        const grad = ctx.createLinearGradient(x, t.y, x, t.y + tileH);
+        const grad = ctx.createLinearGradient(x, t.y, x, t.y + TILE_H);
         grad.addColorStop(0, laneColors[t.lane]);
         grad.addColorStop(1, laneColors[t.lane] + "aa");
         ctx.fillStyle = grad;
-        ctx.fillRect(x, t.y, w, tileH - 4);
+        ctx.fillRect(x, t.y, w, TILE_H - 4);
 
         ctx.shadowBlur = 0;
         ctx.fillStyle = "rgba(255,255,255,0.25)";
         ctx.fillRect(x + 4, t.y + 4, w - 8, 6);
       }
 
-      // Tap feedback
       for (const fx of tapFx) {
         const cx = fx.lane * laneW + laneW / 2;
         const tileX = fx.lane * laneW + 8;
         const tileW = laneW - 16;
-        const tileDrawH = tileH - 4;
-        const idealTileY = hitY - tileH / 2;
+        const tileDrawH = TILE_H - 4;
+        const idealTileY = hitY - TILE_H / 2;
         const progress = 1 - fx.t / fx.maxT;
 
         if (fx.edgeHighlight || fx.fullFlash) {
@@ -315,12 +358,11 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
         }
       }
 
-      // HUD — center combo on portrait so it stays visible
       const hudX = isPortrait ? width / 2 : 16;
       const scoreY = isPortrait ? 30 : 36;
       const comboY = isPortrait ? 54 : 58;
       ctx.textAlign = isPortrait ? "center" : "left";
-      ctx.fillStyle = palette.isDark ? "#fff" : palette.tiptop.hud;
+      ctx.fillStyle = pal.isDark ? "#fff" : pal.tiptop.hud;
       ctx.font = "bold 22px Nunito, sans-serif";
       ctx.fillText(String(score), hudX, scoreY);
       if (combo >= 1) {
@@ -339,7 +381,7 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
       canvas.removeEventListener("pointerdown", onPointer);
       window.removeEventListener("keydown", onKey);
     };
-  }, [width, height, onGameOver, palette]);
+  }, []);
 
   return (
     <canvas
