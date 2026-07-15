@@ -75,6 +75,20 @@ const FLAP_IMPACT_TUNING = {
   speedFlatness: 1.0,
 };
 
+/** White motion trail behind the ball. */
+const BALL_TRAIL_TUNING = {
+  maxPoints: 20,
+  minDist: 2.2,
+  minSpeed: 1.2,
+  alpha: 0.62,
+  width: 7,
+};
+
+interface TrailPoint {
+  x: number;
+  y: number;
+}
+
 interface FlapImpact {
   /** Effect direction (flap force, flattened toward horizontal by speed). */
   forceX: number;
@@ -140,6 +154,63 @@ function drawFlapImpact(
   ctx.lineTo(contactX + tx * streakLen, contactY + ty * streakLen);
   ctx.stroke();
   ctx.restore();
+}
+
+function drawBallTrail(
+  ctx: CanvasRenderingContext2D,
+  trail: readonly TrailPoint[],
+  camX: number,
+  ballR: number,
+  tuning: typeof BALL_TRAIL_TUNING,
+) {
+  if (trail.length < 2) return;
+
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  for (let i = 1; i < trail.length; i++) {
+    const fade = i / trail.length;
+    const alpha = tuning.alpha * fade * fade;
+    if (alpha <= 0.02) continue;
+
+    const p0 = trail[i - 1];
+    const p1 = trail[i];
+    ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+    ctx.lineWidth = ballR * 0.25 + tuning.width * fade;
+    ctx.beginPath();
+    ctx.moveTo(p0.x - camX, p0.y);
+    ctx.lineTo(p1.x - camX, p1.y);
+    ctx.stroke();
+  }
+
+  for (let i = 0; i < trail.length; i++) {
+    const fade = (i + 1) / trail.length;
+    const alpha = tuning.alpha * fade * 0.45;
+    if (alpha <= 0.02) continue;
+
+    const p = trail[i];
+    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.beginPath();
+    ctx.arc(p.x - camX, p.y, ballR * (0.22 + 0.42 * fade), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function updateBallTrail(
+  trail: TrailPoint[],
+  x: number,
+  y: number,
+  speed: number,
+  tuning: typeof BALL_TRAIL_TUNING,
+) {
+  if (speed < tuning.minSpeed) return;
+  const last = trail[trail.length - 1];
+  if (last && Math.hypot(x - last.x, y - last.y) < tuning.minDist) return;
+  trail.push({ x, y });
+  while (trail.length > tuning.maxPoints) trail.shift();
 }
 
 const STAGE_THEMES: StageTheme[] = ["forest", "beach", "mountain", "space"];
@@ -715,6 +786,7 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
     let alive = true;
     let renderCamX = 0;
     const flapImpacts: FlapImpact[] = [];
+    const ballTrail: TrailPoint[] = [];
     let lastFrameTime = performance.now();
     let physicsAccum = 0;
     let prevPx = px;
@@ -731,6 +803,7 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
       vx = 0;
       vy = 0;
       renderCamX = 0;
+      ballTrail.length = 0;
     };
 
     const finishRun = (cleared: boolean) => {
@@ -870,9 +943,12 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
 
       if (px < ballR) {
         px = ballR;
-        vx = Math.abs(vx) * 0.3;
+        if (vx < 0) vx = -vx * 0.3;
       }
-      if (px > ww - ballR) px = ww - ballR;
+      if (px > ww - ballR) {
+        px = ww - ballR;
+        if (vx > 0) vx = -vx * 0.3;
+      }
 
       let onGround = false;
       let overPit = false;
@@ -1045,6 +1121,8 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
         camX = renderCamX;
       }
 
+      updateBallTrail(ballTrail, renderPx, renderPy, Math.hypot(vx, vy), BALL_TRAIL_TUNING);
+
       const pal = themePals[stageIndex];
 
       drawThemeBackdrop(ctx, width, playH, camX, stage);
@@ -1094,6 +1172,7 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
 
       const bsx = renderPx - camX;
       const bsy = renderPy;
+      drawBallTrail(ctx, ballTrail, camX, ballR, BALL_TRAIL_TUNING);
       ctx.fillStyle = "rgba(0,0,0,0.18)";
       ctx.beginPath();
       ctx.ellipse(bsx + 2, groundHeight(renderPx, playH, stage) + 3, ballR, ballR * 0.35, 0, 0, Math.PI * 2);

@@ -44,6 +44,33 @@ function scheduleGainEnvelope(
   gain.gain.setValueAtTime(0, t0 + config.duration);
 }
 
+/** Fade in → hold → fade out; returns when the voice can safely stop. */
+function scheduleFadedGainEnvelope(
+  audioCtx: AudioContext,
+  gain: GainNode,
+  config: SoundTiming,
+  absoluteT0?: number,
+): number {
+  const t0 = absoluteT0 ?? audioCtx.currentTime + config.startTime;
+  const fadeIn = Math.max(0.004, config.fadeIn ?? 0.008);
+  const fadeOut = Math.max(0.012, config.fadeOut ?? 0.05);
+  const intensity = config.intensity ?? 1;
+  const peak = Math.max(0.0001, config.volume * intensity);
+  const voiceEnd = t0 + config.duration;
+  const fadeOutStart = Math.max(t0 + fadeIn, voiceEnd - fadeOut);
+  const stopAt = voiceEnd + 0.03;
+
+  gain.gain.cancelScheduledValues(t0);
+  gain.gain.setValueAtTime(0, t0);
+  gain.gain.linearRampToValueAtTime(peak, t0 + fadeIn);
+  if (fadeOutStart > t0 + fadeIn) {
+    gain.gain.setValueAtTime(peak, fadeOutStart);
+  }
+  gain.gain.linearRampToValueAtTime(0, voiceEnd);
+  gain.gain.setValueAtTime(0, stopAt);
+  return stopAt;
+}
+
 function makeNoiseBuffer(audioCtx: AudioContext, seconds = 1): AudioBuffer {
   const len = Math.ceil(audioCtx.sampleRate * seconds);
   const buffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
@@ -298,22 +325,28 @@ function scheduleTipTopFlapHarmonic(
 ) {
   const t0 = flapT0 + config.startTime;
   const hz = baseHz * 2 ** (semitones / 12);
+  const fadeIn = config.fadeIn ?? 0.008;
+  const fadeOut = config.fadeOut ?? 0.05;
+  const toneEnd = Math.max(t0 + fadeIn, t0 + config.duration - fadeOut);
+
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
+  gain.gain.value = 0;
   osc.type = "sine";
   osc.frequency.setValueAtTime(hz, t0);
-  osc.frequency.exponentialRampToValueAtTime(hz * 0.9, t0 + config.endTime - config.startTime);
+  osc.frequency.exponentialRampToValueAtTime(hz * 0.9, toneEnd);
   osc.connect(gain);
   gain.connect(audioCtx.destination);
 
-  const peak = Math.max(0.0001, config.volume);
-  gain.gain.setValueAtTime(0.0001, t0);
-  gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.004);
-  gain.gain.exponentialRampToValueAtTime(0.0001, flapT0 + config.endTime);
-  gain.gain.setValueAtTime(0, flapT0 + config.duration);
+  const stopAt = scheduleFadedGainEnvelope(
+    audioCtx,
+    gain,
+    { ...config, startTime: 0 },
+    t0,
+  );
 
   osc.start(t0);
-  osc.stop(flapT0 + config.duration);
+  osc.stop(stopAt);
 }
 
 export function playTipTopFlap() {
@@ -331,30 +364,32 @@ export function playTipTopFlap() {
   noiseFilter.frequency.setValueAtTime(noiseHz, t0);
   noiseFilter.Q.value = 0.9;
   const noiseGain = audioCtx.createGain();
+  noiseGain.gain.value = 0;
   noise.connect(noiseFilter);
   noiseFilter.connect(noiseGain);
   noiseGain.connect(audioCtx.destination);
-  scheduleGainEnvelope(audioCtx, noiseGain, {
+  const noiseStop = scheduleFadedGainEnvelope(audioCtx, noiseGain, {
     ...config,
     volume: config.volume * 0.85,
   });
 
   const thump = audioCtx.createOscillator();
   const thumpGain = audioCtx.createGain();
+  thumpGain.gain.value = 0;
   thump.type = "sine";
   thump.frequency.setValueAtTime(baseHz, t0);
   thump.frequency.exponentialRampToValueAtTime(baseHz * 0.38, t0 + config.endTime);
   thump.connect(thumpGain);
   thumpGain.connect(audioCtx.destination);
-  scheduleGainEnvelope(audioCtx, thumpGain, {
+  const thumpStop = scheduleFadedGainEnvelope(audioCtx, thumpGain, {
     ...config,
     volume: config.volume * 0.55,
   });
 
   noise.start(t0);
-  noise.stop(t0 + config.duration);
+  noise.stop(noiseStop);
   thump.start(t0);
-  thump.stop(t0 + config.duration);
+  thump.stop(thumpStop);
 
   const harmonicConfigs = [TIPTOP_SOUND.flapHarmonic1, TIPTOP_SOUND.flapHarmonic2];
   TIPTOP_FLAP_TONE.harmonics.forEach((harmonic, i) => {

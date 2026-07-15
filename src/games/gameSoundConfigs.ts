@@ -8,6 +8,12 @@ export interface SoundTiming {
   endTime: number;
   /** Playback length for one-shots; loops use startTime→endTime */
   duration: number;
+  /** Fade-in length in seconds (silence → peak). */
+  fadeIn?: number;
+  /** Fade-out length in seconds (peak → silence) at end of `duration`. */
+  fadeOut?: number;
+  /** Peak level multiplier 0–1. */
+  intensity?: number;
 }
 
 /** Sample file + clip trim points */
@@ -60,21 +66,46 @@ export const DISSIADA_NOTE_HZ = [261.63, 293.66, 349.23, 392.0] as const;
 
 /** TipTop — flap thump and hole-in-one */
 export const TIPTOP_SOUND = {
-  flap: { volume: 0.88, startTime: 0, endTime: 0.06, duration: 0.09 },
+  flap: {
+    volume: 0.94,
+    startTime: 0,
+    endTime: 0.1,
+    duration: 0.1,
+    fadeIn: 0.012,
+    fadeOut: 0.09,
+    intensity: 0.1,
+  },
   /** First flap harmonic — delay is seconds after the flap attack. */
-  flapHarmonic1: { volume: 0.34, startTime: 0.05, endTime: 0.09, duration: 0.1 },
+  flapHarmonic1: {
+    volume: 0.3,
+    startTime: 0.05,
+    endTime: 0.5,
+    duration: 0.16,
+    fadeIn: 0.028,
+    fadeOut: 0.11,
+    intensity: 1,
+  },
   /** Second flap harmonic — delay is seconds after the flap attack. */
-  flapHarmonic2: { volume: 0.26, startTime: 0.1, endTime: 0.13, duration: 0.14 },
+  flapHarmonic2: {
+    volume: 0.76,
+    startTime: 0.1,
+    endTime: 0.13,
+    duration: 0.1,
+    fadeIn: 0.022,
+    fadeOut: 0.085,
+    intensity: 0.88,
+  },
   holeIn: { volume: 0.62, startTime: 0, endTime: 0.52, duration: 0.52 },
 } as const satisfies Record<string, SoundTiming>;
 
 /** TipTop flap base pitch (Hz) and harmonic intervals above base. */
 export const TIPTOP_FLAP_TONE = {
-  baseHz: 290,
-  noiseHz: 640,
+  baseHz: 190,
+  noiseHz: 1240,
   harmonics: [
-    { semitones: 7 },
+    { semitones: 9 },
     { semitones: 12 },
+    
   ],
 } as const;
 
