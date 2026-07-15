@@ -2,6 +2,7 @@ import {
   DISSIADA_COMBO_HARMONICS,
   DISSIADA_NOTE_HZ,
   DISSIADA_SOUND,
+  type DissiadaComboHarmonic,
   OCTANE_REV_GEAR_PITCH,
   OCTANE_REDLINE,
   OCTANE_IDLE_MIX,
@@ -181,12 +182,25 @@ function scheduleDissiadaVoice(
   osc.stop(t0 + config.duration);
 }
 
+function resolveDissiadaHarmonicTiming(
+  harmonic: DissiadaComboHarmonic,
+): SoundTiming {
+  const base = DISSIADA_SOUND.harmonic;
+  return {
+    ...base,
+    startTime: harmonic.startTime ?? base.startTime,
+    endTime: harmonic.endTime ?? base.endTime,
+    duration: harmonic.duration ?? base.duration,
+  };
+}
+
 function scheduleDissiadaHarmonic(
   audioCtx: AudioContext,
   hz: number,
   volumeScale: number,
+  harmonic: DissiadaComboHarmonic,
 ) {
-  const config = DISSIADA_SOUND.harmonic;
+  const config = resolveDissiadaHarmonicTiming(harmonic);
   const chorus = DISSIADA_SOUND.harmonicChorus;
   const t0 = audioCtx.currentTime + config.startTime;
   const bus = getDissiadaBus(audioCtx);
@@ -265,6 +279,7 @@ export function playDissiadaNote(
       audioCtx,
       hz * semitoneRatio(harmonic.semitones),
       harmonicVolume * loadScale,
+      harmonic,
     );
   }
 }

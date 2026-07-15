@@ -369,16 +369,27 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
         ctx.stroke();
         ctx.globalAlpha = 1;
         if (fx.quality !== "miss") {
-          ctx.fillStyle = color;
-          ctx.font = "bold 13px Nunito, sans-serif";
-          ctx.textAlign = "center";
           const label =
             fx.quality === "perfect"
               ? "PERFECT"
               : fx.quality === "good"
                 ? "GOOD"
                 : "OK";
-          ctx.fillText(label, cx, hitY - 36);
+          const labelY = hitY - 36;
+          const outline = 2;
+          ctx.font = "800 30px Nunito, sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillStyle = `rgba(255,255,255,${alpha * 0.95})`;
+          for (let ox = -outline; ox <= outline; ox++) {
+            for (let oy = -outline; oy <= outline; oy++) {
+              if (ox === 0 && oy === 0) continue;
+              ctx.fillText(label, cx + ox, labelY + oy);
+            }
+          }
+          ctx.fillStyle = color;
+          ctx.globalAlpha = alpha;
+          ctx.fillText(label, cx, labelY);
+          ctx.globalAlpha = 1;
           ctx.textAlign = "left";
         }
       }
