@@ -3,8 +3,10 @@ import { useGamePalette } from "./GamePaletteContext";
 import type { OctaneConfig } from "./octaneConfig";
 import { formatRaceTime, scoreOctaneDrag, type GameResult } from "./gameResult";
 import {
+  createOctaneBrakeSound,
   createOctaneEngineSound,
   playOctaneBadShift,
+  playOctaneBrakeChirp,
   playOctaneNitroPerfect,
   playOctaneRevShift,
   preloadOctaneAudio,
@@ -49,6 +51,311 @@ const BG_EXTEND_DOWN = 0.4;
 const NIGHT_RUN_CHANCE = 0.34;
 /** Car height as a fraction of road band height. */
 const CAR_HEIGHT_RATIO = 0.92;
+
+/** Perfect-shift speed-boost lunge — quick snap right, slow settle back with bounce. */
+const BOOST_LUNGE_TUNING = {
+  /** Animation length (60fps frames, scaled by dt). */
+  duration: 52,
+  /** Peak horizontal nudge to the right (px). */
+  maxX: 34,
+  /** Vertical bounce amplitude during the return (px). */
+  bounceY: 8,
+  /** Fraction of the animation spent lunging right (rest is return). */
+  lungeOutFrac: 0.2,
+  /** MPH at/above which the shift lunge starts fading. */
+  speedFadeStart: 35,
+  /** MPH where the lunge reaches minimum intensity. */
+  speedFadeEnd: 190,
+  /** Floor intensity at very high speed (0–1). */
+  minIntensity: 0.28,
+  /** Gas-pedal animation length (60fps frames, scaled by dt). */
+  launchDuration: 64,
+  /** Gas-pedal peak horizontal nudge to the right (px). */
+  launchMaxX: 48,
+  /** Gas-pedal lunge-out phase (fraction of launchDuration). */
+  launchLungeOutFrac: 0.24,
+  /** Max wheelie pitch on gas (radians, nose-up). */
+  launchMaxPitch: 0.11,
+  /** Gas animation phase when the wheelie peaks. */
+  launchWheeliePeak: 0.3,
+  /** Gas animation phase when the front wheels are back on the ground. */
+  launchWheelieLand: 0.58,
+  /** Brake-pedal animation length (60fps frames, scaled by dt). */
+  brakeDuration: 64,
+  /** Brake-pedal peak backward nudge (px, applied as negative X). */
+  brakeMaxX: 42,
+  /** Brake-pedal lunge-out phase (fraction of brakeDuration). */
+  brakeLungeOutFrac: 0.24,
+  /** Max stoppie pitch on brake (radians, rear-up around front axle). */
+  brakeMaxPitch: 0.1,
+  /** Brake animation phase when the stoppie peaks. */
+  brakeStoppiePeak: 0.3,
+  /** Brake animation phase when the rear wheels are back on the ground. */
+  brakeStoppieLand: 0.58,
+  /** Minimum MPH to start / hold the brake stoppie. */
+  brakeMinMph: 80,
+  /** Frames to ease into the held stoppie pose. */
+  brakeEngageDuration: 14,
+  /** Frames to settle back after brake release or dropping below brakeMinMph. */
+  brakeReleaseDuration: 38,
+  /** Below this MPH, gas uses burnout bounce instead of wheelie. */
+  burnoutMaxMph: 24.5,
+  /** Once exceeded, burnout is disabled for the rest of the run (even back at 0). */
+  burnoutDisableMph: 30,
+  /** Frames until burnout oscillation fades out (60fps baseline). */
+  burnoutDecayDuration: 2000,
+  /** Peak rear lift pitch at burnout start (radians, front-axle pivot). */
+  burnoutPitch: 0.05,
+  /** Starting oscillation speed (radians/frame). */
+  burnoutStartFreq: 0.05,
+  /** Oscillation speed ramp per frame. */
+  burnoutFreqRamp: 0.001,
+  /** Burnout side-to-side shake at start (px). */
+  burnoutShakeX: 300,
+  /** Extra rear-wheel spin rate during burnout (rad/frame at 60fps). */
+  burnoutWheelSpin: 1.15,
+} as const;
+
+type BoostLungeKind = "shift" | "gas";
+
+interface CarPoseEffect {
+  x: number;
+  y: number;
+  pitch: number;
+  pivot: "rear" | "front";
+}
+
+function boostLungeIntensity(mph: number): number {
+  const { speedFadeStart, speedFadeEnd, minIntensity } = BOOST_LUNGE_TUNING;
+  if (mph <= speedFadeStart) return 1;
+  if (mph >= speedFadeEnd) return minIntensity;
+  const t = (mph - speedFadeStart) / (speedFadeEnd - speedFadeStart);
+  return 1 - t * (1 - minIntensity);
+}
+
+/** Gas wheelie — full at low speed, fades out as speed rises. */
+function gasWheelieIntensity(mph: number): number {
+  return boostLungeIntensity(mph);
+}
+
+/** Brake stoppie — weak at low speed, full at high speed. */
+function brakeStoppieIntensity(mph: number): number {
+  const { speedFadeStart, speedFadeEnd, minIntensity } = BOOST_LUNGE_TUNING;
+  if (mph <= speedFadeStart) return minIntensity;
+  if (mph >= speedFadeEnd) return 1;
+  const t = (mph - speedFadeStart) / (speedFadeEnd - speedFadeStart);
+  return minIntensity + t * (1 - minIntensity);
+}
+
+function shiftBoostOffset(
+  remaining: number,
+  intensity: number,
+  duration: number,
+): { x: number; y: number } {
+  if (remaining <= 0) return { x: 0, y: 0 };
+  const t = 1 - remaining / duration;
+  const { maxX, bounceY, lungeOutFrac } = BOOST_LUNGE_TUNING;
+
+  if (t <= lungeOutFrac) {
+    const p = t / lungeOutFrac;
+    const eased = 1 - (1 - p) ** 3;
+    return { x: eased * maxX * intensity, y: 0 };
+  }
+
+  const p = (t - lungeOutFrac) / (1 - lungeOutFrac);
+  const x = maxX * (1 - p) ** 2.4 * intensity;
+  const y = Math.sin(p * Math.PI * 2.2) * bounceY * (1 - p * 0.8) * intensity;
+  return { x, y };
+}
+
+function gasBoostEffect(remaining: number, intensity: number, duration: number): CarPoseEffect {
+  if (remaining <= 0) return { x: 0, y: 0, pitch: 0, pivot: "rear" };
+
+  const t = 1 - remaining / duration;
+  const {
+    launchMaxX,
+    launchLungeOutFrac,
+    launchMaxPitch,
+    launchWheeliePeak,
+    launchWheelieLand,
+  } = BOOST_LUNGE_TUNING;
+
+  let x = 0;
+  if (t <= launchLungeOutFrac) {
+    const p = t / launchLungeOutFrac;
+    x = (1 - (1 - p) ** 3) * launchMaxX * intensity;
+  } else if (t >= launchWheelieLand) {
+    const p = (t - launchWheelieLand) / (1 - launchWheelieLand);
+    x = launchMaxX * intensity * (1 - p) ** 2.4;
+  } else {
+    x = launchMaxX * intensity;
+  }
+
+  let pitch = 0;
+  if (t <= launchWheeliePeak) {
+    const p = t / launchWheeliePeak;
+    pitch = -launchMaxPitch * (1 - (1 - p) ** 2);
+  } else if (t <= launchWheelieLand) {
+    const p = (t - launchWheeliePeak) / (launchWheelieLand - launchWheeliePeak);
+    const eased = p * p * (3 - 2 * p);
+    pitch = -launchMaxPitch * (1 - eased);
+  }
+
+  return { x, y: 0, pitch, pivot: "rear" };
+}
+
+function heldBrakeStoppieEffect(
+  engageRemaining: number,
+  hold: boolean,
+  releaseRemaining: number,
+  mph: number,
+): CarPoseEffect {
+  const {
+    brakeMaxX,
+    brakeMaxPitch,
+    brakeEngageDuration,
+    brakeReleaseDuration,
+  } = BOOST_LUNGE_TUNING;
+  const intensity = brakeStoppieIntensity(mph);
+
+  if (hold) {
+    return {
+      x: -brakeMaxX * intensity,
+      y: 0,
+      pitch: brakeMaxPitch * intensity,
+      pivot: "front",
+    };
+  }
+
+  if (engageRemaining > 0) {
+    const t = 1 - engageRemaining / brakeEngageDuration;
+    const eased = 1 - (1 - t) ** 2;
+    return {
+      x: -brakeMaxX * intensity * eased,
+      y: 0,
+      pitch: brakeMaxPitch * intensity * eased,
+      pivot: "front",
+    };
+  }
+
+  if (releaseRemaining > 0) {
+    const t = 1 - releaseRemaining / brakeReleaseDuration;
+    const eased = t * t * (3 - 2 * t);
+    const remain = 1 - eased;
+    return {
+      x: -brakeMaxX * intensity * remain,
+      y: 0,
+      pitch: brakeMaxPitch * intensity * remain,
+      pivot: "front",
+    };
+  }
+
+  return { x: 0, y: 0, pitch: 0, pivot: "front" };
+}
+
+function burnoutPoseEffect(animTime: number, elapsed: number): CarPoseEffect {
+  const {
+    burnoutDecayDuration,
+    burnoutPitch,
+    burnoutShakeX,
+    burnoutStartFreq,
+    burnoutFreqRamp,
+  } = BOOST_LUNGE_TUNING;
+
+  const life = Math.min(1, elapsed / burnoutDecayDuration);
+  const amp = (1 - life) ** 0.0010;
+  if (amp <= 0.002) return { x: 0, y: 0, pitch: 0, pivot: "front" };
+
+  const freq = burnoutStartFreq + elapsed * burnoutFreqRamp;
+  const wave = Math.sin(animTime * freq);
+
+  return {
+    x: Math.sin(animTime * freq * 0.002) * burnoutShakeX * amp,
+    y: 0,
+    pitch: -wave * burnoutPitch * amp,
+    pivot: "front",
+  };
+}
+
+function computeTimedBoostEffect(
+  remaining: number,
+  kind: BoostLungeKind,
+  mph: number,
+  duration: number,
+): CarPoseEffect {
+  if (kind === "gas") {
+    return gasBoostEffect(remaining, gasWheelieIntensity(mph), duration);
+  }
+  const { x, y } = shiftBoostOffset(remaining, boostLungeIntensity(mph), duration);
+  return { x, y, pitch: 0, pivot: "rear" };
+}
+
+function computeCarPoseEffect(args: {
+  boostLunge: number;
+  boostKind: BoostLungeKind;
+  boostMph: number;
+  boostDuration: number;
+  brakeEngage: number;
+  brakeHold: boolean;
+  brakeRelease: number;
+  brakeMph: number;
+  burnoutActive: boolean;
+  burnoutElapsed: number;
+  animTime: number;
+}): CarPoseEffect {
+  const {
+    boostLunge,
+    boostKind,
+    boostMph,
+    boostDuration,
+    brakeEngage,
+    brakeHold,
+    brakeRelease,
+    brakeMph,
+    burnoutActive,
+    burnoutElapsed,
+    animTime,
+  } = args;
+
+  if (brakeHold || brakeEngage > 0 || brakeRelease > 0) {
+    return heldBrakeStoppieEffect(brakeEngage, brakeHold, brakeRelease, brakeMph);
+  }
+
+  if (burnoutActive) {
+    return burnoutPoseEffect(animTime, burnoutElapsed);
+  }
+
+  if (boostLunge > 0) {
+    return computeTimedBoostEffect(boostLunge, boostKind, boostMph, boostDuration);
+  }
+
+  return { x: 0, y: 0, pitch: 0, pivot: "rear" };
+}
+
+function withCarPitch(
+  ctx: CanvasRenderingContext2D,
+  carDrawX: number,
+  carDrawY: number,
+  carDrawW: number,
+  carDrawH: number,
+  pitch: number,
+  pivot: "rear" | "front",
+  draw: () => void,
+) {
+  if (pitch === 0) {
+    draw();
+    return;
+  }
+  const axle = pivot === "rear" ? WHEEL_TUNING.rear : WHEEL_TUNING.front;
+  const pivotX = carDrawX + carDrawW * axle.x;
+  const pivotY = carDrawY + carDrawH * axle.y;
+  ctx.save();
+  ctx.translate(pivotX, pivotY);
+  ctx.rotate(pitch);
+  ctx.translate(-pivotX, -pivotY);
+  draw();
+  ctx.restore();
+}
 
 /** Center-lane dashed markings (world-locked to road scroll) */
 const ROAD_MARKINGS = {
@@ -966,7 +1273,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
     carImg.src = "/OctanePixelCar2.png";
     frontWheelImg.src = "/FrontWheel.png";
     backWheelImg.src = "/BackWheel.png";
-    bgImg.src = Math.random() < 0.5 ? "/bg1.png" : "/bg2.png";
+    bgImg.src = Math.random() < 0.99 ? "/bg1.png" : "/bg2.png"; // bg2 is not as good, find replacement then move then back to 0.5
     treeImg.src = "/tree.png";
     sakuraTop1.src = "/sakuratop1.png";
     sakuraTop2.src = "/sakuratop2.png";
@@ -1011,6 +1318,27 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
     let finished = false;
     let shiftFlash = 0;
     let shiftQuality = 0;
+    let boostLunge = 0;
+    let boostLungeMph = 0;
+    let boostLungeKind: BoostLungeKind = "shift";
+    let boostLungeDuration: number = BOOST_LUNGE_TUNING.duration;
+    let gasWasDown = false;
+    let brakeWasDown = false;
+
+    const triggerBoostLunge = (speedMph: number, kind: BoostLungeKind = "shift") => {
+      boostLungeKind = kind;
+      boostLungeDuration =
+        kind === "gas" ? BOOST_LUNGE_TUNING.launchDuration : BOOST_LUNGE_TUNING.duration;
+      boostLunge = boostLungeDuration;
+      boostLungeMph = speedMph;
+    };
+
+    let brakeStoppieEngage = 0;
+    let brakeStoppieHold = false;
+    let brakeStoppieRelease = 0;
+    let brakeStoppieMph = 0;
+    let burnoutTime = 0;
+    let burnoutPermanentlyDisabled = false;
     let time = 0;
     let topMph = 0;
     const raceStartTime = performance.now();
@@ -1046,6 +1374,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
       else if (rpm > SHIFT_PERFECT_MAX) playOctaneBadShift();
       rpm = perfect ? 3800 + gear * 100 : rpm > SHIFT_PERFECT_MAX ? 5200 : 4500;
       mph += perfect ? 14 : rpm > SHIFT_PERFECT_MAX ? 4 : 8;
+      if (shiftQuality === 1) triggerBoostLunge(mph);
     };
 
     const onPointerDown = (e: PointerEvent) => {
@@ -1109,6 +1438,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
     let raf = 0;
     let last = performance.now();
     const engineSound = createOctaneEngineSound();
+    const brakeSound = createOctaneBrakeSound();
 
     const loop = (now: number) => {
       if (!alive) return;
@@ -1132,6 +1462,29 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
       const palette = paletteRef.current;
 
       if (!finished) {
+        if (mph > BOOST_LUNGE_TUNING.burnoutDisableMph) {
+          burnoutPermanentlyDisabled = true;
+        }
+
+        if (
+          gasRef.current &&
+          !gasWasDown &&
+          (mph >= BOOST_LUNGE_TUNING.burnoutMaxMph || burnoutPermanentlyDisabled)
+        ) {
+          triggerBoostLunge(mph, "gas");
+        }
+        if (brakeDown && !brakeWasDown && mph >= BOOST_LUNGE_TUNING.brakeMinMph) {
+          brakeStoppieMph = mph;
+          brakeStoppieEngage = BOOST_LUNGE_TUNING.brakeEngageDuration;
+          brakeStoppieHold = false;
+          brakeStoppieRelease = 0;
+        }
+        if (brakeDown && !brakeWasDown) {
+          playOctaneBrakeChirp(mph);
+        }
+        gasWasDown = gasRef.current;
+        brakeWasDown = brakeDown;
+
         if (gasRef.current) {
           rpm += rpmRiseRate(gear) * dt;
           const revFactor = rpm / REDLINE_END;
@@ -1148,6 +1501,26 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
           mph = Math.max(0, mph - 0.35 * dt);
         }
 
+        if (brakeStoppieEngage > 0) {
+          if (!brakeDown || mph < BOOST_LUNGE_TUNING.brakeMinMph) {
+            brakeStoppieEngage = 0;
+          } else {
+            brakeStoppieEngage = Math.max(0, brakeStoppieEngage - dt);
+            if (brakeStoppieEngage <= 0) brakeStoppieHold = true;
+          }
+        }
+
+        if (brakeStoppieHold) {
+          if (!brakeDown || mph < BOOST_LUNGE_TUNING.brakeMinMph) {
+            brakeStoppieHold = false;
+            brakeStoppieRelease = BOOST_LUNGE_TUNING.brakeReleaseDuration;
+          }
+        }
+
+        if (brakeStoppieRelease > 0) {
+          brakeStoppieRelease = Math.max(0, brakeStoppieRelease - dt);
+        }
+
         if (rpm > REDLINE_END) rpm = REDLINE_END;
         rpm = Math.max(0, Math.min(RPM_MAX, rpm));
         mph = Math.max(0, Math.min(MPH_MAX, mph));
@@ -1155,7 +1528,17 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
 
         distance += mph * 0.00745 * dt;
         scrollPx += mph * 0.22 * dt;
-        wheelAngle += (mph / WHEEL_SPIN_RATE) * dt;
+        const burnoutActive =
+          !burnoutPermanentlyDisabled &&
+          gasRef.current &&
+          mph < BOOST_LUNGE_TUNING.burnoutMaxMph;
+        if (burnoutActive) {
+          burnoutTime += dt;
+          wheelAngle += BOOST_LUNGE_TUNING.burnoutWheelSpin * dt;
+        } else {
+          burnoutTime = 0;
+          wheelAngle += (mph / WHEEL_SPIN_RATE) * dt;
+        }
 
         if (sessionIsDrag && distance >= sessionRaceDistanceM) {
           finished = true;
@@ -1179,8 +1562,10 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
       }
 
       if (shiftFlash > 0) shiftFlash -= dt;
+      if (boostLunge > 0) boostLunge = Math.max(0, boostLunge - dt);
 
       engineSound?.update(rpm, gasRef.current, gear);
+      brakeSound?.update(brakeDown, mph);
 
       drawParallaxBackground(ctx, bgImg, width, sceneH, scrollPx, BG_PARALLAX);
 
@@ -1206,34 +1591,65 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
 
       drawSakuraOverhead(ctx, width, roadY, roadH, scrollPx, sakuraTop1, sakuraTop2);
 
+      const burnoutActive =
+        !finished &&
+        !burnoutPermanentlyDisabled &&
+        gasRef.current &&
+        mph < BOOST_LUNGE_TUNING.burnoutMaxMph;
+
+      const boost = computeCarPoseEffect({
+        boostLunge,
+        boostKind: boostLungeKind,
+        boostMph: boostLungeMph,
+        boostDuration: boostLungeDuration,
+        brakeEngage: brakeStoppieEngage,
+        brakeHold: brakeStoppieHold,
+        brakeRelease: brakeStoppieRelease,
+        brakeMph: brakeStoppieMph,
+        burnoutActive,
+        burnoutElapsed: burnoutTime,
+        animTime: time,
+      });
+      const carDrawX = carX + boost.x;
+      const carDrawY = carY + boost.y;
+
       ctx.fillStyle = "rgba(0,0,0,0.3)";
       ctx.beginPath();
-      ctx.ellipse(carX + carDrawW * 0.45, roadY + roadH * 0.38, carDrawW * 0.4, 10, 0, 0, Math.PI * 2);
+      ctx.ellipse(carDrawX + carDrawW * 0.45, roadY + roadH * 0.38, carDrawW * 0.4, 10, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      if (carReady) {
-        ctx.drawImage(carImg, carX, carY, carDrawW, carDrawH);
-      }
-
-      if (wheelsReady) {
-        drawRotatedWheelLayer(ctx, backWheelImg, carX, carY, carDrawW, carDrawH, WHEEL_TUNING.rear, wheelAngle);
-        drawRotatedWheelLayer(ctx, frontWheelImg, carX, carY, carDrawW, carDrawH, WHEEL_TUNING.front, wheelAngle);
-      }
-
-      if (gasRef.current && !finished) {
-        ctx.fillStyle = "rgba(255,180,80,0.7)";
-        for (let i = 0; i < 4; i++) {
-          ctx.fillRect(carX - 12 - i * 8 - (scrollPx % 4), carY + carDrawH * 0.55 + i, 6, 4);
+      withCarPitch(ctx, carDrawX, carDrawY, carDrawW, carDrawH, boost.pitch, boost.pivot, () => {
+        if (carReady) {
+          ctx.drawImage(carImg, carDrawX, carDrawY, carDrawW, carDrawH);
         }
-      }
+
+        if (wheelsReady) {
+          drawRotatedWheelLayer(ctx, backWheelImg, carDrawX, carDrawY, carDrawW, carDrawH, WHEEL_TUNING.rear, wheelAngle);
+          drawRotatedWheelLayer(ctx, frontWheelImg, carDrawX, carDrawY, carDrawW, carDrawH, WHEEL_TUNING.front, wheelAngle);
+        }
+
+        if ((gasRef.current && !finished) || burnoutActive) {
+          ctx.fillStyle = burnoutActive ? "rgba(120,120,120,0.75)" : "rgba(255,180,80,0.7)";
+          const streakCount = burnoutActive ? 6 : 4;
+          for (let i = 0; i < streakCount; i++) {
+            const yOff = burnoutActive
+              ? carDrawH * 0.58 + (i % 2) * 3
+              : carDrawH * 0.55 + i;
+            ctx.fillRect(carDrawX - 12 - i * 8 - (scrollPx % 4), carDrawY + yOff, 6, 4);
+          }
+        }
+
+        if (isNight) {
+          const glintPasses = collectCarGlintPasses(scrollPx, time, carDrawX, carDrawW, width);
+          if (carReady) {
+            drawCarTopLightReflection(ctx, carImg, carDrawX, carDrawY, carDrawW, carDrawH, glintPasses);
+          }
+          drawCarHeadlights(ctx, width, roadY, roadH, carDrawX, carDrawY, carDrawW, carDrawH);
+        }
+      });
 
       if (isNight) {
         drawNightScene(ctx, width, sceneH, roadY, roadH, scrollPx, time);
-        const glintPasses = collectCarGlintPasses(scrollPx, time, carX, carDrawW, width);
-        if (carReady) {
-          drawCarTopLightReflection(ctx, carImg, carX, carY, carDrawW, carDrawH, glintPasses);
-        }
-        drawCarHeadlights(ctx, width, roadY, roadH, carX, carY, carDrawW, carDrawH);
       } else {
         if (activeFlare) {
           const elapsed = time - activeFlare.startTime;
@@ -1384,6 +1800,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
     return () => {
       cancelAnimationFrame(raf);
       engineSound?.stop();
+      brakeSound?.stop();
       canvas.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("pointerup", onPointerUp);
       canvas.removeEventListener("pointerleave", onLeave);

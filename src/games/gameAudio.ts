@@ -9,6 +9,7 @@ import {
   OCTANE_SAMPLES,
   OCTANE_SOUND,
   TIPTOP_SOUND,
+  TIPTOP_FLAP_TONE,
   type SampleClip,
   type SoundTiming,
 } from "./gameSoundConfigs";
@@ -52,59 +53,60 @@ function makeNoiseBuffer(audioCtx: AudioContext, seconds = 1): AudioBuffer {
 }
 
 let noiseBuffer: AudioBuffer | null = null;
-let dissiadaReverbImpulse: AudioBuffer | null = null;
 
 interface DissiadaBus {
-  input: GainNode;
+  dry: GainNode;
+  audioCtx: AudioContext;
 }
 
 let dissiadaBus: DissiadaBus | null = null;
 let dissiadaActiveHarmonics = 0;
 
-const DISSIADA_MAX_ACTIVE_HARMONICS = 20;
+const DISSIADA_MAX_ACTIVE_HARMONICS = 14;
 
 function getDissiadaBus(audioCtx: AudioContext): DissiadaBus {
-  if (dissiadaBus && dissiadaBus.input.context === audioCtx) return dissiadaBus;
-
-  const input = audioCtx.createGain();
-  input.gain.value = 1;
+  if (dissiadaBus && dissiadaBus.audioCtx === audioCtx) return dissiadaBus;
 
   const dry = audioCtx.createGain();
-  dry.gain.value = 0.82;
-
-  const reverb = audioCtx.createConvolver();
-  reverb.buffer = getDissiadaReverbImpulse(audioCtx);
-
-  const wet = audioCtx.createGain();
-  wet.gain.value = DISSIADA_SOUND.harmonicReverb.wet * 0.55;
-
-  const compressor = audioCtx.createDynamicsCompressor();
-  compressor.threshold.value = -22;
-  compressor.knee.value = 14;
-  compressor.ratio.value = 3;
-  compressor.attack.value = 0.002;
-  compressor.release.value = 0.14;
+  dry.gain.value = 0.95;
 
   const out = audioCtx.createGain();
-  out.gain.value = 0.9;
+  out.gain.value = 0.96;
 
-  input.connect(dry);
-  dry.connect(compressor);
-  input.connect(reverb);
-  reverb.connect(wet);
-  wet.connect(compressor);
-  compressor.connect(out);
+  dry.connect(out);
   out.connect(audioCtx.destination);
 
-  dissiadaBus = { input };
+  dissiadaBus = { dry, audioCtx };
   return dissiadaBus;
+}
+
+/** Smooth attack/release envelope; returns when the voice should stop. */
+function scheduleDissiadaGainEnvelope(
+  audioCtx: AudioContext,
+  gain: GainNode,
+  config: SoundTiming,
+  attack = 0.004,
+  absoluteT0?: number,
+): number {
+  const t0 = absoluteT0 ?? audioCtx.currentTime + config.startTime;
+  const peak = Math.max(0.0001, config.volume);
+  const attackT = Math.max(0.008, attack);
+  const fadeEnd = Math.max(t0 + attackT + 0.02, t0 + config.endTime);
+  const stopAt = t0 + config.duration + 0.12;
+
+  gain.gain.cancelScheduledValues(t0);
+  gain.gain.setValueAtTime(0, t0);
+  gain.gain.linearRampToValueAtTime(peak, t0 + attackT);
+  gain.gain.setTargetAtTime(0.0001, t0 + attackT, Math.max(0.03, (fadeEnd - t0 - attackT) / 4));
+  gain.gain.setValueAtTime(0, stopAt);
+  return stopAt;
 }
 
 function dissiadaHarmonicLoadScale(combo: number, activeCount: number): number {
   const comboFactor =
     combo > 10 ? 1 / Math.sqrt(1 + (combo - 10) * 0.1) : 1;
   const loadFactor =
-    activeCount > 8 ? Math.max(0.35, 8 / activeCount) : 1;
+    activeCount > 6 ? Math.max(0.3, 6 / activeCount) : 1;
   return comboFactor * loadFactor;
 }
 
@@ -118,24 +120,6 @@ function trackDissiadaHarmonic(durationSec: number) {
 function getNoise(audioCtx: AudioContext): AudioBuffer {
   if (!noiseBuffer) noiseBuffer = makeNoiseBuffer(audioCtx);
   return noiseBuffer;
-}
-
-function getDissiadaReverbImpulse(audioCtx: AudioContext): AudioBuffer {
-  const cfg = DISSIADA_SOUND.harmonicReverb;
-  if (
-    !dissiadaReverbImpulse ||
-    dissiadaReverbImpulse.sampleRate !== audioCtx.sampleRate
-  ) {
-    const len = Math.ceil(audioCtx.sampleRate * cfg.duration);
-    dissiadaReverbImpulse = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
-    for (let c = 0; c < 2; c++) {
-      const data = dissiadaReverbImpulse.getChannelData(c);
-      for (let i = 0; i < len; i++) {
-        data[i] = (Math.random() * 2 - 1) * (1 - i / len) ** cfg.decay;
-      }
-    }
-  }
-  return dissiadaReverbImpulse;
 }
 
 function semitoneRatio(semitones: number): number {
@@ -156,6 +140,7 @@ function scheduleDissiadaVoice(
   const t0 = audioCtx.currentTime + config.startTime;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
+  gain.gain.value = 0;
   const filter = audioCtx.createBiquadFilter();
 
   osc.type = wave;
@@ -172,14 +157,22 @@ function scheduleDissiadaVoice(
 
   osc.connect(filter);
   filter.connect(gain);
-  gain.connect(getDissiadaBus(audioCtx).input);
-  scheduleGainEnvelope(audioCtx, gain, {
-    ...config,
-    volume: config.volume * volumeScale,
-  });
+  const bus = getDissiadaBus(audioCtx);
+  gain.connect(bus.dry);
+
+  const stopAt = scheduleDissiadaGainEnvelope(
+    audioCtx,
+    gain,
+    {
+      ...config,
+      volume: config.volume * volumeScale,
+    },
+    0.004,
+    t0,
+  );
 
   osc.start(t0);
-  osc.stop(t0 + config.duration);
+  osc.stop(stopAt + 0.05);
 }
 
 function resolveDissiadaHarmonicTiming(
@@ -194,54 +187,58 @@ function resolveDissiadaHarmonicTiming(
   };
 }
 
-function scheduleDissiadaHarmonic(
+function scheduleDissiadaHarmonicsForNote(
   audioCtx: AudioContext,
-  hz: number,
+  rootHz: number,
+  harmonics: readonly DissiadaComboHarmonic[],
   volumeScale: number,
-  harmonic: DissiadaComboHarmonic,
 ) {
-  const config = resolveDissiadaHarmonicTiming(harmonic);
-  const chorus = DISSIADA_SOUND.harmonicChorus;
-  const t0 = audioCtx.currentTime + config.startTime;
+  if (harmonics.length === 0) return;
+
   const bus = getDissiadaBus(audioCtx);
+  const noteT0 = audioCtx.currentTime;
+  let tailEnd = noteT0;
+  const voiceShare = volumeScale / Math.sqrt(harmonics.length);
 
-  const merge = audioCtx.createGain();
-  merge.gain.value = 1;
+  for (const harmonic of harmonics) {
+    const config = resolveDissiadaHarmonicTiming(harmonic);
+    const t0 = noteT0 + config.startTime;
+    const hHz = rootHz * semitoneRatio(harmonic.semitones);
 
-  const detunes = [0, chorus.detuneCents];
-  for (const cents of detunes) {
     const osc = audioCtx.createOscillator();
     osc.type = "sine";
-    osc.frequency.setValueAtTime(hz, t0);
-    if (cents !== 0) osc.detune.setValueAtTime(cents, t0);
-    osc.frequency.exponentialRampToValueAtTime(hz * 0.998, t0 + config.endTime);
+    osc.frequency.setValueAtTime(hHz, t0);
+    const decay = Math.max(0.01, config.endTime - config.startTime);
+    osc.frequency.exponentialRampToValueAtTime(hHz * 0.998, t0 + decay);
 
     const voiceGain = audioCtx.createGain();
-    voiceGain.gain.value = cents === 0 ? 1 : chorus.voiceWet * 0.65;
-    osc.connect(voiceGain);
-    voiceGain.connect(merge);
+    voiceGain.gain.value = 0;
+    const voiceFilter = audioCtx.createBiquadFilter();
+    voiceFilter.type = "lowpass";
+    voiceFilter.frequency.setValueAtTime(3600, t0);
+    voiceFilter.Q.value = 0.5;
+
+    osc.connect(voiceFilter);
+    voiceFilter.connect(voiceGain);
+    voiceGain.connect(bus.dry);
+
+    const stopAt = scheduleDissiadaGainEnvelope(
+      audioCtx,
+      voiceGain,
+      {
+        ...config,
+        startTime: 0,
+        volume: config.volume * voiceShare,
+      },
+      0.008,
+      t0,
+    );
+    tailEnd = Math.max(tailEnd, stopAt);
     osc.start(t0);
-    osc.stop(t0 + config.duration);
+    osc.stop(stopAt + 0.05);
   }
 
-  const filter = audioCtx.createBiquadFilter();
-  filter.type = "lowpass";
-  filter.frequency.setValueAtTime(4200, t0);
-  filter.Q.value = 0.6;
-  merge.connect(filter);
-
-  const masterGain = audioCtx.createGain();
-  filter.connect(masterGain);
-  masterGain.connect(bus.input);
-
-  scheduleGainEnvelope(
-    audioCtx,
-    masterGain,
-    { ...config, volume: config.volume * volumeScale },
-    0.01,
-  );
-
-  trackDissiadaHarmonic(config.duration);
+  trackDissiadaHarmonic(tailEnd - noteT0);
 }
 
 export function playDissiadaNote(
@@ -272,16 +269,51 @@ export function playDissiadaNote(
   const harmonicVolume =
     DISSIADA_SOUND.harmonicVolume * (quality === "good" ? 0.72 : 1);
   const loadScale = dissiadaHarmonicLoadScale(combo, dissiadaActiveHarmonics);
+
+  const activeHarmonics: DissiadaComboHarmonic[] = [];
   for (const harmonic of DISSIADA_COMBO_HARMONICS) {
     if (combo < harmonic.minCombo) continue;
-    if (dissiadaActiveHarmonics >= DISSIADA_MAX_ACTIVE_HARMONICS) continue;
-    scheduleDissiadaHarmonic(
+    activeHarmonics.push(harmonic);
+  }
+
+  if (
+    activeHarmonics.length > 0 &&
+    dissiadaActiveHarmonics < DISSIADA_MAX_ACTIVE_HARMONICS
+  ) {
+    scheduleDissiadaHarmonicsForNote(
       audioCtx,
-      hz * semitoneRatio(harmonic.semitones),
+      hz,
+      activeHarmonics,
       harmonicVolume * loadScale,
-      harmonic,
     );
   }
+}
+
+function scheduleTipTopFlapHarmonic(
+  audioCtx: AudioContext,
+  flapT0: number,
+  baseHz: number,
+  config: SoundTiming,
+  semitones: number,
+) {
+  const t0 = flapT0 + config.startTime;
+  const hz = baseHz * 2 ** (semitones / 12);
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(hz, t0);
+  osc.frequency.exponentialRampToValueAtTime(hz * 0.9, t0 + config.endTime - config.startTime);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  const peak = Math.max(0.0001, config.volume);
+  gain.gain.setValueAtTime(0.0001, t0);
+  gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.004);
+  gain.gain.exponentialRampToValueAtTime(0.0001, flapT0 + config.endTime);
+  gain.gain.setValueAtTime(0, flapT0 + config.duration);
+
+  osc.start(t0);
+  osc.stop(flapT0 + config.duration);
 }
 
 export function playTipTopFlap() {
@@ -289,13 +321,14 @@ export function playTipTopFlap() {
   if (!audioCtx) return;
 
   const config = TIPTOP_SOUND.flap;
+  const { baseHz, noiseHz } = TIPTOP_FLAP_TONE;
   const t0 = audioCtx.currentTime + config.startTime;
 
   const noise = audioCtx.createBufferSource();
   noise.buffer = getNoise(audioCtx);
   const noiseFilter = audioCtx.createBiquadFilter();
   noiseFilter.type = "bandpass";
-  noiseFilter.frequency.setValueAtTime(420, t0);
+  noiseFilter.frequency.setValueAtTime(noiseHz, t0);
   noiseFilter.Q.value = 0.9;
   const noiseGain = audioCtx.createGain();
   noise.connect(noiseFilter);
@@ -309,8 +342,8 @@ export function playTipTopFlap() {
   const thump = audioCtx.createOscillator();
   const thumpGain = audioCtx.createGain();
   thump.type = "sine";
-  thump.frequency.setValueAtTime(180, t0);
-  thump.frequency.exponentialRampToValueAtTime(70, t0 + config.endTime);
+  thump.frequency.setValueAtTime(baseHz, t0);
+  thump.frequency.exponentialRampToValueAtTime(baseHz * 0.38, t0 + config.endTime);
   thump.connect(thumpGain);
   thumpGain.connect(audioCtx.destination);
   scheduleGainEnvelope(audioCtx, thumpGain, {
@@ -322,6 +355,19 @@ export function playTipTopFlap() {
   noise.stop(t0 + config.duration);
   thump.start(t0);
   thump.stop(t0 + config.duration);
+
+  const harmonicConfigs = [TIPTOP_SOUND.flapHarmonic1, TIPTOP_SOUND.flapHarmonic2];
+  TIPTOP_FLAP_TONE.harmonics.forEach((harmonic, i) => {
+    const harmonicConfig = harmonicConfigs[i];
+    if (!harmonicConfig) return;
+    scheduleTipTopFlapHarmonic(
+      audioCtx,
+      audioCtx.currentTime,
+      baseHz,
+      harmonicConfig,
+      harmonic.semitones,
+    );
+  });
 }
 
 export function playTipTopHoleIn() {
@@ -542,6 +588,88 @@ export function playOctaneBadShift() {
   scheduleGainEnvelope(audioCtx, gain, config);
   osc.start(t0);
   osc.stop(t0 + config.duration);
+}
+
+export interface OctaneBrakeHandle {
+  update: (brakeDown: boolean, mph: number) => void;
+  stop: () => void;
+}
+
+/** Looping tire screech while the brake pedal is held. */
+export function createOctaneBrakeSound(): OctaneBrakeHandle | null {
+  const audioCtx = ctx();
+  if (!audioCtx) return null;
+
+  let stopped = false;
+  const noise = audioCtx.createBufferSource();
+  const noiseGain = audioCtx.createGain();
+  const highpass = audioCtx.createBiquadFilter();
+  const bandpass = audioCtx.createBiquadFilter();
+
+  noise.buffer = getNoise(audioCtx);
+  noise.loop = true;
+  highpass.type = "highpass";
+  highpass.frequency.value = 520;
+  bandpass.type = "bandpass";
+  bandpass.frequency.value = 1200;
+  bandpass.Q.value = 2.2;
+  noiseGain.gain.value = 0;
+
+  noise.connect(highpass);
+  highpass.connect(bandpass);
+  bandpass.connect(noiseGain);
+  noiseGain.connect(audioCtx.destination);
+  noise.start();
+
+  return {
+    update(brakeDown, mph) {
+      if (stopped) return;
+      const t = audioCtx.currentTime;
+      const speedFactor = Math.min(1, mph / 130);
+      const target =
+        brakeDown && mph > 0.5
+          ? OCTANE_SOUND.brake.volume * (0.18 + speedFactor * 0.82)
+          : 0.0001;
+
+      noiseGain.gain.setTargetAtTime(target, t, 0.045);
+      bandpass.frequency.setTargetAtTime(850 + speedFactor * 2400, t, 0.05);
+      bandpass.Q.setTargetAtTime(1.4 + speedFactor * 2.4, t, 0.05);
+      highpass.frequency.setTargetAtTime(420 + speedFactor * 500, t, 0.05);
+    },
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      const t = audioCtx.currentTime;
+      noiseGain.gain.setTargetAtTime(0.0001, t, 0.04);
+      noise.stop(t + 0.12);
+    },
+  };
+}
+
+export function playOctaneBrakeChirp(mph: number) {
+  const audioCtx = ctx();
+  if (!audioCtx) return;
+
+  const config = OCTANE_SOUND.brake;
+  const speedFactor = Math.min(1, mph / 130);
+  const t0 = audioCtx.currentTime;
+
+  const noise = audioCtx.createBufferSource();
+  const gain = audioCtx.createGain();
+  const filter = audioCtx.createBiquadFilter();
+  noise.buffer = getNoise(audioCtx);
+  filter.type = "bandpass";
+  filter.frequency.setValueAtTime(700 + speedFactor * 2600, t0);
+  filter.Q.value = 2.8;
+  noise.connect(filter);
+  filter.connect(gain);
+  gain.connect(audioCtx.destination);
+  scheduleGainEnvelope(audioCtx, gain, {
+    ...config,
+    volume: config.volume * (0.35 + speedFactor * 0.65),
+  });
+  noise.start(t0);
+  noise.stop(t0 + config.duration);
 }
 
 /** Call on first user input so car samples are decoded before shifting. */
