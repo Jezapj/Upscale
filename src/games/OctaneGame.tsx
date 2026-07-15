@@ -46,7 +46,7 @@ const BG_ZOOM = 1.45;
 /** Extend draw height below the scene (top-anchored) so the horizon sits lower without a gap at the top. */
 const BG_EXTEND_DOWN = 0.4;
 /** Chance each run is a night drive (dark + moon / street-light beams). */
-const NIGHT_RUN_CHANCE = 0.24;
+const NIGHT_RUN_CHANCE = 0.34;
 /** Car height as a fraction of road band height. */
 const CAR_HEIGHT_RATIO = 0.92;
 
@@ -76,7 +76,7 @@ const HEADLIGHT_TUNING = {
   spreadNear: 0.04,
   color: { r: 155, g: 146, b: 215 },
   /** Core beam opacity (screen blend). */
-  alpha: 0.08,
+  alpha: 0.18,
   /** Wider outer halo opacity multiplier. */
   outerAlpha: 0.68,
 } as const;
@@ -112,16 +112,16 @@ const ROAD_LIGHT_TUNING = {
   cullMargin: 320,
   /** Feathered gradient layers (outer → inner). */
   layers: [
-    { spreadMult: 0.18, alphaMult: 0.05, yBias: 0.9 },
-    { spreadMult: 0.6, alphaMult: 0.62, yBias: 0.78 },
-    { spreadMult: 0.75, alphaMult: 0.3, yBias: 0.65 },
+    { spreadMult: 0.18, alphaMult: 0.15, yBias: 0.9 },
+    { spreadMult: 0.6, alphaMult: 0.72, yBias: 0.78 },
+    { spreadMult: 0.75, alphaMult: 0.4, yBias: 0.65 },
   ],
 } as const;
 
 /** Night overhead beam → reflective sweep on the car body (front → rear) */
 const CAR_GLINT_TUNING = {
   /** Width of the moving highlight band (fraction of car width) */
-  bandWidth: 0.2,
+  bandWidth: 0.4,
   /** How far past the body the sweep stays visible (fraction of car width) */
   sweepOvershoot: 0.94,
   /** Overall glint intensity multiplier */
@@ -678,7 +678,7 @@ function drawNightScene(
   ctx.rect(0, 0, width, sceneH);
   ctx.clip();
 
-  ctx.fillStyle = "rgba(1, 2, 10, 0.88)";
+  ctx.fillStyle = "rgba(1, 2, 10, 0.68)";
   ctx.fillRect(0, 0, width, sceneH);
 
   ctx.fillStyle = "rgba(0, 0, 8, 0.38)";

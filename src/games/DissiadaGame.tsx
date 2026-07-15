@@ -17,11 +17,13 @@ interface Tile {
   missed: boolean;
 }
 
+type HitQuality = "perfect" | "good" | "ok" | "miss";
+
 interface TapFx {
   lane: number;
   t: number;
   maxT: number;
-  quality: "perfect" | "good" | "miss";
+  quality: HitQuality;
   edgeHighlight: boolean;
   fullFlash: boolean;
 }
@@ -71,8 +73,9 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
         height: h,
         laneW: w / LANES,
         hitY: h - Math.max(72, h * 0.14),
-        perfectH: 22 * timingScale,
-        goodH: 50 * timingScale,
+        perfectH: 32 * timingScale,
+        goodH: 58 * timingScale,
+        okH: 82 * timingScale,
         isPortrait: h > w,
       };
     };
@@ -104,7 +107,8 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
       hitY: number,
       perfectH: number,
       goodH: number,
-    ): TapFx["quality"] | null => {
+      okH: number,
+    ): HitQuality | null => {
       let best: { tile: Tile; dist: number } | null = null;
       for (const t of tiles) {
         if (t.lane !== lane || t.hit || t.missed) continue;
@@ -112,18 +116,19 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
         const dist = Math.abs(tileCenter - hitY);
         if (!best || dist < best.dist) best = { tile: t, dist: dist };
       }
-      if (!best || best.dist > goodH) return null;
+      if (!best || best.dist > okH) return null;
       if (best.dist <= perfectH) return "perfect";
-      return "good";
+      if (best.dist <= goodH) return "good";
+      return "ok";
     };
 
     const tapLane = (lane: number) => {
       if (!alive) return;
-      const { hitY, perfectH, goodH } = getLayout();
+      const { hitY, perfectH, goodH, okH } = getLayout();
       unlockGameAudio();
       laneFlash[lane] = 14;
 
-      const quality = judgeTile(lane, hitY, perfectH, goodH);
+      const quality = judgeTile(lane, hitY, perfectH, goodH, okH);
       if (!quality) {
         playDissiadaNote(lane, "miss");
         tapFx.push({
@@ -144,14 +149,14 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
         if (t.lane !== lane || t.hit || t.missed) continue;
         const tileCenter = t.y + TILE_H / 2;
         const dist = Math.abs(tileCenter - hitY);
-        if (dist <= goodH) {
+        if (dist <= okH) {
           t.hit = true;
           break;
         }
       }
 
       const noteCombo =
-        quality === "perfect" ? combo + 1 : Math.max(1, combo);
+        quality === "perfect" ? combo + 1 : quality === "ok" ? 0 : Math.max(1, combo);
       const edgeHighlight = noteCombo >= DISSIADA_COMBO_VISUALS.edgeHighlight;
       const fullFlash = noteCombo >= DISSIADA_COMBO_VISUALS.fullFlash;
       const fxDuration = fullFlash ? 22 : edgeHighlight ? 26 : 20;
@@ -168,6 +173,9 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
       if (quality === "perfect") {
         score += 2;
         combo++;
+      } else if (quality === "good") {
+        score += 1;
+        combo = Math.max(1, combo);
       } else {
         score += 1;
         combo = Math.max(1, combo);
@@ -199,7 +207,7 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
 
       const dt = frameScale(now - lastFrame);
       lastFrame = now;
-      const { width, height, laneW, hitY, perfectH, goodH, isPortrait } = syncLayout();
+      const { width, height, laneW, hitY, perfectH, goodH, okH, isPortrait } = syncLayout();
       const p = paletteRef.current.dissiada;
       const laneColors = p.laneColors;
       const pal = paletteRef.current;
@@ -217,7 +225,7 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
       }
 
       for (const t of tiles) {
-        if (!t.hit && !t.missed && t.y > hitY + goodH + MISS_PADDING) {
+        if (!t.hit && !t.missed && t.y > hitY + okH + MISS_PADDING) {
           t.missed = true;
           combo = 0;
           alive = false;
@@ -251,7 +259,7 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
 
         if (flash > 0) {
           ctx.fillStyle = laneColors[i] + "44";
-          ctx.fillRect(x + 4, hitY - goodH - 20, laneW - 8, goodH * 2 + 40);
+          ctx.fillRect(x + 4, hitY - okH - 20, laneW - 8, okH * 2 + 40);
         }
       }
 
@@ -264,10 +272,15 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
         ctx.stroke();
       }
 
-      const guideTop = hitY - goodH;
-      const guideBot = hitY + goodH;
+      const guideTop = hitY - okH;
+      const guideBot = hitY + okH;
       ctx.fillStyle = p.guideZone;
       ctx.fillRect(0, guideTop, width, guideBot - guideTop);
+
+      const goodTop = hitY - goodH;
+      const goodBot = hitY + goodH;
+      ctx.fillStyle = p.perfectZone + "55";
+      ctx.fillRect(0, goodTop, width, goodBot - goodTop);
 
       ctx.fillStyle = p.perfectZone;
       ctx.fillRect(0, hitY - perfectH, width, perfectH * 2);
@@ -284,7 +297,7 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
       ctx.textAlign = "center";
       for (let i = 0; i < LANES; i++) {
         ctx.fillStyle = p.label;
-        ctx.fillText(LANE_KEYS[i], i * laneW + laneW / 2, hitY + goodH + 22);
+        ctx.fillText(LANE_KEYS[i], i * laneW + laneW / 2, hitY + okH + 22);
       }
       ctx.textAlign = "left";
 
@@ -293,7 +306,7 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
         const x = t.lane * laneW + 8;
         const w = laneW - 16;
         const dist = Math.abs(t.y + TILE_H / 2 - hitY);
-        const glow = dist < goodH ? 1 - dist / goodH : 0;
+        const glow = dist < okH ? 1 - dist / okH : 0;
 
         if (glow > 0) {
           ctx.shadowColor = laneColors[t.lane];
@@ -341,7 +354,13 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
 
         const alpha = fx.t / fx.maxT;
         const color =
-          fx.quality === "perfect" ? "#5cd0a8" : fx.quality === "good" ? "#ffb43d" : "#ff5a5a";
+          fx.quality === "perfect"
+            ? "#5cd0a8"
+            : fx.quality === "good"
+              ? "#e85d04"
+              : fx.quality === "ok"
+                ? "#fef08a"
+                : "#ff5a5a";
         ctx.strokeStyle = color;
         ctx.lineWidth = 3;
         ctx.globalAlpha = alpha;
@@ -353,7 +372,13 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
           ctx.fillStyle = color;
           ctx.font = "bold 13px Nunito, sans-serif";
           ctx.textAlign = "center";
-          ctx.fillText(fx.quality === "perfect" ? "PERFECT" : "GOOD", cx, hitY - 36);
+          const label =
+            fx.quality === "perfect"
+              ? "PERFECT"
+              : fx.quality === "good"
+                ? "GOOD"
+                : "OK";
+          ctx.fillText(label, cx, hitY - 36);
           ctx.textAlign = "left";
         }
       }
