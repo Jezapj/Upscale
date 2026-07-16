@@ -10,6 +10,7 @@ const GAME_GLYPH: Record<string, string> = {
   tiptop: "⛳",
   octane: "🏎️",
   dissiada: "🎹",
+  daybreak: "🌅",
 };
 
 export function GamesScreen() {

@@ -89,7 +89,7 @@ export interface AppData {
   version: number;
 }
 
-export type GameId = "tiptop" | "octane" | "dissiada";
+export type GameId = "tiptop" | "octane" | "dissiada" | "daybreak";
 
 export interface GamePlaysState {
   date: string;

@@ -22,6 +22,11 @@ interface Props {
   onSessionReset?: () => void;
   /** Default leaderboard key when not set on the game result. */
   leaderboardKey?: string;
+  /**
+   * When false, Escape does not exit to the arcade while a game is running
+   * (for games that use Escape as their pause key). Lobby/results still exit.
+   */
+  escapeExits?: boolean;
 }
 
 function useContainerSize(ref: React.RefObject<HTMLDivElement | null>) {
@@ -48,6 +53,7 @@ export function GameShell({
   renderLobby,
   onSessionReset,
   leaderboardKey: defaultLeaderboardKey,
+  escapeExits = true,
 }: Props) {
   const nav = useNavigate();
   const meta = GAME_BY_ID[gameId];
@@ -99,11 +105,11 @@ export function GameShell({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") nav("/games");
+      if (e.key === "Escape" && (escapeExits || !started)) nav("/games");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [nav]);
+  }, [nav, escapeExits, started]);
 
   return (
     <GamePaletteProvider>

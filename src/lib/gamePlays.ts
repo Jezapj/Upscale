@@ -2,7 +2,7 @@ import { DAILY_FREE_PLAYS, UNLIMITED_PLAYS } from "./games";
 import type { AppData, GameId, GamePlaysState } from "./types";
 
 function emptyCounts(): Record<GameId, number> {
-  return { tiptop: 0, octane: 0, dissiada: 0 };
+  return { tiptop: 0, octane: 0, dissiada: 0, daybreak: 0 };
 }
 
 export function normalizeGamePlays(

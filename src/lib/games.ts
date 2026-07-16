@@ -1,6 +1,6 @@
-/** Arcade games hub - TipTop, Octane, Dissiada. */
+/** Arcade games hub - TipTop, Octane, Dissiada, Daybreak. */
 
-export type GameId = "tiptop" | "octane" | "dissiada";
+export type GameId = "tiptop" | "octane" | "dissiada" | "daybreak";
 
 /** Daily cap when subscriptions launch; unlimited while true. */
 export const UNLIMITED_PLAYS = true;
@@ -36,6 +36,13 @@ export const GAMES: GameMeta[] = [
     tagline: "Hit the tiles on the beat line",
     color: "#a06bff",
     controls: "Tap lanes when tiles cross the purple line",
+  },
+  {
+    id: "daybreak",
+    name: "Daybreak",
+    tagline: "Jump to the key you're dealt",
+    color: "#ff9e64",
+    controls: "Tap / Space / Click to jump · Esc to pause",
   },
 ];
 

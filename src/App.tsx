@@ -24,6 +24,7 @@ import { GamesScreen } from "@/screens/GamesScreen";
 import { TipTopScreen } from "@/screens/games/TipTopScreen";
 import { OctaneScreen } from "@/screens/games/OctaneScreen";
 import { DissiadaScreen } from "@/screens/games/DissiadaScreen";
+import { DaybreakScreen } from "@/screens/games/DaybreakScreen";
 import { ProgressScreen } from "@/screens/ProgressScreen";
 
 function AppShell() {
@@ -64,6 +65,7 @@ function AppShell() {
           <Route path="/games/tiptop" element={<TipTopScreen />} />
           <Route path="/games/octane" element={<OctaneScreen />} />
           <Route path="/games/dissiada" element={<DissiadaScreen />} />
+          <Route path="/games/daybreak" element={<DaybreakScreen />} />
           <Route path="/progress" element={<ProgressScreen />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

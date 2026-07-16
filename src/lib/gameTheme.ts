@@ -41,11 +41,29 @@ export interface DissiadaPalette {
   laneColors: string[];
 }
 
+export interface DaybreakPalette {
+  /** Tint washed over the parallax background so terrain reads clearly. */
+  bgOverlay: string;
+  terrain: string;
+  terrainTop: string;
+  beatMarker: string;
+  spike: string;
+  spikeEdge: string;
+  accent: string;
+  hudText: string;
+  hudChip: string;
+  progressTrack: string;
+  particleJump: string;
+  particleLand: string;
+  particleDeath: string[];
+}
+
 export interface GamePalette {
   isDark: boolean;
   tiptop: TipTopPalette;
   octane: OctanePalette;
   dissiada: DissiadaPalette;
+  daybreak: DaybreakPalette;
 }
 
 const PALETTES: Record<Theme, GamePalette> = {
@@ -89,6 +107,21 @@ const PALETTES: Record<Theme, GamePalette> = {
       label: "rgba(60, 64, 71, 0.45)",
       laneColors: ["#a06bff", "#4aa3ff", "#ff77b0", "#2bc4a8"],
     },
+    daybreak: {
+      bgOverlay: "rgba(255, 245, 235, 0.12)",
+      terrain: "#463a5e",
+      terrainTop: "#8b7ab8",
+      beatMarker: "rgba(255, 255, 255, 0.10)",
+      spike: "#2d2440",
+      spikeEdge: "#c9b8ff",
+      accent: "#ff9e64",
+      hudText: "#2d2440",
+      hudChip: "rgba(255, 255, 255, 0.72)",
+      progressTrack: "rgba(45, 36, 64, 0.25)",
+      particleJump: "#ffe0b8",
+      particleLand: "#c9b8ff",
+      particleDeath: ["#ff9e64", "#ff5c5c", "#ffd76e", "#ffffff"],
+    },
   },
   dark: {
     isDark: true,
@@ -129,6 +162,21 @@ const PALETTES: Record<Theme, GamePalette> = {
       hitLine: "rgba(192, 132, 252, 0.7)",
       label: "rgba(255, 255, 255, 0.35)",
       laneColors: ["#c084fc", "#60a5fa", "#f472b6", "#34d399"],
+    },
+    daybreak: {
+      bgOverlay: "rgba(10, 8, 24, 0.45)",
+      terrain: "#241d38",
+      terrainTop: "#6a5a9a",
+      beatMarker: "rgba(255, 255, 255, 0.08)",
+      spike: "#171126",
+      spikeEdge: "#a68cff",
+      accent: "#ff9e64",
+      hudText: "#f0f0f5",
+      hudChip: "rgba(12, 12, 18, 0.66)",
+      particleJump: "#ffd9a8",
+      particleLand: "#a68cff",
+      particleDeath: ["#ff9e64", "#ff5c5c", "#ffd76e", "#ffffff"],
+      progressTrack: "rgba(240, 240, 245, 0.2)",
     },
   },
 };
