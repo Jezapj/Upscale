@@ -33,6 +33,11 @@ export interface DaybreakAudioHandle {
   jumpNote(elevation: number): void;
   /** Percussive note pitched by the elevation the player landed on. */
   landNote(elevation: number): void;
+  /**
+   * Brief in-key triad when an obstacle is cleared. Quantized to the next
+   * half-beat; root follows the given elevation.
+   */
+  clearChord(elevation: number): void;
   death(): void;
   winFanfare(): void;
   dispose(): void;
@@ -62,6 +67,7 @@ function createSilentHandle(): DaybreakAudioHandle {
     },
     jumpNote: () => {},
     landNote: () => {},
+    clearChord: () => {},
     death: () => {},
     winFanfare: () => {},
     dispose: () => {},
@@ -239,6 +245,39 @@ export function createDaybreakAudio(
     src.stop(t + 0.04);
   };
 
+  /**
+   * Quantize to the next half-beat of the backing track, then play a short
+   * diatonic triad rooted at the clearance elevation.
+   */
+  const clearChord = (elevation: number) => {
+    const now = ctx.currentTime;
+    const half = beatDur / 2;
+    let t = now;
+    if (trackStart > 0 && half > 0) {
+      const elapsed = Math.max(0, now - trackStart);
+      const nextSlot = Math.ceil(elapsed / half - 1e-6) * half;
+      t = Math.max(now, trackStart + nextSlot);
+    }
+    // Soften if we somehow schedule far ahead.
+    if (t - now > half) t = now;
+
+    const root = Math.round(elevation);
+    const tones = [0, 2, 4].map((deg) => elevationHz(freqs, root + deg));
+    const vols = [0.11, 0.08, 0.07];
+    tones.forEach((hz, i) => {
+      const osc = ctx.createOscillator();
+      osc.type = i === 0 ? "triangle" : "sine";
+      osc.frequency.value = hz;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(vols[i], t + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+      osc.connect(gain).connect(sfxBus);
+      osc.start(t);
+      osc.stop(t + 0.26);
+    });
+  };
+
   const death = () => {
     const t = ctx.currentTime;
     // Retro descending zap...
@@ -323,6 +362,7 @@ export function createDaybreakAudio(
     resume,
     jumpNote,
     landNote,
+    clearChord,
     death,
     winFanfare,
     dispose,

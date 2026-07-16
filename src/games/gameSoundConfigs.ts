@@ -24,12 +24,12 @@ export interface SampleClip extends SoundTiming {
 
 /** Dissiada — piano-like lane taps */
 export const DISSIADA_SOUND = {
-  note: { volume: 0.38, startTime: 0, endTime: 0.16, duration: 0.2 },
+  note: { volume: 0.48, startTime: 0, endTime: 0.16, duration: 0.2 },
   noteMiss: { volume: 0.28, startTime: 0, endTime: 0.09, duration: 0.11 },
   /** Harmonic layer level relative to harmonic.volume */
   harmonicVolume: 0.62,
   /** Longer tail for combo harmonics */
-  harmonic: { volume: 0.12, startTime: 0, endTime: 0.45, duration: 0.58 },
+  harmonic: { volume: 0.40, startTime: 0, endTime: 0.45, duration: 0.58 },
   harmonicChorus: { detuneCents: 5, voiceWet: 0.4 },
   harmonicReverb: { wet: 0.42, duration: 1.15, decay: 2.6 },
 } as const satisfies Record<string, SoundTiming | number | { detuneCents: number; voiceWet: number } | { wet: number; duration: number; decay: number }>;
