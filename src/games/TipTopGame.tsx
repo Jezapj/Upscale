@@ -8,6 +8,7 @@ interface Props {
   width: number;
   height: number;
   onGameOver: (result: number | GameResult) => void;
+  paused?: boolean;
 }
 
 type StageTheme = "forest" | "beach" | "mountain" | "space";
@@ -1677,17 +1678,19 @@ function drawStageElements(
 }
 
 /** Flappy Golf 2 style: flap left/right, 3 random stages with one hole each. */
-export function TipTopGame({ width, height, onGameOver }: Props) {
+export function TipTopGame({ width, height, onGameOver, paused = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const palette = useGamePalette();
   const btnRef = useRef({ left: false, right: false });
   const sizeRef = useRef({ width, height });
   const onGameOverRef = useRef(onGameOver);
   const paletteRef = useRef(palette);
+  const pausedRef = useRef(paused);
 
   sizeRef.current = { width, height };
   onGameOverRef.current = onGameOver;
   paletteRef.current = palette;
+  pausedRef.current = paused;
 
   useEffect(() => {
     const p = paletteRef.current.tiptop;
@@ -1813,7 +1816,7 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
     };
 
     const flap = (dir: -1 | 1) => {
-      if (!alive || clearFrames > 0) return;
+      if (!alive || clearFrames > 0 || pausedRef.current) return;
       unlockGameAudio();
       stageFlaps++;
       if (stuck) stickyImmune = STICKY_ESCAPE_FRAMES;
@@ -2140,9 +2143,11 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
       const palette = paletteRef.current;
       const p = palette.tiptop;
 
-      for (let i = flapImpacts.length - 1; i >= 0; i--) {
-        flapImpacts[i].ageMs += deltaMs;
-        if (flapImpacts[i].ageMs >= FLAP_IMPACT_TUNING.durationMs) flapImpacts.splice(i, 1);
+      if (!pausedRef.current) {
+        for (let i = flapImpacts.length - 1; i >= 0; i--) {
+          flapImpacts[i].ageMs += deltaMs;
+          if (flapImpacts[i].ageMs >= FLAP_IMPACT_TUNING.durationMs) flapImpacts.splice(i, 1);
+        }
       }
 
       const stage = currentStage();
@@ -2153,39 +2158,45 @@ export function TipTopGame({ width, height, onGameOver }: Props) {
       let renderPx = px;
       let renderPy = py;
 
-      if (clearFrames > 0) {
-        clearFrames -= dt;
-        if (clearFrames <= 0) advanceStage();
-        const targetCamX = Math.max(0, Math.min(ww - width, px - width * 0.38));
-        renderCamX += (targetCamX - renderCamX) * Math.min(1, 0.1 + dt * 0.12);
-        camX = renderCamX;
-      } else {
-        physicsAccum += dt;
-        let steps = 0;
-        while (physicsAccum >= 1 && steps < MAX_PHYSICS_STEPS) {
-          prevPx = px;
-          prevPy = py;
-          if (stepPhysics(1)) return;
-          physicsAccum -= 1;
-          steps++;
-        }
-        if (steps >= MAX_PHYSICS_STEPS) physicsAccum = 0;
-
-        if (physicsAccum > 0 && steps === 0) {
-          renderPx = px + vx * physicsAccum;
-          renderPy = py + vy * physicsAccum;
+      if (!pausedRef.current) {
+        if (clearFrames > 0) {
+          clearFrames -= dt;
+          if (clearFrames <= 0) advanceStage();
+          const targetCamX = Math.max(0, Math.min(ww - width, px - width * 0.38));
+          renderCamX += (targetCamX - renderCamX) * Math.min(1, 0.1 + dt * 0.12);
+          camX = renderCamX;
         } else {
-          renderPx = renderLerp(prevPx, px, physicsAccum);
-          renderPy = renderLerp(prevPy, py, physicsAccum);
+          physicsAccum += dt;
+          let steps = 0;
+          while (physicsAccum >= 1 && steps < MAX_PHYSICS_STEPS) {
+            prevPx = px;
+            prevPy = py;
+            if (stepPhysics(1)) return;
+            physicsAccum -= 1;
+            steps++;
+          }
+          if (steps >= MAX_PHYSICS_STEPS) physicsAccum = 0;
+
+          if (physicsAccum > 0 && steps === 0) {
+            renderPx = px + vx * physicsAccum;
+            renderPy = py + vy * physicsAccum;
+          } else {
+            renderPx = renderLerp(prevPx, px, physicsAccum);
+            renderPy = renderLerp(prevPy, py, physicsAccum);
+          }
+
+          const targetCamX = Math.max(0, Math.min(ww - width, renderPx - width * 0.38));
+          renderCamX += (targetCamX - renderCamX) * Math.min(1, 0.1 + dt * 0.12);
+          camX = renderCamX;
         }
 
-        const targetCamX = Math.max(0, Math.min(ww - width, renderPx - width * 0.38));
-        renderCamX += (targetCamX - renderCamX) * Math.min(1, 0.1 + dt * 0.12);
+        updateBallTrail(ballTrail, renderPx, renderPy, Math.hypot(vx, vy), BALL_TRAIL_TUNING);
+        ageFadingTrails(fadingTrails, deltaMs, BALL_TRAIL_TUNING);
+      } else {
         camX = renderCamX;
+        renderPx = px;
+        renderPy = py;
       }
-
-      updateBallTrail(ballTrail, renderPx, renderPy, Math.hypot(vx, vy), BALL_TRAIL_TUNING);
-      ageFadingTrails(fadingTrails, deltaMs, BALL_TRAIL_TUNING);
 
       const pal = themePals[stageIndex];
 

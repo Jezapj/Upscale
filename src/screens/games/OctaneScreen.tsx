@@ -20,13 +20,14 @@ export function OctaneScreen() {
         />
       )}
     >
-      {({ width, height, onGameOver }) =>
+      {({ width, height, onGameOver, paused }) =>
         config ? (
           <OctaneGame
             width={width}
             height={height}
             config={config}
             onGameOver={onGameOver}
+            paused={paused}
           />
         ) : null
       }

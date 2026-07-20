@@ -18,6 +18,7 @@ interface Props {
   height: number;
   config: OctaneConfig;
   onGameOver: (result: number | GameResult) => void;
+  paused?: boolean;
 }
 
 const GEARS = 6;
@@ -1194,7 +1195,7 @@ function drawSceneryLayer(
 }
 
 /** Pixel drag racer: hold gas, clutch to shift at redline, scrolling road, dashboard gauges. */
-export function OctaneGame({ width, height, config, onGameOver }: Props) {
+export function OctaneGame({ width, height, config, onGameOver, paused = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gasRef = useRef(false);
   const palette = useGamePalette();
@@ -1202,11 +1203,13 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
   const onGameOverRef = useRef(onGameOver);
   const paletteRef = useRef(palette);
   const configRef = useRef(config);
+  const pausedRef = useRef(paused);
 
   sizeRef.current = { width, height };
   onGameOverRef.current = onGameOver;
   paletteRef.current = palette;
   configRef.current = config;
+  pausedRef.current = paused;
 
   useEffect(() => {
     const sessionConfig = configRef.current;
@@ -1461,7 +1464,7 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
       } = syncLayout();
       const palette = paletteRef.current;
 
-      if (!finished) {
+      if (!finished && !pausedRef.current) {
         if (mph > BOOST_LUNGE_TUNING.burnoutDisableMph) {
           burnoutPermanentlyDisabled = true;
         }
@@ -1561,11 +1564,16 @@ export function OctaneGame({ width, height, config, onGameOver }: Props) {
         }
       }
 
-      if (shiftFlash > 0) shiftFlash -= dt;
-      if (boostLunge > 0) boostLunge = Math.max(0, boostLunge - dt);
+      if (!pausedRef.current) {
+        if (shiftFlash > 0) shiftFlash -= dt;
+        if (boostLunge > 0) boostLunge = Math.max(0, boostLunge - dt);
 
-      engineSound?.update(rpm, gasRef.current, gear);
-      brakeSound?.update(brakeDown, mph);
+        engineSound?.update(rpm, gasRef.current, gear);
+        brakeSound?.update(brakeDown, mph);
+      } else {
+        engineSound?.update(rpm, false, gear);
+        brakeSound?.update(false, mph);
+      }
 
       drawParallaxBackground(ctx, bgImg, width, sceneH, scrollPx, BG_PARALLAX);
 

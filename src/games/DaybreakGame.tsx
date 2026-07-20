@@ -6,7 +6,7 @@
  * drift apart.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useGamePalette } from "./GamePaletteContext";
 import type { GameResult } from "./gameResult";
 import { createDaybreakAudio } from "./daybreak/audio";
@@ -14,7 +14,6 @@ import {
   COLUMNS_PER_BEAT,
   generateLevel,
   scoreDaybreak,
-  type DaybreakLevel,
 } from "./daybreak/levelGen";
 import { ELEVATION_SPAN } from "./daybreak/musicTheory";
 import { SHOW_NEAR_BACKGROUND } from "./daybreak/config";
@@ -23,6 +22,8 @@ interface Props {
   width: number;
   height: number;
   onGameOver: (result: GameResult) => void;
+  /** Shell pause menu — freezes sim + suspends audio. */
+  paused?: boolean;
 }
 
 // ── Physics tuning (rows / seconds / beats) ─────────────────────────────────
@@ -71,12 +72,6 @@ interface Afterimage {
   maxLife: number;
 }
 
-interface PauseActions {
-  resume: () => void;
-  restart: () => void;
-  endRun: () => void;
-}
-
 /** Terrain / spike colors shift with elevation (cool lows → warm highs). */
 function elevColors(elev: number, isDark: boolean) {
   const t = (elev + ELEVATION_SPAN) / (ELEVATION_SPAN * 2); // 0..1
@@ -93,7 +88,12 @@ function elevColors(elev: number, isDark: boolean) {
   };
 }
 
-export function DaybreakGame({ width, height, onGameOver }: Props) {
+export function DaybreakGame({
+  width,
+  height,
+  onGameOver,
+  paused = false,
+}: Props) {
   const palette = useGamePalette();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -103,15 +103,21 @@ export function DaybreakGame({ width, height, onGameOver }: Props) {
   paletteRef.current = palette;
   const onGameOverRef = useRef(onGameOver);
   onGameOverRef.current = onGameOver;
+  const pausedRef = useRef(paused);
+  const audioRef = useRef<ReturnType<typeof createDaybreakAudio> | null>(null);
+  const wasPausedRef = useRef(false);
 
-  const [paused, setPaused] = useState(false);
-  const pausedRef = useRef(false);
-  const [levelInfo, setLevelInfo] = useState<DaybreakLevel | null>(null);
-  const pauseActionsRef = useRef<PauseActions>({
-    resume: () => {},
-    restart: () => {},
-    endRun: () => {},
-  });
+  useEffect(() => {
+    pausedRef.current = paused;
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (paused && !wasPausedRef.current) {
+      audio.pause();
+    } else if (!paused && wasPausedRef.current) {
+      audio.resume();
+    }
+    wasPausedRef.current = paused;
+  }, [paused]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -122,7 +128,7 @@ export function DaybreakGame({ width, height, onGameOver }: Props) {
     const seed = Math.floor(Math.random() * 0x7fffffff);
     const level = generateLevel(seed);
     const audio = createDaybreakAudio(level.key, level.bpm);
-    setLevelInfo(level);
+    audioRef.current = audio;
 
     const beatDur = 60 / level.bpm;
     const colsPerSec = COLUMNS_PER_BEAT / beatDur;
@@ -162,7 +168,6 @@ export function DaybreakGame({ width, height, onGameOver }: Props) {
     let particles: Particle[] = [];
     let afterimages: Afterimage[] = [];
     let afterimageAcc = 0;
-    let pauseRect = { x: 0, y: 0, w: 0, h: 0 };
     let clearedObstacles = new Set<number>();
 
     // Columns that count as "obstacles" for clear chords (built once per level).
@@ -557,45 +562,6 @@ export function DaybreakGame({ width, height, onGameOver }: Props) {
       if (xNew >= level.totalColumns) win();
     };
 
-    const pauseGame = () => {
-      if (pausedRef.current || phase !== "playing" || finished) return;
-      pausedRef.current = true;
-      setPaused(true);
-      audio.pause();
-    };
-
-    const resumeGame = () => {
-      if (!pausedRef.current) return;
-      pausedRef.current = false;
-      setPaused(false);
-      audio.resume();
-      lastFrameAt = performance.now();
-    };
-
-    const restartLevel = () => {
-      attempts = 1;
-      bestX = 0;
-      pausedRef.current = false;
-      setPaused(false);
-      audio.resume();
-      beginRun();
-      lastFrameAt = performance.now();
-    };
-
-    const endRun = () => {
-      bestX = Math.max(bestX, xOf(simTime));
-      pausedRef.current = false;
-      setPaused(false);
-      audio.resume();
-      finish(false);
-    };
-
-    pauseActionsRef.current = {
-      resume: resumeGame,
-      restart: restartLevel,
-      endRun,
-    };
-
     const queueJump = () => {
       jumpBufferedAt = performance.now();
       holdJump = true;
@@ -605,9 +571,6 @@ export function DaybreakGame({ width, height, onGameOver }: Props) {
       if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") {
         e.preventDefault();
         if (!e.repeat && !pausedRef.current) queueJump();
-      } else if (e.key === "Escape") {
-        if (pausedRef.current) resumeGame();
-        else pauseGame();
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -617,18 +580,7 @@ export function DaybreakGame({ width, height, onGameOver }: Props) {
     };
     const onPointerDown = (e: PointerEvent) => {
       e.preventDefault();
-      const { x, y, w, h } = pauseRect;
-      const pad = 6;
-      if (
-        e.offsetX >= x - pad &&
-        e.offsetX <= x + w + pad &&
-        e.offsetY >= y - pad &&
-        e.offsetY <= y + h + pad
-      ) {
-        pauseGame();
-        return;
-      }
-      queueJump();
+      if (!pausedRef.current) queueJump();
     };
     const releaseHold = () => {
       holdJump = false;
@@ -950,14 +902,6 @@ export function DaybreakGame({ width, height, onGameOver }: Props) {
       g.fillText(`${Math.round(progress * 100)}%`, barX + barW / 2, 26);
       g.textAlign = "left";
 
-      const pb = { x: W - 48, y: 12, w: 34, h: 34 };
-      pauseRect = pb;
-      g.fillStyle = pal.hudChip;
-      g.fillRect(pb.x, pb.y, pb.w, pb.h);
-      g.fillStyle = pal.hudText;
-      g.fillRect(pb.x + 10, pb.y + 9, 5, 16);
-      g.fillRect(pb.x + 19, pb.y + 9, 5, 16);
-
       if (attempts === 1 && xView < 12 && phase === "playing") {
         g.font = "800 15px Nunito, sans-serif";
         g.textAlign = "center";
@@ -1048,50 +992,16 @@ export function DaybreakGame({ width, height, onGameOver }: Props) {
       canvas.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("pointerup", releaseHold);
       window.removeEventListener("pointercancel", releaseHold);
+      audioRef.current = null;
       audio.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <div className="relative h-full w-full">
-      <canvas
-        ref={canvasRef}
-        className="h-full w-full touch-none select-none"
-      />
-      {paused && (
-        <div className="game-overlay absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 px-6 text-center">
-          <p className="game-shell-title font-display text-2xl font-800">
-            Paused
-          </p>
-          {levelInfo && (
-            <p className="text-sm font-700 text-ink-soft">
-              {levelInfo.key.name} · {levelInfo.bpm} BPM
-            </p>
-          )}
-          <button
-            type="button"
-            className="btn px-8"
-            onClick={() => pauseActionsRef.current.resume()}
-          >
-            Resume
-          </button>
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={() => pauseActionsRef.current.restart()}
-          >
-            Restart level
-          </button>
-          <button
-            type="button"
-            className="btn-ghost"
-            onClick={() => pauseActionsRef.current.endRun()}
-          >
-            End run
-          </button>
-        </div>
-      )}
-    </div>
+    <canvas
+      ref={canvasRef}
+      className="h-full w-full touch-none select-none"
+    />
   );
 }

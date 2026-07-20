@@ -3,9 +3,14 @@ import { DaybreakGame } from "@/games/DaybreakGame";
 
 export function DaybreakScreen() {
   return (
-    <GameShell gameId="daybreak" escapeExits={false}>
-      {({ width, height, onGameOver }) => (
-        <DaybreakGame width={width} height={height} onGameOver={onGameOver} />
+    <GameShell gameId="daybreak">
+      {({ width, height, onGameOver, paused }) => (
+        <DaybreakGame
+          width={width}
+          height={height}
+          onGameOver={onGameOver}
+          paused={paused}
+        />
       )}
     </GameShell>
   );

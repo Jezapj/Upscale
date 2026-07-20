@@ -4,8 +4,13 @@ import { TipTopGame } from "@/games/TipTopGame";
 export function TipTopScreen() {
   return (
     <GameShell gameId="tiptop">
-      {({ width, height, onGameOver }) => (
-        <TipTopGame width={width} height={height} onGameOver={onGameOver} />
+      {({ width, height, onGameOver, paused }) => (
+        <TipTopGame
+          width={width}
+          height={height}
+          onGameOver={onGameOver}
+          paused={paused}
+        />
       )}
     </GameShell>
   );

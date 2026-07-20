@@ -8,6 +8,7 @@ interface Props {
   width: number;
   height: number;
   onGameOver: (score: number) => void;
+  paused?: boolean;
 }
 
 interface Tile {
@@ -34,16 +35,18 @@ const MISS_PADDING = 14;
 const LANE_KEYS = ["D", "F", "J", "K"];
 
 /** Piano tiles with hit zone guide, lane highlights, and tight timing. */
-export function DissiadaGame({ width, height, onGameOver }: Props) {
+export function DissiadaGame({ width, height, onGameOver, paused = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const palette = useGamePalette();
   const sizeRef = useRef({ width, height });
   const onGameOverRef = useRef(onGameOver);
   const paletteRef = useRef(palette);
+  const pausedRef = useRef(paused);
 
   sizeRef.current = { width, height };
   onGameOverRef.current = onGameOver;
   paletteRef.current = palette;
+  pausedRef.current = paused;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -123,7 +126,7 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
     };
 
     const tapLane = (lane: number) => {
-      if (!alive) return;
+      if (!alive || pausedRef.current) return;
       const { hitY, perfectH, goodH, okH } = getLayout();
       unlockGameAudio();
       laneFlash[lane] = 14;
@@ -212,35 +215,37 @@ export function DissiadaGame({ width, height, onGameOver }: Props) {
       const laneColors = p.laneColors;
       const pal = paletteRef.current;
 
-      spawnTimer += dt;
-      const spawnRate = Math.max(14, 32 - Math.floor(score / 8));
-      if (spawnTimer >= spawnRate) {
-        spawnTimer -= spawnRate;
-        const lane = Math.floor(Math.random() * LANES);
-        tiles.push({ lane, y: -TILE_H - 10, hit: false, missed: false });
-      }
-
-      for (const t of tiles) {
-        if (!t.hit && !t.missed) t.y += speed * dt;
-      }
-
-      for (const t of tiles) {
-        if (!t.hit && !t.missed && t.y > hitY + okH + MISS_PADDING) {
-          t.missed = true;
-          combo = 0;
-          alive = false;
-          onGameOverRef.current(score);
-          return;
+      if (!pausedRef.current) {
+        spawnTimer += dt;
+        const spawnRate = Math.max(14, 32 - Math.floor(score / 8));
+        if (spawnTimer >= spawnRate) {
+          spawnTimer -= spawnRate;
+          const lane = Math.floor(Math.random() * LANES);
+          tiles.push({ lane, y: -TILE_H - 10, hit: false, missed: false });
         }
-      }
-      tiles = tiles.filter((t) => t.y < height + 40 && !t.missed);
 
-      for (let i = 0; i < LANES; i++) {
-        if (laneFlash[i] > 0) laneFlash[i] = Math.max(0, laneFlash[i] - dt);
-      }
-      for (let i = tapFx.length - 1; i >= 0; i--) {
-        tapFx[i].t -= dt;
-        if (tapFx[i].t <= 0) tapFx.splice(i, 1);
+        for (const t of tiles) {
+          if (!t.hit && !t.missed) t.y += speed * dt;
+        }
+
+        for (const t of tiles) {
+          if (!t.hit && !t.missed && t.y > hitY + okH + MISS_PADDING) {
+            t.missed = true;
+            combo = 0;
+            alive = false;
+            onGameOverRef.current(score);
+            return;
+          }
+        }
+        tiles = tiles.filter((t) => t.y < height + 40 && !t.missed);
+
+        for (let i = 0; i < LANES; i++) {
+          if (laneFlash[i] > 0) laneFlash[i] = Math.max(0, laneFlash[i] - dt);
+        }
+        for (let i = tapFx.length - 1; i >= 0; i--) {
+          tapFx[i].t -= dt;
+          if (tapFx[i].t <= 0) tapFx.splice(i, 1);
+        }
       }
 
       ctx.fillStyle = p.bg;

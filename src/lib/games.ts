@@ -42,7 +42,7 @@ export const GAMES: GameMeta[] = [
     name: "Daybreak",
     tagline: "Jump to the key you're dealt",
     color: "#ff9e64",
-    controls: "Tap / Space / Click to jump on the beat for bonus points · Esc to pause",
+    controls: "Tap / Space / Click to jump on the beat for bonus points",
   },
 ];
 
