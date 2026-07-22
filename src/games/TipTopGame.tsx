@@ -51,7 +51,7 @@ interface ThemeStar {
 
 type SurfaceFace = "top" | "bottom" | "left" | "right";
 
-type StageElementKind = "sticky" | "laser" | "portal" | "gravity";
+type StageElementKind = "sticky" | "laser" | "portal" | "gravity" | "saw";
 
 interface StickyPatch {
   kind: "sticky";
@@ -62,12 +62,25 @@ interface StickyPatch {
   thickness: number;
 }
 
-interface LaserBeam {
-  kind: "laser";
-  /** Beam X for vertical span between platform underside and ground. */
-  x: number;
-  obsIndex: number;
-}
+/** Vertical laser between a top block and ground/bottom block; horizontal spans two pillars. */
+type LaserBeam =
+  | {
+      kind: "laser";
+      axis: "vertical";
+      x: number;
+      /** Underside of this obstacle is the top emitter. */
+      topObsIndex: number;
+      /** Top of this obstacle is the bottom emitter; null = ground. */
+      bottomObsIndex: number | null;
+    }
+  | {
+      kind: "laser";
+      axis: "horizontal";
+      /** Beam height above local ground (clamped into pillar bodies). */
+      aboveGround: number;
+      leftObsIndex: number;
+      rightObsIndex: number;
+    };
 
 interface PortalPad {
   x: number;
@@ -85,6 +98,16 @@ interface PortalPair {
   orange: PortalPad;
 }
 
+/**
+ * Full-height barrier that can only be bypassed by teleporting through a portal.
+ * Only spawned when a portal pair exists on the stage.
+ */
+interface PortalBarrier {
+  kind: "portalBarrier";
+  x: number;
+  w: number;
+}
+
 type GravityDir = "up" | "down" | "left" | "right";
 
 interface GravityZone {
@@ -97,7 +120,31 @@ interface GravityZone {
   dir: GravityDir;
 }
 
-type StageElement = StickyPatch | LaserBeam | PortalPair | GravityZone;
+/** Oscillating circular saw — moves slowly up and down. */
+interface SawBlade {
+  kind: "saw";
+  x: number;
+  /** Rest height of the saw center above local ground. */
+  aboveGround: number;
+  r: number;
+  amp: number;
+  periodMs: number;
+  phase: number;
+}
+
+type StageElement =
+  | StickyPatch
+  | LaserBeam
+  | PortalPair
+  | GravityZone
+  | PortalBarrier
+  | SawBlade;
+
+interface MedalGoals {
+  gold: number;
+  silver: number;
+  bronze: number;
+}
 
 interface Stage {
   worldW: number;
@@ -112,6 +159,7 @@ interface Stage {
   stars: ThemeStar[];
   /** Pre-rendered sky layer (built once per stage). */
   backdrop: HTMLCanvasElement | null;
+  medals: MedalGoals;
 }
 
 const STAGE_COUNT = 3;
@@ -121,11 +169,17 @@ const FLAP_POWER = 5.9;
 const FLAP_ANGLE = (75 * Math.PI) / 180;
 const GROUND_Y = 0.78;
 const STAGE_CLEAR_FRAMES = 50;
-const GRAVITY_ZONE_FORCE = 0.42;
+const GRAVITY_ZONE_FORCE = 0.32;
 const PORTAL_COOLDOWN_FRAMES = 18;
 /** Physics steps (~60/s) sticky stays off after a flap escape. */
 const STICKY_ESCAPE_FRAMES = 12;
-const ELEMENT_KINDS: StageElementKind[] = ["sticky", "laser", "portal", "gravity"];
+const ELEMENT_KINDS: StageElementKind[] = [
+  "sticky",
+  "laser",
+  "portal",
+  "gravity",
+  "saw",
+];
 
 /** White tangential hit flash after a flap — tune `size` and `alpha`. */
 const FLAP_IMPACT_TUNING = {
@@ -399,11 +453,12 @@ function overlapsPit(x: number, w: number, pitX: number, pitW: number, margin = 
   return x + w > pitX - half && x < pitX + half;
 }
 
-function pickElementCount(rand: () => number): 0 | 1 | 2 {
+function pickElementCount(rand: () => number): 0 | 1 | 2 | 3 {
   const roll = rand();
-  if (roll < 0.2) return 0;
-  if (roll < 0.7) return 1;
-  return 2;
+  if (roll < 0.12) return 0;
+  if (roll < 0.45) return 1;
+  if (roll < 0.8) return 2;
+  return 3;
 }
 
 function shuffleKinds(rand: () => number): StageElementKind[] {
@@ -561,14 +616,85 @@ function laserEndpoints(
   playH: number,
   stage: Stage,
 ): { x0: number; y0: number; x1: number; y1: number } | null {
-  const obs = stage.obstacles[laser.obsIndex];
-  if (!obs) return null;
-  const oy = obstacleY(obs, playH, stage);
+  if (laser.axis === "horizontal") {
+    const left = stage.obstacles[laser.leftObsIndex];
+    const right = stage.obstacles[laser.rightObsIndex];
+    if (!left || !right) return null;
+    const x0 = left.x + left.w;
+    const x1 = right.x;
+    if (x1 - x0 < 20) return null;
+    const midX = (x0 + x1) / 2;
+    const gy = groundHeight(midX, playH, stage);
+    const leftY = obstacleY(left, playH, stage);
+    const rightY = obstacleY(right, playH, stage);
+    const yMin = Math.max(leftY + 8, rightY + 8);
+    const yMax = Math.min(leftY + left.h - 8, rightY + right.h - 8);
+    let y = gy - laser.aboveGround;
+    if (yMax >= yMin) {
+      y = Math.max(yMin, Math.min(yMax, y));
+    } else {
+      y = (leftY + rightY + left.h + right.h) * 0.25;
+    }
+    return { x0, y0: y, x1, y1: y };
+  }
+
+  const top = stage.obstacles[laser.topObsIndex];
+  if (!top) return null;
+  const topY = obstacleY(top, playH, stage);
   const x = laser.x;
-  const yTop = oy + obs.h;
-  const yBot = groundHeight(x, playH, stage);
-  if (yBot - yTop < 40) return null;
-  return { x0: x, y0: yTop, x1: x, y1: yBot };
+  const y0 = topY + top.h;
+  let y1: number;
+  if (laser.bottomObsIndex !== null) {
+    const bot = stage.obstacles[laser.bottomObsIndex];
+    if (!bot) return null;
+    y1 = obstacleY(bot, playH, stage);
+  } else {
+    y1 = groundHeight(x, playH, stage);
+  }
+  if (y1 - y0 < 28) return null;
+  return { x0: x, y0, x1: x, y1 };
+}
+
+function portalBarrierRect(
+  barrier: PortalBarrier,
+  playH: number,
+  _stage: Stage,
+): { x: number; y: number; w: number; h: number } {
+  // Full-height column rooted at the screen bottom (extends below the fairway).
+  return { x: barrier.x, y: 0, w: barrier.w, h: playH };
+}
+
+/** X-ranges where the ground silhouette should part around a column. */
+function groundBreakSpans(
+  stage: Stage,
+): { x: number; w: number }[] {
+  const spans: { x: number; w: number }[] = [];
+  for (const obs of stage.obstacles) {
+    if (obs.kind === "bump" && obs.anchor === "ground") {
+      spans.push({ x: obs.x, w: obs.w });
+    }
+  }
+  for (const el of stage.elements) {
+    if (el.kind === "portalBarrier") {
+      spans.push({ x: el.x, w: el.w });
+    }
+  }
+  spans.sort((a, b) => a.x - b.x);
+  return spans;
+}
+
+function sawCenter(
+  saw: SawBlade,
+  playH: number,
+  stage: Stage,
+  timeMs: number,
+): { x: number; y: number } {
+  const gy = groundHeight(saw.x, playH, stage);
+  const osc = Math.sin((timeMs / saw.periodMs) * Math.PI * 2 + saw.phase);
+  return {
+    x: saw.x,
+    y: gy - saw.aboveGround + osc * saw.amp,
+  };
 }
 
 function circleHitsSegment(
@@ -714,6 +840,246 @@ function ensureCeiling(
   return null;
 }
 
+function tryPlaceVerticalLaser(
+  rand: () => number,
+  worldW: number,
+  pitX: number,
+  pitW: number,
+  obstacles: Obstacle[],
+): LaserBeam | null {
+  const mode = rand();
+
+  // Short/medium mid-air vertical: two floating blocks with a laser between.
+  if (mode < 0.4) {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const w = 36 + Math.floor(rand() * 40);
+      const h = 14 + Math.floor(rand() * 12);
+      const gap = 45 + Math.floor(rand() * 90); // varying length
+      const x = 260 + Math.floor(rand() * Math.max(60, worldW - w - 180));
+      if (overlapsPit(x, w, pitX, pitW, 45)) continue;
+      const floatAboveBot = 40 + Math.floor(rand() * 55);
+      const floatAboveTop = floatAboveBot + gap + h;
+      if (floatAboveTop > 200) continue;
+      obstacles.push({
+        kind: "platform",
+        x,
+        w,
+        h,
+        anchor: "float",
+        floatAbove: floatAboveTop,
+      });
+      obstacles.push({
+        kind: "platform",
+        x,
+        w,
+        h,
+        anchor: "float",
+        floatAbove: floatAboveBot,
+      });
+      return {
+        kind: "laser",
+        axis: "vertical",
+        x: x + w * (0.35 + rand() * 0.3),
+        topObsIndex: obstacles.length - 2,
+        bottomObsIndex: obstacles.length - 1,
+      };
+    }
+  }
+
+  // Ceiling → floating shelf (medium) or ceiling → ground (long).
+  const topIndex = ensureCeiling(rand, worldW, pitX, pitW, obstacles);
+  if (topIndex === null) {
+    // Absolute fallback: spawn our own float pair.
+    const w = 44;
+    const h = 16;
+    const gap = 70;
+    const x = Math.min(worldW - 200, Math.max(280, pitX * 0.45));
+    if (overlapsPit(x, w, pitX, pitW, 40)) return null;
+    obstacles.push({
+      kind: "platform",
+      x,
+      w,
+      h,
+      anchor: "float",
+      floatAbove: 140,
+    });
+    obstacles.push({
+      kind: "platform",
+      x,
+      w,
+      h,
+      anchor: "float",
+      floatAbove: 140 - gap - h,
+    });
+    return {
+      kind: "laser",
+      axis: "vertical",
+      x: x + w * 0.5,
+      topObsIndex: obstacles.length - 2,
+      bottomObsIndex: obstacles.length - 1,
+    };
+  }
+
+  const top = obstacles[topIndex];
+  const x = top.x + top.w * (0.2 + rand() * 0.6);
+  const beamX = overlapsPit(x - 8, 16, pitX, pitW, 40) ? top.x + top.w * 0.5 : x;
+
+  if (rand() < 0.45 && top.floatAbove > 100) {
+    const shelfW = 40 + Math.floor(rand() * 50);
+    const shelfH = 14 + Math.floor(rand() * 10);
+    const shelfX = Math.max(top.x, Math.min(top.x + top.w - shelfW, beamX - shelfW / 2));
+    const gap = 55 + Math.floor(rand() * 70);
+    const floatAbove = Math.max(36, top.floatAbove - gap);
+    obstacles.push({
+      kind: "platform",
+      x: shelfX,
+      w: shelfW,
+      h: shelfH,
+      anchor: "float",
+      floatAbove,
+    });
+    return {
+      kind: "laser",
+      axis: "vertical",
+      x: beamX,
+      topObsIndex: topIndex,
+      bottomObsIndex: obstacles.length - 1,
+    };
+  }
+
+  return {
+    kind: "laser",
+    axis: "vertical",
+    x: beamX,
+    topObsIndex: topIndex,
+    bottomObsIndex: null,
+  };
+}
+
+/**
+ * Horizontal left–right beam. Mix of ground pillars and mid-air floating blocks,
+ * with varying gap lengths — placed across the flight path so they hinder the player.
+ */
+function tryPlaceHorizontalLaser(
+  rand: () => number,
+  worldW: number,
+  pitX: number,
+  pitW: number,
+  obstacles: Obstacle[],
+): LaserBeam | null {
+  for (let attempt = 0; attempt < 28; attempt++) {
+    const floating = rand() < 0.55;
+    const pillarW = 18 + Math.floor(rand() * 16);
+    const pillarH = floating
+      ? 28 + Math.floor(rand() * 50)
+      : 70 + Math.floor(rand() * 100);
+    const gap = 55 + Math.floor(rand() * 150);
+    const totalW = pillarW * 2 + gap;
+    const maxStart = worldW - totalW - 120;
+    if (maxStart < 240) continue;
+    const x = 240 + Math.floor(rand() * (maxStart - 240 + 1));
+    if (overlapsPit(x, totalW, pitX, pitW, 40)) continue;
+
+    if (floating) {
+      const floatAbove = 55 + Math.floor(rand() * 100);
+      obstacles.push({
+        kind: "platform",
+        x,
+        w: pillarW,
+        h: pillarH,
+        anchor: "float",
+        floatAbove,
+      });
+      obstacles.push({
+        kind: "platform",
+        x: x + pillarW + gap,
+        w: pillarW,
+        h: pillarH,
+        anchor: "float",
+        floatAbove,
+      });
+      return {
+        kind: "laser",
+        axis: "horizontal",
+        // Beam through the middle of the floating pillars.
+        aboveGround: floatAbove + pillarH * 0.5,
+        leftObsIndex: obstacles.length - 2,
+        rightObsIndex: obstacles.length - 1,
+      };
+    }
+
+    const hardHit = obstacles.some(
+      (o) =>
+        o.anchor === "ground" &&
+        o.x > -100 &&
+        x < o.x + o.w + 4 &&
+        x + totalW + 4 > o.x,
+    );
+    if (hardHit && attempt < 18) continue;
+
+    obstacles.push({
+      kind: "bump",
+      x,
+      w: pillarW,
+      h: pillarH,
+      anchor: "ground",
+      floatAbove: 0,
+    });
+    obstacles.push({
+      kind: "bump",
+      x: x + pillarW + gap,
+      w: pillarW,
+      h: pillarH,
+      anchor: "ground",
+      floatAbove: 0,
+    });
+    return {
+      kind: "laser",
+      axis: "horizontal",
+      aboveGround: Math.min(pillarH - 16, Math.max(40, pillarH * 0.45)),
+      leftObsIndex: obstacles.length - 2,
+      rightObsIndex: obstacles.length - 1,
+    };
+  }
+
+  // Guaranteed mid-air horizontal if everything else failed.
+  const pillarW = 22;
+  const pillarH = 40;
+  const gap = 100;
+  const totalW = pillarW * 2 + gap;
+  let x = Math.floor(pitX * 0.4);
+  if (x < 260) x = 260;
+  if (x + totalW > worldW - 80) x = Math.max(260, worldW - totalW - 80);
+  if (overlapsPit(x, totalW, pitX, pitW, 40)) {
+    x = 280;
+    if (overlapsPit(x, totalW, pitX, pitW, 40)) return null;
+  }
+  const floatAbove = 90;
+  obstacles.push({
+    kind: "platform",
+    x,
+    w: pillarW,
+    h: pillarH,
+    anchor: "float",
+    floatAbove,
+  });
+  obstacles.push({
+    kind: "platform",
+    x: x + pillarW + gap,
+    w: pillarW,
+    h: pillarH,
+    anchor: "float",
+    floatAbove,
+  });
+  return {
+    kind: "laser",
+    axis: "horizontal",
+    aboveGround: floatAbove + pillarH * 0.5,
+    leftObsIndex: obstacles.length - 2,
+    rightObsIndex: obstacles.length - 1,
+  };
+}
+
 function tryPlaceLaser(
   rand: () => number,
   worldW: number,
@@ -721,15 +1087,261 @@ function tryPlaceLaser(
   pitW: number,
   obstacles: Obstacle[],
 ): LaserBeam | null {
-  const obsIndex = ensureCeiling(rand, worldW, pitX, pitW, obstacles);
-  if (obsIndex === null) return null;
-  const obs = obstacles[obsIndex];
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const x = obs.x + obs.w * (0.18 + rand() * 0.64);
-    if (overlapsPit(x - 10, 20, pitX, pitW, 40)) continue;
-    return { kind: "laser", x, obsIndex };
+  // Even mix of horizontal and vertical, with cross-fallback.
+  if (rand() < 0.5) {
+    return (
+      tryPlaceHorizontalLaser(rand, worldW, pitX, pitW, obstacles) ??
+      tryPlaceVerticalLaser(rand, worldW, pitX, pitW, obstacles)
+    );
   }
-  return { kind: "laser", x: obs.x + obs.w * 0.5, obsIndex };
+  return (
+    tryPlaceVerticalLaser(rand, worldW, pitX, pitW, obstacles) ??
+    tryPlaceHorizontalLaser(rand, worldW, pitX, pitW, obstacles)
+  );
+}
+
+function portalFaceNormal(face: SurfaceFace): { nx: number; ny: number } {
+  if (face === "top") return { nx: 0, ny: -1 };
+  if (face === "bottom") return { nx: 0, ny: 1 };
+  if (face === "left") return { nx: -1, ny: 0 };
+  return { nx: 1, ny: 0 };
+}
+
+function isLiveObstacle(o: Obstacle): boolean {
+  return o.x > -200;
+}
+
+function xOverlap(ax: number, aw: number, bx: number, bw: number, pad = 0): boolean {
+  return ax < bx + bw + pad && ax + aw + pad > bx;
+}
+
+/** Ground bumps/walls that fill columns — portals must not sit inside their X footprint. */
+function columnBlocksStrip(
+  x: number,
+  w: number,
+  obstacles: Obstacle[],
+  ignoreIndex: number | null,
+): boolean {
+  return obstacles.some(
+    (o, i) =>
+      i !== ignoreIndex &&
+      isLiveObstacle(o) &&
+      o.anchor === "ground" &&
+      (o.kind === "bump" || o.kind === "wall") &&
+      xOverlap(x, w, o.x, o.w, 4),
+  );
+}
+
+/** Side face is blocked if another solid sits flush against it. */
+function sideFaceBlocked(
+  obs: Obstacle,
+  face: "left" | "right",
+  obstacles: Obstacle[],
+  ignoreIndex: number,
+): boolean {
+  const reach = 28;
+  const zoneX = face === "left" ? obs.x - reach : obs.x + obs.w;
+  return obstacles.some(
+    (o, i) =>
+      i !== ignoreIndex &&
+      isLiveObstacle(o) &&
+      (o.kind === "bump" ||
+        o.kind === "wall" ||
+        o.kind === "platform" ||
+        o.kind === "stone" ||
+        isCeilingSurface(o)) &&
+      xOverlap(zoneX, reach, o.x, o.w, 0),
+  );
+}
+
+/** Build one portal pad — biased toward side faces; orientations are independent. */
+function makePortalPad(
+  rand: () => number,
+  worldW: number,
+  pitX: number,
+  pitW: number,
+  obstacles: Obstacle[],
+  avoidIndex: number | null,
+): PortalPad | null {
+  const solidCandidates = obstacles
+    .map((obs, i) => ({ obs, i }))
+    .filter(
+      ({ obs, i }) =>
+        i !== avoidIndex &&
+        isLiveObstacle(obs) &&
+        (obs.kind === "bump" ||
+          obs.kind === "wall" ||
+          obs.kind === "platform" ||
+          isCeilingSurface(obs)) &&
+        obs.w >= 28 &&
+        obs.h >= 24,
+    );
+
+  for (let attempt = 0; attempt < 32; attempt++) {
+    // Prefer attaching to obstacle sides.
+    if (solidCandidates.length > 0 && rand() < 0.72) {
+      const { obs, i } = solidCandidates[Math.floor(rand() * solidCandidates.length)];
+      let face: SurfaceFace;
+      const roll = rand();
+      if (obs.h >= 36 && roll < 0.58) {
+        face = rand() < 0.5 ? "left" : "right";
+      } else if (isCeilingSurface(obs) || obs.anchor === "float") {
+        face = roll < 0.55 ? "bottom" : roll < 0.8 ? "top" : rand() < 0.5 ? "left" : "right";
+      } else {
+        face = roll < 0.35 ? "top" : roll < 0.55 ? "bottom" : rand() < 0.5 ? "left" : "right";
+      }
+
+      const { nx, ny } = portalFaceNormal(face);
+      if (face === "top" || face === "bottom") {
+        const w = Math.min(obs.w - 8, Math.max(32, obs.w * (0.35 + rand() * 0.4)));
+        const x = obs.x + (obs.w - w) * (0.1 + rand() * 0.8);
+        if (overlapsPit(x, w, pitX, pitW, 35)) continue;
+        // Don't embed in another ground column (fairway portals cut through bumps).
+        if (columnBlocksStrip(x, w, obstacles, i)) continue;
+        return { x, w, h: 5, attach: { obsIndex: i, face }, nx, ny };
+      }
+      // Side portal: pad.x is Y offset along the face, pad.w is height.
+      if (sideFaceBlocked(obs, face, obstacles, i)) continue;
+      const h = Math.min(obs.h - 6, Math.max(28, obs.h * (0.35 + rand() * 0.45)));
+      const yOff = (obs.h - h) * (0.1 + rand() * 0.8);
+      return {
+        x: yOff,
+        w: h,
+        h: 5,
+        attach: { obsIndex: i, face },
+        nx,
+        ny,
+      };
+    }
+
+    // Ground portal — never under a terrain column.
+    const w = 44 + Math.floor(rand() * 28);
+    let x = 240 + Math.floor(rand() * Math.max(80, worldW - 360));
+    if (x < 200) x = 200;
+    if (x + w > worldW - 40) x = worldW - w - 40;
+    if (overlapsPit(x, w, pitX, pitW, 50)) continue;
+    if (columnBlocksStrip(x, w, obstacles, null)) continue;
+    return { x, w, h: 5, attach: "ground", nx: 0, ny: -1 };
+  }
+
+  // Last resort: ceiling underside portal on a clear strip.
+  const ceilingIndex = ensureCeiling(rand, worldW, pitX, pitW, obstacles);
+  if (ceilingIndex === null) return null;
+  const obs = obstacles[ceilingIndex];
+  const w = Math.min(58, Math.max(36, obs.w * 0.45));
+  const x = obs.x + (obs.w - w) * 0.5;
+  if (columnBlocksStrip(x, w, obstacles, ceilingIndex)) return null;
+  return {
+    x,
+    w,
+    h: 5,
+    attach: { obsIndex: ceilingIndex, face: "bottom" },
+    nx: 0,
+    ny: 1,
+  };
+}
+
+/** Approximate X footprint of a portal opening (for keep-out). */
+function portalOpeningXRange(pad: PortalPad, obstacles: Obstacle[]): { x: number; w: number } | null {
+  if (pad.attach === "ground") return { x: pad.x - 10, w: pad.w + 20 };
+  const obs = obstacles[pad.attach.obsIndex];
+  if (!obs || !isLiveObstacle(obs)) return null;
+  const face = pad.attach.face;
+  if (face === "top" || face === "bottom") {
+    return { x: pad.x - 8, w: pad.w + 16 };
+  }
+  // Side opening sits just outside the wall.
+  const reach = 40;
+  if (face === "left") return { x: obs.x - reach, w: reach + 10 };
+  return { x: obs.x + obs.w - 10, w: reach + 10 };
+}
+
+function collectPortalKeepOut(
+  elements: StageElement[],
+  obstacles: Obstacle[],
+): { x: number; w: number }[] {
+  const ranges: { x: number; w: number }[] = [];
+  for (const el of elements) {
+    if (el.kind !== "portal") continue;
+    for (const pad of [el.blue, el.orange]) {
+      const r = portalOpeningXRange(pad, obstacles);
+      if (r) ranges.push(r);
+    }
+  }
+  return ranges;
+}
+
+function laserConflictsWithPortals(
+  laser: LaserBeam,
+  obstacles: Obstacle[],
+  keepOut: { x: number; w: number }[],
+): boolean {
+  if (keepOut.length === 0) return false;
+  if (laser.axis === "vertical") {
+    return keepOut.some((r) => laser.x >= r.x && laser.x <= r.x + r.w);
+  }
+  const left = obstacles[laser.leftObsIndex];
+  const right = obstacles[laser.rightObsIndex];
+  if (!left || !right) return true;
+  const beamX = left.x + left.w;
+  const beamW = Math.max(8, right.x - beamX);
+  // Also treat the laser pillars themselves as conflicting if they sit on a mouth.
+  if (keepOut.some((r) => xOverlap(beamX, beamW, r.x, r.w, 6))) return true;
+  if (keepOut.some((r) => xOverlap(left.x, left.w, r.x, r.w, 4))) return true;
+  if (keepOut.some((r) => xOverlap(right.x, right.w, r.x, r.w, 4))) return true;
+  return false;
+}
+
+/** Clear props sitting on portal mouths without shifting obstacle indices. */
+function clearObstaclesOverPortals(
+  obstacles: Obstacle[],
+  blue: PortalPad,
+  orange: PortalPad,
+  elements: StageElement[] = [],
+): void {
+  const ranges: { x: number; w: number }[] = [];
+  for (const pad of [blue, orange]) {
+    const r = portalOpeningXRange(pad, obstacles);
+    if (r) ranges.push(r);
+  }
+  if (ranges.length === 0) return;
+
+  const protectedIdx = new Set<number>();
+  for (const pad of [blue, orange]) {
+    if (pad.attach !== "ground") protectedIdx.add(pad.attach.obsIndex);
+  }
+  for (const el of elements) {
+    if (el.kind === "laser") {
+      if (el.axis === "horizontal") {
+        protectedIdx.add(el.leftObsIndex);
+        protectedIdx.add(el.rightObsIndex);
+      } else {
+        protectedIdx.add(el.topObsIndex);
+        if (el.bottomObsIndex !== null) protectedIdx.add(el.bottomObsIndex);
+      }
+    } else if (el.kind === "sticky" && el.attach !== "ground") {
+      protectedIdx.add(el.attach.obsIndex);
+    }
+  }
+
+  for (let i = 0; i < obstacles.length; i++) {
+    if (protectedIdx.has(i)) continue;
+    const o = obstacles[i];
+    if (o.kind === "ceiling") continue;
+    const hits = ranges.some((r) => o.x < r.x + r.w && o.x + o.w > r.x);
+    if (!hits) continue;
+    if (o.anchor === "ground" || (o.anchor === "float" && o.floatAbove < 50)) {
+      // Tombstone off-world — keeps indices stable for other attachments.
+      obstacles[i] = {
+        kind: "bump",
+        x: -800,
+        w: 1,
+        h: 1,
+        anchor: "ground",
+        floatAbove: 0,
+      };
+    }
+  }
 }
 
 function tryPlacePortals(
@@ -739,44 +1351,26 @@ function tryPlacePortals(
   pitW: number,
   obstacles: Obstacle[],
 ): PortalPair | null {
-  const ceilingIndex = ensureCeiling(rand, worldW, pitX, pitW, obstacles);
-  if (ceilingIndex === null) return null;
-  const obs = obstacles[ceilingIndex];
+  for (let attempt = 0; attempt < 18; attempt++) {
+    const blue = makePortalPad(rand, worldW, pitX, pitW, obstacles, null);
+    if (!blue) continue;
+    const avoid =
+      blue.attach === "ground" ? null : blue.attach.obsIndex;
+    const orange = makePortalPad(rand, worldW, pitX, pitW, obstacles, avoid);
+    if (!orange) continue;
 
-  for (let attempt = 0; attempt < 22; attempt++) {
-    const pw = Math.min(58, Math.max(40, obs.w * (0.4 + rand() * 0.35)));
-    const px = obs.x + (obs.w - pw) * (0.1 + rand() * 0.8);
-    if (overlapsPit(px, pw, pitX, pitW, 40)) continue;
-
-    const gw = 48 + Math.floor(rand() * 22);
-    let gx = 240 + Math.floor(rand() * Math.max(80, worldW - 360));
-    if (Math.abs(gx + gw / 2 - (obs.x + obs.w / 2)) < 100) {
-      gx = obs.x > worldW * 0.5 ? obs.x - gw - 90 : obs.x + obs.w + 90;
+    // Reject identical face on the same host.
+    if (
+      blue.attach !== "ground" &&
+      orange.attach !== "ground" &&
+      blue.attach.obsIndex === orange.attach.obsIndex &&
+      blue.attach.face === orange.attach.face
+    ) {
+      continue;
     }
-    if (gx < 200) gx = 200;
-    if (gx + gw > worldW - 40) gx = worldW - gw - 40;
-    if (overlapsPit(gx, gw, pitX, pitW, 50)) continue;
 
-    const orangeOnCeiling = rand() > 0.35;
-      const ceiling: PortalPad = {
-        x: px,
-        w: pw,
-        h: 5,
-        attach: { obsIndex: ceilingIndex, face: "bottom" },
-        nx: 0,
-        ny: 1,
-      };
-      const floor: PortalPad = {
-        x: gx,
-        w: gw,
-        h: 5,
-        attach: "ground",
-        nx: 0,
-        ny: -1,
-      };
-    return orangeOnCeiling
-      ? { kind: "portal", blue: floor, orange: ceiling }
-      : { kind: "portal", blue: ceiling, orange: floor };
+    clearObstaclesOverPortals(obstacles, blue, orange);
+    return { kind: "portal", blue, orange };
   }
   return null;
 }
@@ -817,6 +1411,45 @@ function tryPlaceGravity(
   return null;
 }
 
+function tryPlaceSaw(
+  rand: () => number,
+  worldW: number,
+  pitX: number,
+  pitW: number,
+): SawBlade | null {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const r = 22 + Math.floor(rand() * 9);
+    const x = 280 + Math.floor(rand() * Math.max(80, worldW - 360));
+    if (overlapsPit(x - r, r * 2, pitX, pitW, 55)) continue;
+    if (x < 240 || x > worldW - 80) continue;
+    const amp = 40 + Math.floor(rand() * 51);
+    const aboveGround = 70 + Math.floor(rand() * 90);
+    return {
+      kind: "saw",
+      x,
+      aboveGround,
+      r,
+      amp,
+      periodMs: 3500 + Math.floor(rand() * 2500),
+      phase: rand() * Math.PI * 2,
+    };
+  }
+  return null;
+}
+
+function computeMedalGoals(
+  pitX: number,
+  obstacles: Obstacle[],
+  elements: StageElement[],
+): MedalGoals {
+  const base = Math.round((pitX - 120) / 340);
+  const clutter = Math.round(obstacles.length * 0.25 + elements.length * 0.5);
+  const gold = Math.max(2, base + clutter) + 1;
+  const silver = gold + 2;
+  const bronze = silver + 3;
+  return { gold, silver, bronze };
+}
+
 function generateElements(
   rand: () => number,
   worldW: number,
@@ -828,7 +1461,10 @@ function generateElements(
   if (count === 0) return [];
 
   const elements: StageElement[] = [];
-  const kinds = shuffleKinds(rand);
+  // Place portals early so opening clearance runs before unrelated props pile on.
+  const kinds = shuffleKinds(rand).sort((a, b) =>
+    a === "portal" ? -1 : b === "portal" ? 1 : 0,
+  );
 
   for (const kind of kinds) {
     if (elements.length >= count) break;
@@ -836,9 +1472,72 @@ function generateElements(
     if (kind === "sticky") placed = tryPlaceSticky(rand, worldW, pitX, pitW, obstacles);
     else if (kind === "laser") placed = tryPlaceLaser(rand, worldW, pitX, pitW, obstacles);
     else if (kind === "portal") placed = tryPlacePortals(rand, worldW, pitX, pitW, obstacles);
-    else placed = tryPlaceGravity(rand, worldW, pitX, pitW);
+    else if (kind === "gravity") placed = tryPlaceGravity(rand, worldW, pitX, pitW);
+    else if (kind === "saw") placed = tryPlaceSaw(rand, worldW, pitX, pitW);
     if (placed) elements.push(placed);
   }
+
+  // Sticky stages are more likely to also get a saw.
+  const hasSticky = elements.some((el) => el.kind === "sticky");
+  const hasSaw = elements.some((el) => el.kind === "saw");
+  if (hasSticky && !hasSaw && rand() < 0.45) {
+    const saw = tryPlaceSaw(rand, worldW, pitX, pitW);
+    if (saw) elements.push(saw);
+  }
+
+  // Lasers were often skipped (portal-first + tiny element budget). Guarantee a try.
+  if (!elements.some((el) => el.kind === "laser") && rand() < 0.72) {
+    const laser = tryPlaceLaser(rand, worldW, pitX, pitW, obstacles);
+    if (laser) elements.push(laser);
+  }
+
+  // Drop lasers that sit on / through portal openings.
+  const keepOut = collectPortalKeepOut(elements, obstacles);
+  if (keepOut.length > 0) {
+    for (let i = elements.length - 1; i >= 0; i--) {
+      const el = elements[i];
+      if (el.kind !== "laser") continue;
+      if (!laserConflictsWithPortals(el, obstacles, keepOut)) continue;
+      elements.splice(i, 1);
+    }
+    // Retry once for a laser in a clear spot if we removed the only one.
+    if (!elements.some((el) => el.kind === "laser") && rand() < 0.8) {
+      for (let n = 0; n < 6; n++) {
+        const laser = tryPlaceLaser(rand, worldW, pitX, pitW, obstacles);
+        if (!laser) continue;
+        if (laserConflictsWithPortals(laser, obstacles, keepOut)) continue;
+        elements.push(laser);
+        break;
+      }
+    }
+  }
+
+  // Re-clear portal mouths now that lasers/sticky exist (protect their hosts).
+  for (const el of elements) {
+    if (el.kind !== "portal") continue;
+    clearObstaclesOverPortals(obstacles, el.blue, el.orange, elements);
+  }
+
+  // Full-height wall between a portal pair — only when portals exist.
+  const portal = elements.find((el): el is PortalPair => el.kind === "portal");
+  if (portal && rand() < 0.55) {
+    const portalAnchorX = (pad: PortalPad) => {
+      if (pad.attach === "ground") return pad.x + pad.w / 2;
+      const obs = obstacles[pad.attach.obsIndex];
+      return obs ? obs.x + obs.w / 2 : pad.x;
+    };
+    const x0 = portalAnchorX(portal.blue);
+    const x1 = portalAnchorX(portal.orange);
+    if (Math.abs(x1 - x0) > 130) {
+      const mid = (x0 + x1) / 2;
+      const w = 20 + Math.floor(rand() * 12);
+      const x = mid - w / 2;
+      if (!overlapsPit(x, w, pitX, pitW, 55)) {
+        elements.push({ kind: "portalBarrier", x, w });
+      }
+    }
+  }
+
   return elements;
 }
 
@@ -975,18 +1674,20 @@ function generateStage(seed: number): Stage {
   };
   const decor = generateThemeDecor(rand, theme, worldW);
   const obstacles = generateObstacles(rand, worldW, pitX, pitW, theme);
+  const elements = generateElements(rand, worldW, pitX, pitW, obstacles);
   return {
     worldW,
     pit,
     groundPhase: rand() * Math.PI * 2,
     groundAmp: 10 + rand() * 14,
     obstacles,
-    elements: generateElements(rand, worldW, pitX, pitW, obstacles),
+    elements,
     theme,
     gravity: theme === "space" ? SPACE_GRAVITY : GRAVITY,
     clouds: decor.clouds,
     stars: decor.stars,
     backdrop: null,
+    medals: computeMedalGoals(pitX, obstacles, elements),
   };
 }
 
@@ -1168,13 +1869,40 @@ function drawVisibleGround(
   stage: Stage,
   pal: ThemePalette,
 ) {
+  const breaks = groundBreakSpans(stage);
   ctx.fillStyle = pal.fairway;
   ctx.beginPath();
   ctx.moveTo(0, playH);
   const startGx = Math.floor(camX / 12) * 12;
   const endGx = camX + width + 12;
+
+  let inside: { x: number; w: number } | null = null;
   for (let gx = startGx; gx <= endGx; gx += 12) {
-    ctx.lineTo(gx - camX, groundHeight(gx, playH, stage));
+    const span = breaks.find((b) => gx >= b.x && gx < b.x + b.w) ?? null;
+    if (span && (!inside || inside.x !== span.x)) {
+      // Drop vertically into the column footprint.
+      if (!inside) {
+        ctx.lineTo(gx - camX, groundHeight(gx, playH, stage));
+      }
+      ctx.lineTo(gx - camX, playH);
+      inside = span;
+      continue;
+    }
+    if (inside && (!span || span.x !== inside.x)) {
+      // Rise back up at the right edge of the column.
+      const right = inside.x + inside.w;
+      ctx.lineTo(right - camX, playH);
+      ctx.lineTo(right - camX, groundHeight(right, playH, stage));
+      inside = null;
+    }
+    if (!inside) {
+      ctx.lineTo(gx - camX, groundHeight(gx, playH, stage));
+    }
+  }
+  if (inside) {
+    const right = inside.x + inside.w;
+    ctx.lineTo(right - camX, playH);
+    ctx.lineTo(right - camX, groundHeight(right, playH, stage));
   }
   ctx.lineTo(width, playH);
   ctx.closePath();
@@ -1189,9 +1917,13 @@ function drawTerrainBlock(
   h: number,
   pal: ThemePalette,
   kind: "ceiling" | "bump",
+  playH?: number,
 ) {
+  // Bumps are bottom-rooted columns: fill from the visible top down to screen bottom.
+  const drawH =
+    kind === "bump" && playH !== undefined ? Math.max(h, playH - y) : h;
   ctx.fillStyle = pal.fairway;
-  ctx.fillRect(sx, y, w, h);
+  ctx.fillRect(sx, y, w, drawH);
 
   ctx.fillStyle = pal.fairwayStripe;
   if (kind === "ceiling") {
@@ -1203,17 +1935,17 @@ function drawTerrainBlock(
     ctx.fillStyle = "rgba(255,255,255,0.12)";
     ctx.fillRect(sx, y, w, 4);
   } else {
-    for (let i = 0; i < h; i += 12) {
+    for (let i = 0; i < drawH; i += 12) {
       ctx.fillRect(sx + 3, y + i, Math.max(4, w - 6), 5);
     }
     ctx.fillStyle = pal.rough;
     ctx.fillRect(sx, y, w, 4);
-    ctx.fillRect(sx, y + h - 3, w, 3);
+    ctx.fillRect(sx, y + drawH - 3, w, 3);
   }
 
   ctx.strokeStyle = "rgba(0,0,0,0.22)";
   ctx.lineWidth = 1.5;
-  ctx.strokeRect(sx, y, w, h);
+  ctx.strokeRect(sx, y, w, drawH);
 }
 
 function drawObstacle(
@@ -1223,9 +1955,10 @@ function drawObstacle(
   y: number,
   isDark: boolean,
   pal: ThemePalette,
+  playH: number,
 ) {
   if (obs.kind === "ceiling" || obs.kind === "bump") {
-    drawTerrainBlock(ctx, sx, y, obs.w, obs.h, pal, obs.kind);
+    drawTerrainBlock(ctx, sx, y, obs.w, obs.h, pal, obs.kind, playH);
   } else if (obs.kind === "platform") {
     ctx.fillStyle = obs.anchor === "float" ? "#8b7355" : "#6a5540";
     ctx.fillRect(sx, y, obs.w, obs.h);
@@ -1404,14 +2137,26 @@ function drawLaserBeam(
   const sx1 = x1 - camX;
   if (Math.max(sx0, sx1) < -30 || Math.min(sx0, sx1) > 2000) return;
 
+  const horizontal = Math.abs(y1 - y0) < 1.5;
+
   const drawEmitter = (ex: number, ey: number) => {
-    ctx.fillStyle = "#d8d8e0";
-    ctx.fillRect(ex - 8, ey - 8, 16, 9);
-    ctx.fillStyle = "#2a2a32";
-    ctx.fillRect(ex - 8, ey + 1, 16, 9);
-    ctx.strokeStyle = "rgba(0,0,0,0.35)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(ex - 8, ey - 8, 16, 18);
+    if (horizontal) {
+      ctx.fillStyle = "#d8d8e0";
+      ctx.fillRect(ex - 5, ey - 11, 5, 22);
+      ctx.fillStyle = "#2a2a32";
+      ctx.fillRect(ex, ey - 11, 5, 22);
+      ctx.strokeStyle = "rgba(0,0,0,0.35)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(ex - 5, ey - 11, 10, 22);
+    } else {
+      ctx.fillStyle = "#d8d8e0";
+      ctx.fillRect(ex - 8, ey - 8, 16, 9);
+      ctx.fillStyle = "#2a2a32";
+      ctx.fillRect(ex - 8, ey + 1, 16, 9);
+      ctx.strokeStyle = "rgba(0,0,0,0.35)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(ex - 8, ey - 8, 16, 18);
+    }
   };
 
   drawEmitter(sx0, y0);
@@ -1461,6 +2206,196 @@ function drawLaserBeam(
     ctx.fill();
   }
   ctx.restore();
+}
+
+function drawPortalBarrier(
+  ctx: CanvasRenderingContext2D,
+  rect: { x: number; y: number; w: number; h: number },
+  camX: number,
+  timeMs: number,
+) {
+  const sx = rect.x - camX;
+  if (sx + rect.w < -40 || sx > 2000) return;
+
+  const pulse = 0.55 + 0.15 * Math.sin(timeMs * 0.006);
+  ctx.save();
+  ctx.fillStyle = `rgba(28, 22, 48, ${0.82 + 0.08 * pulse})`;
+  ctx.fillRect(sx, rect.y, rect.w, rect.h);
+
+  const edgeGlow = ctx.createLinearGradient(sx - 10, 0, sx + rect.w + 10, 0);
+  edgeGlow.addColorStop(0, "rgba(80, 160, 255, 0)");
+  edgeGlow.addColorStop(0.35, `rgba(70, 190, 255, ${0.28 * pulse})`);
+  edgeGlow.addColorStop(0.65, `rgba(255, 140, 40, ${0.28 * pulse})`);
+  edgeGlow.addColorStop(1, "rgba(255, 140, 40, 0)");
+  ctx.fillStyle = edgeGlow;
+  ctx.fillRect(sx - 8, rect.y, rect.w + 16, rect.h);
+
+  ctx.strokeStyle = `rgba(180, 200, 255, ${0.45 * pulse})`;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 8]);
+  ctx.strokeRect(sx + 1, rect.y + 4, rect.w - 2, rect.h - 8);
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawSawBlade(
+  ctx: CanvasRenderingContext2D,
+  saw: SawBlade,
+  playH: number,
+  stage: Stage,
+  camX: number,
+  timeMs: number,
+) {
+  const { x, y } = sawCenter(saw, playH, stage, timeMs);
+  const sx = x - camX;
+  if (sx + saw.r < -40 || sx - saw.r > 2000) return;
+
+  const rot = timeMs * 0.008;
+  const teeth = 14;
+  ctx.save();
+  ctx.translate(sx, y);
+  ctx.rotate(rot);
+
+  // Outer glow
+  ctx.fillStyle = "rgba(180, 190, 200, 0.25)";
+  ctx.beginPath();
+  ctx.arc(0, 0, saw.r + 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Body
+  ctx.fillStyle = "#9aa3ad";
+  ctx.beginPath();
+  ctx.arc(0, 0, saw.r * 0.78, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Teeth
+  ctx.fillStyle = "#c5ccd4";
+  ctx.strokeStyle = "#4a5058";
+  ctx.lineWidth = 1;
+  for (let i = 0; i < teeth; i++) {
+    const a0 = (i / teeth) * Math.PI * 2;
+    const a1 = ((i + 0.45) / teeth) * Math.PI * 2;
+    const aMid = ((i + 0.22) / teeth) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a0) * saw.r * 0.72, Math.sin(a0) * saw.r * 0.72);
+    ctx.lineTo(Math.cos(aMid) * saw.r, Math.sin(aMid) * saw.r);
+    ctx.lineTo(Math.cos(a1) * saw.r * 0.72, Math.sin(a1) * saw.r * 0.72);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Hub
+  ctx.fillStyle = "#3a3e46";
+  ctx.beginPath();
+  ctx.arc(0, 0, saw.r * 0.22, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#6a7078";
+  ctx.beginPath();
+  ctx.arc(0, 0, saw.r * 0.1, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawStarIcon(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  r: number,
+  fill: string,
+  stroke: string,
+  muted: boolean,
+) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5;
+    const b = a + Math.PI / 5;
+    const ox = Math.cos(a) * r;
+    const oy = Math.sin(a) * r;
+    const ix = Math.cos(b) * r * 0.42;
+    const iy = Math.sin(b) * r * 0.42;
+    if (i === 0) ctx.moveTo(ox, oy);
+    else ctx.lineTo(ox, oy);
+    ctx.lineTo(ix, iy);
+  }
+  ctx.closePath();
+  ctx.fillStyle = muted ? "rgba(160,160,170,0.45)" : fill;
+  ctx.fill();
+  ctx.strokeStyle = muted ? "rgba(80,80,90,0.5)" : stroke;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawMedalHud(
+  ctx: CanvasRenderingContext2D,
+  hole: number,
+  medals: MedalGoals,
+  stageFlaps: number,
+  width: number,
+) {
+  const pad = 10;
+  const h = 44;
+  const x = 10;
+  const y = 8;
+  const w = Math.min(width - 20, 420);
+
+  ctx.save();
+  ctx.fillStyle = "rgba(20, 40, 90, 0.55)";
+  ctx.beginPath();
+  const r = 12;
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 10px Nunito, sans-serif";
+  ctx.fillText("HOLE", x + pad, y + 16);
+  ctx.font = "bold 26px Nunito, sans-serif";
+  ctx.shadowColor = "rgba(0,0,0,0.35)";
+  ctx.shadowBlur = 2;
+  ctx.shadowOffsetY = 1;
+  ctx.fillText(String(hole), x + pad, y + 38);
+  ctx.shadowColor = "transparent";
+
+  const entries: { label: number; fill: string; stroke: string }[] = [
+    { label: medals.gold, fill: "#ffd24a", stroke: "#fff" },
+    { label: medals.silver, fill: "#d0d4dc", stroke: "#6a6e78" },
+    { label: medals.bronze, fill: "#c87838", stroke: "#5a3a1a" },
+  ];
+
+  let cursor = x + 62;
+  for (const e of entries) {
+    const muted = stageFlaps > e.label;
+    drawStarIcon(ctx, cursor + 10, y + h / 2, 11, e.fill, e.stroke, muted);
+    ctx.fillStyle = muted ? "rgba(220,220,230,0.45)" : "#fff";
+    ctx.font = "bold 14px Nunito, sans-serif";
+    ctx.shadowColor = "rgba(0,0,0,0.3)";
+    ctx.shadowBlur = 1;
+    ctx.shadowOffsetY = 1;
+    const text = `: ${e.label} flaps`;
+    ctx.fillText(text, cursor + 24, y + h / 2 + 5);
+    ctx.shadowColor = "transparent";
+    cursor += 24 + ctx.measureText(text).width + 14;
+  }
+  ctx.restore();
+}
+
+function medalEarned(
+  flaps: number,
+  medals: MedalGoals,
+): "gold" | "silver" | "bronze" | null {
+  if (flaps <= medals.gold) return "gold";
+  if (flaps <= medals.silver) return "silver";
+  if (flaps <= medals.bronze) return "bronze";
+  return null;
 }
 
 function drawPortalPad(
@@ -1673,6 +2608,10 @@ function drawStageElements(
       if (orange) drawPortalPad(ctx, orange, "orange", camX, timeMs);
     } else if (el.kind === "gravity") {
       drawGravityZone(ctx, gravityZoneRect(el, playH, stage), el.dir, camX, timeMs);
+    } else if (el.kind === "portalBarrier") {
+      drawPortalBarrier(ctx, portalBarrierRect(el, playH, stage), camX, timeMs);
+    } else if (el.kind === "saw") {
+      drawSawBlade(ctx, el, playH, stage, camX, timeMs);
     }
   }
 }
@@ -1963,6 +2902,29 @@ export function TipTopGame({ width, height, onGameOver, paused = false }: Props)
         }
       }
 
+      for (const el of stage.elements) {
+        if (el.kind !== "saw") continue;
+        const c = sawCenter(el, playH, stage, performance.now());
+        if (Math.hypot(px - c.x, py - c.y) <= ballR + el.r * 0.88) {
+          resetBall();
+          return false;
+        }
+      }
+
+      if (!stuck) {
+        for (const el of stage.elements) {
+          if (el.kind !== "portalBarrier") continue;
+          const rect = portalBarrierRect(el, playH, stage);
+          const res = resolveCircleAabb(px, py, ballR, rect.x, rect.y, rect.w, rect.h);
+          if (res.hit) {
+            px = res.px;
+            py = res.py;
+            vx *= -0.45;
+            vy *= -0.35;
+          }
+        }
+      }
+
       if (!stuck && portalCooldown <= 0) {
         for (const el of stage.elements) {
           if (el.kind !== "portal") continue;
@@ -1978,13 +2940,20 @@ export function TipTopGame({ width, height, onGameOver, paused = false }: Props)
           const exitRect = hitBlue ? orange : blue;
           const speed = Math.hypot(vx, vy);
           const exitSpeed = Math.max(4.5, speed);
+          const keepVx = vx;
+          const keepVy = vy;
           splitTrailOnPortal(ballTrail, fadingTrails);
-          px = exitRect.x + exitRect.w / 2 + exit.nx * (ballR + 6);
-          py = exitRect.y + exitRect.h / 2 + exit.ny * (ballR + 6);
-          vx = exit.nx * exitSpeed;
-          vy = exit.ny * exitSpeed;
-          if (Math.abs(exit.nx) < 0.1) vx *= 0.35;
-          if (Math.abs(exit.ny) < 0.1) vy *= 0.35;
+          px = exitRect.x + exitRect.w / 2 + exit.nx * (ballR + 8);
+          py = exitRect.y + exitRect.h / 2 + exit.ny * (ballR + 8);
+          // Push along the exit normal, but keep tangential momentum
+          // (esp. horizontal speed through floor/ceiling portals).
+          if (Math.abs(exit.nx) > 0.5) {
+            vx = exit.nx * exitSpeed;
+            vy = keepVy;
+          } else {
+            vy = exit.ny * exitSpeed;
+            vx = keepVx;
+          }
           portalCooldown = PORTAL_COOLDOWN_FRAMES;
           stuck = null;
           break;
@@ -2019,7 +2988,12 @@ export function TipTopGame({ width, height, onGameOver, paused = false }: Props)
               vy *= 0.82;
             }
           } else {
-            const res = resolveCircleAabb(px, py, ballR, obs.x, oy, obs.w, obs.h);
+            // Bumps are bottom-rooted columns — collide through to screen bottom.
+            const colH =
+              obs.kind === "bump" && obs.anchor === "ground"
+                ? Math.max(obs.h, playH - oy)
+                : obs.h;
+            const res = resolveCircleAabb(px, py, ballR, obs.x, oy, obs.w, colH);
             if (res.hit) {
               px = res.px;
               py = res.py;
@@ -2206,7 +3180,7 @@ export function TipTopGame({ width, height, onGameOver, paused = false }: Props)
       for (const obs of stage.obstacles) {
         const osx = obs.x - camX;
         if (osx + obs.w < -60 || osx > width + 60) continue;
-        drawObstacle(ctx, obs, osx, obstacleY(obs, playH, stage), palette.isDark, pal);
+        drawObstacle(ctx, obs, osx, obstacleY(obs, playH, stage), palette.isDark, pal, playH);
       }
 
       drawStageElements(ctx, stage, playH, camX, now);
@@ -2279,12 +3253,15 @@ export function TipTopGame({ width, height, onGameOver, paused = false }: Props)
       }
 
       const stageElapsed = performance.now() - stageStartTime;
+      drawMedalHud(ctx, stageIndex + 1, stage.medals, stageFlaps, width);
       ctx.fillStyle = p.hud;
-      ctx.font = "bold 18px Nunito, sans-serif";
-      ctx.fillText(`Stage ${stageIndex + 1}/${STAGE_COUNT} · ${THEME_LABELS[stage.theme]}`, 14, 26);
       ctx.font = "bold 15px Nunito, sans-serif";
-      ctx.fillText(`Flaps: ${stageFlaps}`, 14, 48);
-      ctx.fillText(`Time: ${formatTime(stageElapsed)}`, 14, 68);
+      ctx.fillText(
+        `${THEME_LABELS[stage.theme]} · Flaps: ${stageFlaps}`,
+        14,
+        68,
+      );
+      ctx.fillText(`Time: ${formatTime(stageElapsed)}`, 14, 88);
 
       if (clearFrames > 0) {
         ctx.fillStyle = palette.isDark ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.55)";
@@ -2294,9 +3271,28 @@ export function TipTopGame({ width, height, onGameOver, paused = false }: Props)
         ctx.textAlign = "center";
         const msg =
           stageIndex >= STAGE_COUNT - 1 ? "Course complete!" : `Stage ${stageIndex + 1} cleared!`;
-        ctx.fillText(msg, width / 2, playH * 0.42);
+        ctx.fillText(msg, width / 2, playH * 0.4);
         ctx.font = "bold 15px Nunito, sans-serif";
-        ctx.fillText(`${stageFlaps} flaps · ${formatTime(stageElapsed)}`, width / 2, playH * 0.48);
+        ctx.fillText(`${stageFlaps} flaps · ${formatTime(stageElapsed)}`, width / 2, playH * 0.46);
+        const earned = medalEarned(stageFlaps, stage.medals);
+        if (earned) {
+          const fill =
+            earned === "gold" ? "#ffd24a" : earned === "silver" ? "#d0d4dc" : "#c87838";
+          const stroke =
+            earned === "gold" ? "#fff" : earned === "silver" ? "#6a6e78" : "#5a3a1a";
+          drawStarIcon(ctx, width / 2, playH * 0.54, 18, fill, stroke, false);
+          ctx.fillStyle = p.hud;
+          ctx.font = "bold 14px Nunito, sans-serif";
+          ctx.fillText(
+            `${earned.charAt(0).toUpperCase()}${earned.slice(1)} medal!`,
+            width / 2,
+            playH * 0.6,
+          );
+        } else {
+          ctx.fillStyle = p.hud;
+          ctx.font = "bold 14px Nunito, sans-serif";
+          ctx.fillText("No medal this hole", width / 2, playH * 0.54);
+        }
         ctx.textAlign = "left";
       }
 

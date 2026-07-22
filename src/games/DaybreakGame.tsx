@@ -29,6 +29,8 @@ interface Props {
 // ── Physics tuning (rows / seconds / beats) ─────────────────────────────────
 /** Jump apex in rows. High enough to clear 2–3 row walls with snap forgiveness. */
 const JUMP_APEX_ROWS = 2.35;
+/** Jump-pad launch apex — higher than a normal beat-timed jump. */
+const PAD_APEX_ROWS = 4.2;
 /** A full jump (take-off to landing at equal height) lasts exactly one beat. */
 const JUMP_BEATS = 1;
 /** Horizontal inset of the player hitbox, in columns. */
@@ -50,8 +52,8 @@ const PLATFORM_THICK = 0.22;
  * of a crotchet, quaver, or semiquaver subdivision counts as on-beat.
  */
 const SYNC_WINDOW_FRAC = 0.28;
-/** How long afterimage rainbow lasts after a synced jump (seconds). */
-const RAINBOW_FLASH_S = 0.56;
+/** How long the rainbow afterimage lasts after a jump-pad launch (seconds). */
+const RAINBOW_FLASH_S = 0.85;
 
 interface Particle {
   x: number;
@@ -72,20 +74,37 @@ interface Afterimage {
   maxLife: number;
 }
 
-/** Terrain / spike colors shift with elevation (cool lows → warm highs). */
+/** Smooth 0..1 ease for elevation color blends. */
+function smooth01(t: number): number {
+  const x = Math.min(1, Math.max(0, t));
+  return x * x * (3 - 2 * x);
+}
+
+/**
+ * Terrain / spike colors: deep blue (lows) → violet → soft pink (highs).
+ * Hue stays in the blue/purple/pink family so adjacent elevations fade gently.
+ */
 function elevColors(elev: number, isDark: boolean) {
-  const t = (elev + ELEVATION_SPAN) / (ELEVATION_SPAN * 2); // 0..1
-  const hue = 255 - t * 195; // deep blue → orange
-  const sat = isDark ? 48 : 42;
-  const light = isDark ? 22 + t * 18 : 28 + t * 22;
-  const topLight = light + (isDark ? 18 : 22);
-  const spikeLight = isDark ? 12 + t * 10 : 16 + t * 12;
+  const t = smooth01((elev + ELEVATION_SPAN) / (ELEVATION_SPAN * 2));
+  // 218° blue → 275° purple → 328° pink
+  const hue = t < 0.5 ? 218 + t * 2 * 57 : 275 + (t - 0.5) * 2 * 53;
+  const sat = isDark ? 42 + t * 10 : 38 + t * 14;
+  const light = isDark ? 20 + t * 16 : 30 + t * 20;
+  const topLight = light + (isDark ? 16 : 20);
+  const spikeLight = isDark ? 11 + t * 9 : 15 + t * 11;
+  const deepLight = Math.max(8, light - (isDark ? 14 : 18));
   return {
     fill: `hsl(${hue} ${sat}% ${light}%)`,
-    top: `hsl(${hue} ${sat + 8}% ${topLight}%)`,
-    spike: `hsl(${hue} ${sat + 12}% ${spikeLight}%)`,
-    spikeEdge: `hsl(${hue} ${Math.min(70, sat + 25)}% ${topLight + 8}%)`,
+    deep: `hsl(${hue} ${sat + 4}% ${deepLight}%)`,
+    top: `hsl(${hue} ${Math.min(62, sat + 10)}% ${topLight}%)`,
+    spike: `hsl(${hue} ${sat + 14}% ${spikeLight}%)`,
+    spikeEdge: `hsl(${hue} ${Math.min(72, sat + 22)}% ${topLight + 6}%)`,
   };
+}
+
+/** Blend two elevation samples for softer column-to-column color steps. */
+function blendElev(a: number, b: number, c: number): number {
+  return a * 0.2 + b * 0.6 + c * 0.2;
 }
 
 export function DaybreakGame({
@@ -135,6 +154,8 @@ export function DaybreakGame({
     const jumpDur = beatDur * JUMP_BEATS;
     const gravity = (8 * JUMP_APEX_ROWS) / (jumpDur * jumpDur);
     const jumpVel = (gravity * jumpDur) / 2;
+    // Same gravity, taller apex → stronger upward velocity from pads.
+    const padJumpVel = Math.sqrt(2 * gravity * PAD_APEX_ROWS);
 
     const bgImg = new Image();
     bgImg.src = "/bg1.png";
@@ -208,6 +229,10 @@ export function DaybreakGame({
     const platformSpikeAt = (c: number): boolean => {
       if (c < 0 || c >= level.totalColumns) return false;
       return level.columns[c].platformSpike;
+    };
+    const padAt = (c: number): boolean => {
+      if (c < 0 || c >= level.totalColumns) return false;
+      return level.columns[c].pad;
     };
     const xOf = (t: number) => Math.max(0, t) * colsPerSec;
     const clampElev = (r: number) =>
@@ -358,8 +383,6 @@ export function DaybreakGame({
       jumpBufferedAt = -1;
       if (isJumpOnBeat()) {
         syncJumps += 1;
-        rainbowStartedAt = performance.now();
-        rainbowUntil = rainbowStartedAt + RAINBOW_FLASH_S * 1000;
       }
       audio.jumpNote(fromElev);
       spawnBurst(
@@ -383,6 +406,43 @@ export function DaybreakGame({
         2.5,
         true,
       );
+    };
+
+    const triggerPad = (row: number) => {
+      vy = padJumpVel;
+      grounded = false;
+      jumpBufferedAt = -1;
+      rainbowStartedAt = performance.now();
+      rainbowUntil = rainbowStartedAt + RAINBOW_FLASH_S * 1000;
+      audio.padBoost(clampElev(row));
+      spawnBurst(
+        xOf(simTime) + 0.5,
+        row,
+        12,
+        [paletteRef.current.daybreak.accent, paletteRef.current.daybreak.particleJump],
+        6,
+        true,
+      );
+    };
+
+    /**
+     * True if overlapping a jump pad on the current support, and the player's
+     * center has reached the middle of that pad column (not just the leading edge).
+     */
+    const touchingPad = (
+      c0: number,
+      c1: number,
+      support: number,
+      playerX: number,
+    ): boolean => {
+      const center = playerX + 0.5;
+      for (let c = c0; c <= c1; c++) {
+        if (!padAt(c)) continue;
+        const f = floorAt(c);
+        if (f === null || Math.abs(f - support) >= 0.01) continue;
+        if (center >= c + 0.5) return true;
+      }
+      return false;
     };
 
     /**
@@ -480,12 +540,20 @@ export function DaybreakGame({
             py = supportNow;
             vy = 0;
             grounded = true;
-            onLand(supportNow);
+            if (touchingPad(c0, c1, supportNow, xNew)) {
+              triggerPad(supportNow);
+            } else {
+              onLand(supportNow);
+            }
           } else if (supportNow - py <= STEP_SNAP) {
             py = supportNow;
             vy = 0;
             grounded = true;
-            onLand(supportNow);
+            if (touchingPad(c0, c1, supportNow, xNew)) {
+              triggerPad(supportNow);
+            } else {
+              onLand(supportNow);
+            }
           } else {
             // Side-hit into a solid floor wall (not a thin platform).
             let solidWall = false;
@@ -540,6 +608,17 @@ export function DaybreakGame({
 
       if (!grounded) {
         angle += (Math.PI / jumpDur) * dt;
+      }
+
+      // Jump pads auto-launch once the player reaches the middle of the pad.
+      if (grounded && phase === "playing") {
+        const feetSupport = support !== -Infinity ? py : -Infinity;
+        if (
+          feetSupport !== -Infinity &&
+          touchingPad(c0, c1, feetSupport, xNew)
+        ) {
+          triggerPad(feetSupport);
+        }
       }
 
       if (grounded && phase === "playing") {
@@ -675,15 +754,15 @@ export function DaybreakGame({
       }
 
       if (rainbowIntensity > 0.01) {
-        // Subtle PNG-tight wash; intensity fades in/out via the caller.
+        // PNG-tight rainbow wash on afterimages; intensity fades via the caller.
         gc.globalCompositeOperation = "source-atop";
-        const t = performance.now() / 55;
-        const bands = 8;
-        const peak = 0.4 * rainbowIntensity;
+        const t = performance.now() / 45;
+        const bands = 9;
+        const peak = 0.7 * rainbowIntensity;
         for (let i = 0; i < bands; i++) {
-          const hue = (t * 18 + i * (360 / bands)) % 360;
+          const hue = (t * 24 + i * (360 / bands)) % 360;
           gc.globalAlpha = peak;
-          gc.fillStyle = `hsl(${hue} 95% 58%)`;
+          gc.fillStyle = `hsl(${hue} 100% 56%)`;
           const bandH = size / bands;
           gc.fillRect(pad, pad + i * bandH, size, bandH + 0.5);
         }
@@ -717,14 +796,26 @@ export function DaybreakGame({
       g.fillStyle = isDark ? "#131022" : "#f6e3ea";
       g.fillRect(0, 0, W, H);
 
+      // Beat pulse: strong background blur that snaps back into focus.
+      let beatBlur = 0;
+      if (phase === "playing" && runStart > 0 && !pausedRef.current) {
+        const elapsed = Math.max(0, audio.time() - runStart);
+        const phaseInBeat = (elapsed % beatDur) / beatDur;
+        const nearBeat = Math.min(phaseInBeat, 1 - phaseInBeat);
+        const beatW = 0.06;
+        if (nearBeat < beatW) {
+          beatBlur = 14 * (1 - nearBeat / beatW);
+        }
+      }
+
       if (bgImg.complete && bgImg.naturalWidth > 0) {
         const scroll = xView * colW;
-        // Shift the art upward so the lake/mountains (main midground) sit
-        // higher in frame — crop a bit of empty sky, keep the scenic band.
         const bgY = -H * 0.3;
         const farH = H * 1.32;
         const farW = (bgImg.naturalWidth * farH) / bgImg.naturalHeight;
         let off = -((scroll * 0.12) % farW);
+        g.save();
+        if (beatBlur > 0.05) g.filter = `blur(${beatBlur}px)`;
         for (let dx = off - farW; dx < W + farW; dx += farW) {
           g.drawImage(bgImg, dx, bgY, farW, farH);
         }
@@ -738,6 +829,8 @@ export function DaybreakGame({
           }
           g.globalAlpha = 1;
         }
+        g.restore();
+        g.filter = "none";
       }
       g.fillStyle = pal.bgOverlay;
       g.fillRect(0, 0, W, H);
@@ -754,11 +847,32 @@ export function DaybreakGame({
         if (f !== null) {
           const gx = screenX(c);
           const gy = rowToY(f);
-          const cols = elevColors(f, isDark);
-          g.fillStyle = cols.fill;
-          g.fillRect(gx, gy, colW + 1, Math.max(0, H - gy));
-          g.fillStyle = cols.top;
-          g.fillRect(gx, gy, colW + 1, Math.max(3, Math.round(rowH * 0.08)));
+          const fL = floorAt(c - 1);
+          const fR = floorAt(c + 1);
+          const colorElev = blendElev(
+            fL !== null ? fL : f,
+            f,
+            fR !== null ? fR : f,
+          );
+          const cols = elevColors(colorElev, isDark);
+          const fillH = Math.max(0, H - gy);
+          if (fillH > 0) {
+            const grad = g.createLinearGradient(gx, gy, gx, gy + fillH);
+            grad.addColorStop(0, cols.fill);
+            grad.addColorStop(0.55, cols.fill);
+            grad.addColorStop(1, cols.deep);
+            g.fillStyle = grad;
+            g.fillRect(gx, gy, colW + 1, fillH);
+          }
+          // Soft top lip: blend toward neighbor elevations for a gentler step edge.
+          const topGrad = g.createLinearGradient(gx, gy, gx + colW, gy);
+          const leftCols = elevColors(fL !== null ? (fL + f) * 0.5 : colorElev, isDark);
+          const rightCols = elevColors(fR !== null ? (fR + f) * 0.5 : colorElev, isDark);
+          topGrad.addColorStop(0, leftCols.top);
+          topGrad.addColorStop(0.5, cols.top);
+          topGrad.addColorStop(1, rightCols.top);
+          g.fillStyle = topGrad;
+          g.fillRect(gx, gy, colW + 1, Math.max(3, Math.round(rowH * 0.1)));
           if (c % COLUMNS_PER_BEAT === 0) {
             g.fillStyle = pal.beatMarker;
             g.fillRect(gx, gy + 3, 2, Math.max(0, H - gy - 3));
@@ -766,18 +880,49 @@ export function DaybreakGame({
           if (spikeAt(c)) {
             drawSpike(gx, gy, colW, rowH, cols.spike, cols.spikeEdge);
           }
+          if (padAt(c)) {
+            // Flattened semicircle jump pad (GD yellow-pad vibe).
+            const padH = Math.max(4, rowH * 0.28);
+            const padW = colW * 0.92;
+            const px0 = gx + (colW - padW) / 2;
+            g.fillStyle = "#f0c14a";
+            g.beginPath();
+            g.moveTo(px0, gy);
+            g.quadraticCurveTo(gx + colW / 2, gy - padH, px0 + padW, gy);
+            g.closePath();
+            g.fill();
+            g.fillStyle = "#ffe08a";
+            g.beginPath();
+            g.moveTo(px0 + padW * 0.15, gy);
+            g.quadraticCurveTo(
+              gx + colW / 2,
+              gy - padH * 0.65,
+              px0 + padW * 0.85,
+              gy,
+            );
+            g.closePath();
+            g.fill();
+          }
         }
 
         const p = platformAt(c);
         if (p !== null) {
           const gx = screenX(c);
           const gy = rowToY(p);
-          const cols = elevColors(p, isDark);
+          const pL = platformAt(c - 1);
+          const pR = platformAt(c + 1);
+          const colorElev = blendElev(
+            pL !== null ? pL : p,
+            p,
+            pR !== null ? pR : p,
+          );
+          const cols = elevColors(colorElev, isDark);
           const thick = Math.max(4, rowH * PLATFORM_THICK);
-          g.fillStyle = cols.fill;
+          const platGrad = g.createLinearGradient(gx, gy - thick, gx, gy);
+          platGrad.addColorStop(0, cols.top);
+          platGrad.addColorStop(1, cols.fill);
+          g.fillStyle = platGrad;
           g.fillRect(gx, gy - thick, colW + 1, thick);
-          g.fillStyle = cols.top;
-          g.fillRect(gx, gy - thick, colW + 1, Math.max(2, thick * 0.35));
           if (platformSpikeAt(c)) {
             drawSpike(gx, gy - thick, colW, rowH, cols.spike, cols.spikeEdge);
           }
@@ -795,7 +940,7 @@ export function DaybreakGame({
 
       const size = rowH * 0.94;
 
-      // Faint afterimage trail; on-beat jumps tint the trail rainbow (PNG-tight).
+      // Faint afterimage trail; jump pads tint the trail rainbow (PNG-tight).
       if (phase !== "dead") {
         const now = performance.now();
         let rainbowIntensity = 0;
@@ -814,7 +959,7 @@ export function DaybreakGame({
             cy,
             size * 0.96,
             a.angle,
-            Math.max(alpha, rainbowIntensity > 0 ? 0.4 * rainbowIntensity : alpha),
+            Math.max(alpha, rainbowIntensity > 0 ? 0.62 * rainbowIntensity : alpha),
             pal.accent,
             rainbowIntensity,
           );

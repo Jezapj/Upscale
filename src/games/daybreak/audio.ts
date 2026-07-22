@@ -31,8 +31,12 @@ export interface DaybreakAudioHandle {
   resume(): void;
   /** Note pitched by the elevation the player jumped from. */
   jumpNote(elevation: number): void;
-  /** Percussive note pitched by the elevation the player landed on. */
+  /** Soft musical land chime pitched by the elevation landed on. */
   landNote(elevation: number): void;
+  /** In-key ascending arpeggio when a jump pad launches (replaces jump SFX). */
+  padBoost(elevation: number): void;
+  /** In-key resolving arpeggio when landing from a pad launch (replaces land SFX). */
+  padLand(elevation: number): void;
   /**
    * Brief in-key triad when an obstacle is cleared. Quantized to the next
    * half-beat; root follows the given elevation.
@@ -67,6 +71,8 @@ function createSilentHandle(): DaybreakAudioHandle {
     },
     jumpNote: () => {},
     landNote: () => {},
+    padBoost: () => {},
+    padLand: () => {},
     clearChord: () => {},
     death: () => {},
     winFanfare: () => {},
@@ -221,28 +227,68 @@ export function createDaybreakAudio(
   const landNote = (elevation: number) => {
     const hz = elevationHz(freqs, elevation);
     const t = ctx.currentTime;
-    // Pitched body...
-    const osc = ctx.createOscillator();
-    osc.type = "triangle";
-    osc.frequency.value = hz;
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.13, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
-    osc.connect(gain).connect(sfxBus);
-    osc.start(t);
-    osc.stop(t + 0.12);
-    // ...plus a percussive click.
-    const src = ctx.createBufferSource();
-    src.buffer = noiseBuffer();
-    const bp = ctx.createBiquadFilter();
-    bp.type = "bandpass";
-    bp.frequency.value = Math.min(8000, hz * 4);
-    const clickGain = ctx.createGain();
-    clickGain.gain.setValueAtTime(0.08, t);
-    clickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
-    src.connect(bp).connect(clickGain).connect(sfxBus);
-    src.start(t);
-    src.stop(t + 0.04);
+    // Soft in-key chime: root + fifth, gentle sine bloom (distinct from jump).
+    const fifth = elevationHz(freqs, elevation + 4);
+    const playTone = (freq: number, vol: number, dur: number, type: OscillatorType) => {
+      const osc = ctx.createOscillator();
+      osc.type = type;
+      osc.frequency.value = freq;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(vol, t + 0.018);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      osc.connect(gain).connect(sfxBus);
+      osc.start(t);
+      osc.stop(t + dur + 0.04);
+    };
+    playTone(hz, 0.11, 0.28, "sine");
+    playTone(fifth, 0.06, 0.22, "triangle");
+    // Soft low thud for body contact.
+    const thud = ctx.createOscillator();
+    thud.type = "sine";
+    thud.frequency.setValueAtTime(Math.max(55, hz * 0.5), t);
+    thud.frequency.exponentialRampToValueAtTime(40, t + 0.08);
+    const thudGain = ctx.createGain();
+    thudGain.gain.setValueAtTime(0.09, t);
+    thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    thud.connect(thudGain).connect(sfxBus);
+    thud.start(t);
+    thud.stop(t + 0.12);
+  };
+
+  const playArpeggio = (
+    elevation: number,
+    degrees: number[],
+    stepSec: number,
+    peakVol: number,
+    wave: OscillatorType,
+  ) => {
+    const t = ctx.currentTime;
+    degrees.forEach((deg, i) => {
+      const at = t + i * stepSec;
+      const hz = elevationHz(freqs, elevation + deg);
+      const osc = ctx.createOscillator();
+      osc.type = wave;
+      osc.frequency.value = hz;
+      const gain = ctx.createGain();
+      const vol = peakVol * (1 - i * 0.12);
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, vol), at + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.001, at + 0.16);
+      osc.connect(gain).connect(sfxBus);
+      osc.start(at);
+      osc.stop(at + 0.2);
+    });
+  };
+
+  const padBoost = (elevation: number) => {
+    // Ascending arpeggio around the pad elevation (root–3rd–5th–octave).
+    playArpeggio(elevation, [0, 2, 4, 7], 0.048, 0.12, "triangle");
+  };
+
+  const padLand = (elevation: number) => {
+    // Descending resolve back to the landing note.
+    playArpeggio(elevation, [4, 2, 0], 0.055, 0.1, "sine");
   };
 
   /**
@@ -362,6 +408,8 @@ export function createDaybreakAudio(
     resume,
     jumpNote,
     landNote,
+    padBoost,
+    padLand,
     clearChord,
     death,
     winFanfare,

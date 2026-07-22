@@ -67,7 +67,7 @@ export const DISSIADA_NOTE_HZ = [261.63, 293.66, 349.23, 392.0] as const;
 /** TipTop — flap thump and hole-in-one */
 export const TIPTOP_SOUND = {
   flap: {
-    volume: 0.94,
+    volume: 0.62,
     startTime: 0,
     endTime: 0.1,
     duration: 0.1,
@@ -77,7 +77,7 @@ export const TIPTOP_SOUND = {
   },
   /** First flap harmonic — delay is seconds after the flap attack. */
   flapHarmonic1: {
-    volume: 0.3,
+    volume: 0.2,
     startTime: 0.05,
     endTime: 0.5,
     duration: 0.16,
@@ -87,7 +87,7 @@ export const TIPTOP_SOUND = {
   },
   /** Second flap harmonic — delay is seconds after the flap attack. */
   flapHarmonic2: {
-    volume: 0.76,
+    volume: 0.5,
     startTime: 0.1,
     endTime: 0.13,
     duration: 0.1,

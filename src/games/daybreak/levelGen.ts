@@ -30,6 +30,13 @@ export const MAX_RISE_WITH_SPIKE = 1;
  * walk under (player height ~0.82), low enough to jump onto (≤ MAX_RISE).
  */
 export const PLATFORM_HEIGHT = 2;
+/**
+ * Jump-pad apex (~4.2 rows in the game). High steps / platforms after a pad
+ * may rise up to this many rows — unreachable with a normal jump.
+ */
+export const PAD_MAX_RISE = 4;
+/** Columns after a pad where a pad-height landing is still reachable. */
+export const PAD_REACH_COLS = 7;
 
 export interface LevelColumn {
   /** Walkable ground elevation (-7..+7) or null for a pitfall. */
@@ -43,6 +50,8 @@ export interface LevelColumn {
   platform: number | null;
   /** Spike sitting on top of the thin platform. */
   platformSpike: boolean;
+  /** Geometry Dash-style jump pad on the floor — auto-launches upward. */
+  pad: boolean;
 }
 
 export interface DaybreakLevel {
@@ -74,7 +83,8 @@ type PatternKind =
   | "arpeggio"
   | "pit"
   | "wall"
-  | "platform";
+  | "platform"
+  | "pad";
 
 interface Weighted {
   kind: PatternKind;
@@ -122,14 +132,15 @@ export function generateLevel(seed: number): DaybreakLevel {
     spike = false,
     platform: number | null = null,
     platformSpike = false,
+    pad = false,
   ) => {
     for (let i = 0; i < count; i++) {
-      columns.push({ floor: f, spike, platform, platformSpike });
+      columns.push({ floor: f, spike, platform, platformSpike, pad });
     }
   };
   const flat = (count: number) => push(count, floor);
 
-  /** Flat stretch packed with single / double / triple spikes. */
+  /** Flat stretch packed with single / double / triple spikes; pads may interleave. */
   const spikeMeasure = () => {
     const start = columns.length;
     const slots =
@@ -150,8 +161,8 @@ export function generateLevel(seed: number): DaybreakLevel {
       let width = 1;
       const roll = rng();
       if (difficulty >= 1 && roll < 0.45) width = 2;
-      if (difficulty >= 3 && roll < 0.22) width = 3;
-      if (difficulty >= 5 && roll < 0.12) width = 3;
+      if (difficulty >= 3 && roll < 0.1) width = 3;
+      if (difficulty >= 5 && roll < 0.05) width = 3;
 
       for (let w = 0; w < width && slot + w < COLUMNS_PER_MEASURE; w++) {
         spikeCols.add(slot + w);
@@ -160,8 +171,24 @@ export function generateLevel(seed: number): DaybreakLevel {
       placed++;
     }
 
+    // Jump pads often sit on a clear beat between spike clusters.
+    let padCol = -1;
+    if (rng() < 0.4 + difficulty * 0.05) {
+      const candidates = [4, 8, 12].filter(
+        (i) =>
+          !spikeCols.has(i) &&
+          !spikeCols.has(i - 1) &&
+          !spikeCols.has(i + 1) &&
+          start + i - lastHazardCol >= 3,
+      );
+      if (candidates.length > 0) {
+        padCol = candidates[Math.floor(rng() * candidates.length)];
+        lastHazardCol = Math.max(lastHazardCol, start + padCol);
+      }
+    }
+
     for (let i = 0; i < COLUMNS_PER_MEASURE; i++) {
-      push(1, floor, spikeCols.has(i));
+      push(1, floor, spikeCols.has(i), null, false, i === padCol);
     }
   };
 
@@ -175,13 +202,13 @@ export function generateLevel(seed: number): DaybreakLevel {
     else if (floor <= -5) dir = 1;
     else dir = rng() < 0.5 ? 1 : -1;
 
-    // Up: 1 or 2 rows (never 3). Down: 1–2 for drama.
+    // Up: 1 or 2 rows (never 3). Down: usually 2 for steeper drops.
     const stepSize =
       dir === 1
         ? difficulty >= 3 && rng() < 0.4
           ? MAX_RISE
           : 1
-        : difficulty >= 3 && rng() < 0.45
+        : rng() < 0.82
           ? 2
           : 1;
 
@@ -230,9 +257,10 @@ export function generateLevel(seed: number): DaybreakLevel {
           if (floor <= -ELEVATION_SPAN + 1 && dir === -1) dir = 1;
 
           // Prefer step of 1 upward so spikes remain placeable; occasional +2 clean.
+          // Descending arpeggio runs strongly favor 2-row drops.
           let step = 1;
           if (dir === 1 && difficulty >= 4 && rng() < 0.3) step = MAX_RISE;
-          if (dir === -1 && difficulty >= 3 && rng() < 0.35) step = 2;
+          if (dir === -1 && rng() < 0.8) step = 2;
 
           const rise = dir * step;
           const wantSpike = rng() < 0.18 + difficulty * 0.03;
@@ -339,6 +367,94 @@ export function generateLevel(seed: number): DaybreakLevel {
     }
   };
 
+  /**
+   * Jump pad interleaved with approach hazards, then often a pad-only reward:
+   * a high thin platform (sometimes with floor spikes under it) or a floor step
+   * only reachable via the pad boost.
+   */
+  const padMeasure = () => {
+    const start = columns.length;
+    if (start + 4 - lastHazardCol < 4) {
+      flat(COLUMNS_PER_MEASURE);
+      return;
+    }
+
+    // Approach (half measure): mix flat + a spike cluster, then the pad.
+    const padAt = 6 + (rng() < 0.5 ? 0 : 2);
+    const approachSpike =
+      difficulty >= 1 && rng() < 0.55
+        ? 2 + Math.floor(rng() * Math.max(1, padAt - 3))
+        : -1;
+    const approachW =
+      approachSpike >= 0 && difficulty >= 3 && rng() < 0.35 ? 2 : 1;
+
+    for (let i = 0; i < padAt; i++) {
+      const spiked =
+        approachSpike >= 0 &&
+        i >= approachSpike &&
+        i < approachSpike + approachW;
+      push(1, floor, spiked, null, false, false);
+    }
+    push(1, floor, false, null, false, true);
+    lastHazardCol = start + padAt;
+
+    // Gap after pad before the reward lands near pad apex (~2–4 cols out).
+    const gap = 2 + Math.floor(rng() * 2); // 2–3
+    flat(gap);
+
+    const outcome = rng();
+    if (outcome < 0.42) {
+      // High thin platform — only pad reaches it; optional floor spikes under.
+      const h = rng() < 0.55 ? 3 : PAD_MAX_RISE;
+      const platElev = clampFloor(floor + h);
+      const platW = 4 + Math.floor(rng() * 4); // 4–7
+      const underSpikes = rng() < 0.55 + difficulty * 0.05;
+      for (let i = 0; i < platW; i++) {
+        const mid = i === Math.floor(platW / 2) || i === Math.floor(platW / 2) + 1;
+        push(
+          1,
+          floor,
+          underSpikes && mid,
+          platElev,
+          false,
+          false,
+        );
+      }
+      lastHazardCol = columns.length - 1;
+      flat(Math.max(2, COLUMNS_PER_MEASURE - padAt - 1 - gap - platW));
+    } else if (outcome < 0.82) {
+      // Pad-only floor step (3–4 rows) — normal jump cannot clear it.
+      const rise = Math.min(
+        PAD_MAX_RISE,
+        rng() < 0.5 ? 3 : PAD_MAX_RISE,
+      );
+      const next = clampFloor(floor + rise);
+      const stepW = 4 + Math.floor(rng() * 5); // 4–8
+      floor = next;
+      for (let i = 0; i < stepW; i++) {
+        push(1, floor, false);
+      }
+      lastHazardCol = columns.length - 1;
+      // Soft drop or stay high briefly.
+      if (rng() < 0.6) {
+        floor = clampFloor(floor - Math.min(2, rise - 1));
+      }
+      flat(Math.max(2, COLUMNS_PER_MEASURE - padAt - 1 - gap - stepW));
+    } else {
+      // Clear pad into mixed obstacles (spikes / short rest).
+      const rest = Math.max(4, COLUMNS_PER_MEASURE - padAt - 1 - gap);
+      for (let i = 0; i < rest; i++) {
+        const spiked =
+          difficulty >= 1 &&
+          rng() < 0.22 &&
+          i >= 2 &&
+          i < rest - 1;
+        push(1, floor, spiked);
+        if (spiked) lastHazardCol = columns.length - 1;
+      }
+    }
+  };
+
   flat(COLUMNS_PER_MEASURE);
 
   const weights: Weighted[] = [
@@ -348,15 +464,22 @@ export function generateLevel(seed: number): DaybreakLevel {
     { kind: "arpeggio", weight: 2.2 + difficulty * 0.7 },
     { kind: "pit", weight: 1.8 + difficulty * 0.5 },
     { kind: "wall", weight: 1.6 + difficulty * 0.5 },
-    // Platforms are a signature choice — spawn often.
     { kind: "platform", weight: 4.5 + difficulty * 0.6 },
+    { kind: "pad", weight: 5.0 + difficulty * 0.9 },
   ];
 
   for (let m = 0; m < measures; m++) {
     switch (pickPattern(weights, rng)) {
       case "rest":
-        if (rng() < 0.55) spikeMeasure();
-        else flat(COLUMNS_PER_MEASURE);
+        if (rng() < 0.4) spikeMeasure();
+        else if (rng() < 0.5) {
+          // Quiet stretch with a single interleaved pad.
+          const padAt = rng() < 0.5 ? 4 : 8;
+          for (let i = 0; i < COLUMNS_PER_MEASURE; i++) {
+            push(1, floor, false, null, false, i === padAt);
+          }
+          lastHazardCol = columns.length - COLUMNS_PER_MEASURE + padAt;
+        } else flat(COLUMNS_PER_MEASURE);
         break;
       case "spikes":
         spikeMeasure();
@@ -375,6 +498,9 @@ export function generateLevel(seed: number): DaybreakLevel {
         break;
       case "platform":
         platformMeasure();
+        break;
+      case "pad":
+        padMeasure();
         break;
     }
   }
@@ -408,17 +534,34 @@ export function generateLevel(seed: number): DaybreakLevel {
 
 /**
  * Walk the level and fix any upward floor jump that exceeds jump apex,
- * accounting for spikes on the destination. Also strips platform spikes and
- * clamps platforms to PLATFORM_HEIGHT above their floor.
+ * accounting for spikes on the destination. Platforms above normal jump height
+ * are kept only when a recent jump pad can reach them; otherwise clamped.
  */
+function recentPad(columns: LevelColumn[], c: number): boolean {
+  const from = Math.max(0, c - PAD_REACH_COLS);
+  for (let i = from; i < c; i++) {
+    if (columns[i].pad) return true;
+  }
+  return false;
+}
+
 function sanitizeClimbs(columns: LevelColumn[]): void {
   let prevFloor: number | null = 0;
   for (let c = 0; c < columns.length; c++) {
     const col = columns[c];
+    const padReach = recentPad(columns, c);
 
-    // Platforms: force jumpable / walk-under height; never spike the top.
+    // Platforms: keep pad-gated heights; otherwise force normal jump height.
     if (col.platform !== null && col.floor !== null) {
-      col.platform = col.floor + PLATFORM_HEIGHT;
+      if (!padReach) {
+        col.platform = col.floor + PLATFORM_HEIGHT;
+      } else {
+        const h = Math.min(
+          PAD_MAX_RISE,
+          Math.max(PLATFORM_HEIGHT, col.platform - col.floor),
+        );
+        col.platform = clampFloor(col.floor + h);
+      }
       if (col.platform > ELEVATION_SPAN) {
         col.platform = null;
         col.platformSpike = false;
@@ -426,9 +569,10 @@ function sanitizeClimbs(columns: LevelColumn[]): void {
         col.platformSpike = false;
       }
     } else if (col.platform !== null && col.floor === null) {
-      // Platform over a pit — keep relative to previous solid floor if possible.
       const base = prevFloor ?? 0;
-      col.platform = clampFloor(base + PLATFORM_HEIGHT);
+      col.platform = clampFloor(
+        base + (padReach ? Math.min(PAD_MAX_RISE, 3) : PLATFORM_HEIGHT),
+      );
       col.platformSpike = false;
     }
 
@@ -439,21 +583,34 @@ function sanitizeClimbs(columns: LevelColumn[]): void {
 
     if (prevFloor !== null && col.floor > prevFloor) {
       const rise = col.floor - prevFloor;
-      const capped = clampRise(rise, col.spike);
+      const maxRise = padReach
+        ? PAD_MAX_RISE
+        : clampRise(rise, col.spike);
+      const capped = Math.min(rise, maxRise);
       if (capped < rise) {
         col.floor = prevFloor + capped;
-        // If we still can't fit a spike on this rise, strip it.
-        if (col.spike && capped > MAX_RISE_WITH_SPIKE) {
-          col.spike = false;
-        }
+      }
+      // Spikes only if the remaining rise is clearable with a spike (or pad).
+      const finalRise = col.floor - prevFloor;
+      if (
+        col.spike &&
+        finalRise > (padReach ? PAD_MAX_RISE - 1 : MAX_RISE_WITH_SPIKE)
+      ) {
+        col.spike = false;
       }
     }
 
-    // Spikes on a floor that was just climbed by > MAX_RISE_WITH_SPIKE from the
-    // previous solid column: strip them.
-    if (col.spike && prevFloor !== null && col.floor - prevFloor > MAX_RISE_WITH_SPIKE) {
+    if (
+      col.spike &&
+      prevFloor !== null &&
+      col.floor - prevFloor >
+        (recentPad(columns, c) ? PAD_MAX_RISE - 1 : MAX_RISE_WITH_SPIKE)
+    ) {
       col.spike = false;
     }
+
+    // Pads never share a cell with spikes or pits.
+    if (col.spike || col.floor === null) col.pad = false;
 
     prevFloor = col.floor;
   }
