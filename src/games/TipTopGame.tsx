@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useGamePalette } from "./GamePaletteContext";
 import { formatRaceTime, scoreTipTop, type GameResult } from "./gameResult";
-import { playTipTopFlap, playTipTopHoleIn, unlockGameAudio } from "./gameAudio";
+import { playTipTopFlap, playTipTopHoleIn, playTipTopLaserZap, playTipTopSawSlice, unlockGameAudio } from "./gameAudio";
 import { frameDecay, frameScale, MAX_PHYSICS_STEPS, renderLerp } from "./gameLoop";
 
 interface Props {
@@ -50,8 +50,6 @@ interface ThemeStar {
 }
 
 type SurfaceFace = "top" | "bottom" | "left" | "right";
-
-type StageElementKind = "sticky" | "laser" | "portal" | "gravity" | "saw";
 
 interface StickyPatch {
   kind: "sticky";
@@ -173,12 +171,15 @@ const GRAVITY_ZONE_FORCE = 0.32;
 const PORTAL_COOLDOWN_FRAMES = 18;
 /** Physics steps (~60/s) sticky stays off after a flap escape. */
 const STICKY_ESCAPE_FRAMES = 12;
-const ELEMENT_KINDS: StageElementKind[] = [
-  "sticky",
-  "laser",
+
+/** Mutually exclusive gimmick families — at most one pick from each per stage. */
+type GimmickGroup = "portal" | "laser" | "gravity" | "saw" | "sticky";
+const GIMMICK_GROUPS: GimmickGroup[] = [
   "portal",
+  "laser",
   "gravity",
   "saw",
+  "sticky",
 ];
 
 /** White tangential hit flash after a flap — tune `size` and `alpha`. */
@@ -453,23 +454,29 @@ function overlapsPit(x: number, w: number, pitX: number, pitW: number, margin = 
   return x + w > pitX - half && x < pitX + half;
 }
 
-function pickElementCount(rand: () => number): 0 | 1 | 2 | 3 {
+function pickGimmickGroupCount(rand: () => number): 0 | 1 | 2 | 3 {
   const roll = rand();
-  if (roll < 0.12) return 0;
-  if (roll < 0.45) return 1;
-  if (roll < 0.8) return 2;
+  if (roll < 0.1) return 0;
+  if (roll < 0.35) return 1;
+  if (roll < 0.95) return 2;
   return 3;
 }
 
-function shuffleKinds(rand: () => number): StageElementKind[] {
-  const kinds = [...ELEMENT_KINDS];
-  for (let i = kinds.length - 1; i > 0; i--) {
+function shuffleGimmickGroups(rand: () => number): GimmickGroup[] {
+  const groups = [...GIMMICK_GROUPS];
+  for (let i = groups.length - 1; i > 0; i--) {
     const j = Math.floor(rand() * (i + 1));
-    const tmp = kinds[i];
-    kinds[i] = kinds[j];
-    kinds[j] = tmp;
+    const tmp = groups[i];
+    groups[i] = groups[j];
+    groups[j] = tmp;
   }
-  return kinds;
+  return groups;
+}
+
+function portalPadAnchorX(pad: PortalPad, obstacles: Obstacle[]): number {
+  if (pad.attach === "ground") return pad.x + pad.w / 2;
+  const obs = obstacles[pad.attach.obsIndex];
+  return obs ? obs.x + obs.w / 2 : pad.x;
 }
 
 function stickyWorldBounds(
@@ -1162,20 +1169,28 @@ function makePortalPad(
   pitW: number,
   obstacles: Obstacle[],
   avoidIndex: number | null,
+  side?: { maxX?: number; minX?: number },
 ): PortalPad | null {
   const solidCandidates = obstacles
     .map((obs, i) => ({ obs, i }))
-    .filter(
-      ({ obs, i }) =>
-        i !== avoidIndex &&
-        isLiveObstacle(obs) &&
-        (obs.kind === "bump" ||
+    .filter(({ obs, i }) => {
+      if (i === avoidIndex || !isLiveObstacle(obs)) return false;
+      if (
+        !(
+          obs.kind === "bump" ||
           obs.kind === "wall" ||
           obs.kind === "platform" ||
-          isCeilingSurface(obs)) &&
-        obs.w >= 28 &&
-        obs.h >= 24,
-    );
+          isCeilingSurface(obs)
+        )
+      ) {
+        return false;
+      }
+      if (obs.w < 28 || obs.h < 24) return false;
+      const cx = obs.x + obs.w / 2;
+      if (side?.maxX !== undefined && cx > side.maxX) return false;
+      if (side?.minX !== undefined && cx < side.minX) return false;
+      return true;
+    });
 
   for (let attempt = 0; attempt < 32; attempt++) {
     // Prefer attaching to obstacle sides.
@@ -1196,11 +1211,9 @@ function makePortalPad(
         const w = Math.min(obs.w - 8, Math.max(32, obs.w * (0.35 + rand() * 0.4)));
         const x = obs.x + (obs.w - w) * (0.1 + rand() * 0.8);
         if (overlapsPit(x, w, pitX, pitW, 35)) continue;
-        // Don't embed in another ground column (fairway portals cut through bumps).
         if (columnBlocksStrip(x, w, obstacles, i)) continue;
         return { x, w, h: 5, attach: { obsIndex: i, face }, nx, ny };
       }
-      // Side portal: pad.x is Y offset along the face, pad.w is height.
       if (sideFaceBlocked(obs, face, obstacles, i)) continue;
       const h = Math.min(obs.h - 6, Math.max(28, obs.h * (0.35 + rand() * 0.45)));
       const yOff = (obs.h - h) * (0.1 + rand() * 0.8);
@@ -1214,20 +1227,26 @@ function makePortalPad(
       };
     }
 
-    // Ground portal — never under a terrain column.
+    // Ground portal — never under a terrain column; honor side split if given.
     const w = 44 + Math.floor(rand() * 28);
-    let x = 240 + Math.floor(rand() * Math.max(80, worldW - 360));
-    if (x < 200) x = 200;
-    if (x + w > worldW - 40) x = worldW - w - 40;
+    let lo = 200;
+    let hi = worldW - w - 40;
+    if (side?.maxX !== undefined) hi = Math.min(hi, side.maxX - w / 2);
+    if (side?.minX !== undefined) lo = Math.max(lo, side.minX - w / 2);
+    if (hi <= lo + 10) continue;
+    const x = lo + Math.floor(rand() * (hi - lo));
     if (overlapsPit(x, w, pitX, pitW, 50)) continue;
     if (columnBlocksStrip(x, w, obstacles, null)) continue;
     return { x, w, h: 5, attach: "ground", nx: 0, ny: -1 };
   }
 
-  // Last resort: ceiling underside portal on a clear strip.
+  // Last resort: ceiling underside on the preferred side.
   const ceilingIndex = ensureCeiling(rand, worldW, pitX, pitW, obstacles);
   if (ceilingIndex === null) return null;
   const obs = obstacles[ceilingIndex];
+  const cx = obs.x + obs.w / 2;
+  if (side?.maxX !== undefined && cx > side.maxX) return null;
+  if (side?.minX !== undefined && cx < side.minX) return null;
   const w = Math.min(58, Math.max(36, obs.w * 0.45));
   const x = obs.x + (obs.w - w) * 0.5;
   if (columnBlocksStrip(x, w, obstacles, ceilingIndex)) return null;
@@ -1350,16 +1369,16 @@ function tryPlacePortals(
   pitX: number,
   pitW: number,
   obstacles: Obstacle[],
+  sideA?: { maxX?: number; minX?: number },
+  sideB?: { maxX?: number; minX?: number },
 ): PortalPair | null {
-  for (let attempt = 0; attempt < 18; attempt++) {
-    const blue = makePortalPad(rand, worldW, pitX, pitW, obstacles, null);
+  for (let attempt = 0; attempt < 22; attempt++) {
+    const blue = makePortalPad(rand, worldW, pitX, pitW, obstacles, null, sideA);
     if (!blue) continue;
-    const avoid =
-      blue.attach === "ground" ? null : blue.attach.obsIndex;
-    const orange = makePortalPad(rand, worldW, pitX, pitW, obstacles, avoid);
+    const avoid = blue.attach === "ground" ? null : blue.attach.obsIndex;
+    const orange = makePortalPad(rand, worldW, pitX, pitW, obstacles, avoid, sideB);
     if (!orange) continue;
 
-    // Reject identical face on the same host.
     if (
       blue.attach !== "ground" &&
       orange.attach !== "ground" &&
@@ -1373,6 +1392,144 @@ function tryPlacePortals(
     return { kind: "portal", blue, orange };
   }
   return null;
+}
+
+/**
+ * Portal group: portals alone, or portals + a full-height barrier that you must
+ * teleport past (one pad before the wall, one after).
+ */
+function tryPlacePortalGroup(
+  rand: () => number,
+  worldW: number,
+  pitX: number,
+  pitW: number,
+  obstacles: Obstacle[],
+): StageElement[] {
+  const out: StageElement[] = [];
+  // Most portal stages include a barrier; some are portal-only.
+  const withBarrier = rand() < 0.7;
+
+  let splitX: number | null = null;
+  if (withBarrier) {
+    for (let attempt = 0; attempt < 16; attempt++) {
+      const w = 20 + Math.floor(rand() * 12);
+      const t = 0.38 + rand() * 0.28; // between spawn and cup
+      const mid = 200 + (pitX - 200) * t;
+      const x = mid - w / 2;
+      if (overlapsPit(x, w, pitX, pitW, 55)) continue;
+      if (columnBlocksStrip(x, w, obstacles, null)) continue;
+      out.push({ kind: "portalBarrier", x, w });
+      splitX = mid;
+      break;
+    }
+  }
+
+  let pair: PortalPair | null = null;
+  if (splitX !== null) {
+    const gap = 55;
+    pair =
+      tryPlacePortals(
+        rand,
+        worldW,
+        pitX,
+        pitW,
+        obstacles,
+        { maxX: splitX - gap },
+        { minX: splitX + gap },
+      ) ??
+      tryPlacePortals(
+        rand,
+        worldW,
+        pitX,
+        pitW,
+        obstacles,
+        { minX: splitX + gap },
+        { maxX: splitX - gap },
+      );
+  }
+  if (!pair) {
+    pair = tryPlacePortals(rand, worldW, pitX, pitW, obstacles);
+  }
+
+  if (!pair) {
+    // Can't place portals — drop the barrier too so we don't soft-lock.
+    return [];
+  }
+
+  // Ensure pads truly straddle the barrier when one exists.
+  if (splitX !== null) {
+    const ax = portalPadAnchorX(pair.blue, obstacles);
+    const bx = portalPadAnchorX(pair.orange, obstacles);
+    const straddles =
+      (ax < splitX - 30 && bx > splitX + 30) ||
+      (bx < splitX - 30 && ax > splitX + 30);
+    if (!straddles) {
+      // Barrier without a usable bypass — remove barrier, keep portals.
+      return [pair];
+    }
+  }
+
+  out.unshift(pair);
+  return out;
+}
+
+function generateElements(
+  rand: () => number,
+  worldW: number,
+  pitX: number,
+  pitW: number,
+  obstacles: Obstacle[],
+): StageElement[] {
+  const groupCount = pickGimmickGroupCount(rand);
+  if (groupCount === 0) return [];
+
+  const elements: StageElement[] = [];
+  const picked = shuffleGimmickGroups(rand).slice(0, groupCount);
+
+  for (const group of picked) {
+    if (group === "portal") {
+      elements.push(...tryPlacePortalGroup(rand, worldW, pitX, pitW, obstacles));
+    } else if (group === "laser") {
+      const laser = tryPlaceLaser(rand, worldW, pitX, pitW, obstacles);
+      if (laser) elements.push(laser);
+    } else if (group === "gravity") {
+      const grav = tryPlaceGravity(rand, worldW, pitX, pitW);
+      if (grav) elements.push(grav);
+    } else if (group === "saw") {
+      const saw = tryPlaceSaw(rand, worldW, pitX, pitW);
+      if (saw) elements.push(saw);
+    } else if (group === "sticky") {
+      const sticky = tryPlaceSticky(rand, worldW, pitX, pitW, obstacles);
+      if (sticky) elements.push(sticky);
+    }
+  }
+
+  // Drop lasers that sit on / through portal openings; retry once in a clear spot.
+  const keepOut = collectPortalKeepOut(elements, obstacles);
+  if (keepOut.length > 0 && picked.includes("laser")) {
+    for (let i = elements.length - 1; i >= 0; i--) {
+      const el = elements[i];
+      if (el.kind !== "laser") continue;
+      if (!laserConflictsWithPortals(el, obstacles, keepOut)) continue;
+      elements.splice(i, 1);
+    }
+    if (!elements.some((el) => el.kind === "laser")) {
+      for (let n = 0; n < 6; n++) {
+        const laser = tryPlaceLaser(rand, worldW, pitX, pitW, obstacles);
+        if (!laser) continue;
+        if (laserConflictsWithPortals(laser, obstacles, keepOut)) continue;
+        elements.push(laser);
+        break;
+      }
+    }
+  }
+
+  for (const el of elements) {
+    if (el.kind !== "portal") continue;
+    clearObstaclesOverPortals(obstacles, el.blue, el.orange, elements);
+  }
+
+  return elements;
 }
 
 function pickGravityDir(rand: () => number, zoneCenterX: number, pitX: number): GravityDir {
@@ -1450,97 +1607,6 @@ function computeMedalGoals(
   return { gold, silver, bronze };
 }
 
-function generateElements(
-  rand: () => number,
-  worldW: number,
-  pitX: number,
-  pitW: number,
-  obstacles: Obstacle[],
-): StageElement[] {
-  const count = pickElementCount(rand);
-  if (count === 0) return [];
-
-  const elements: StageElement[] = [];
-  // Place portals early so opening clearance runs before unrelated props pile on.
-  const kinds = shuffleKinds(rand).sort((a, b) =>
-    a === "portal" ? -1 : b === "portal" ? 1 : 0,
-  );
-
-  for (const kind of kinds) {
-    if (elements.length >= count) break;
-    let placed: StageElement | null = null;
-    if (kind === "sticky") placed = tryPlaceSticky(rand, worldW, pitX, pitW, obstacles);
-    else if (kind === "laser") placed = tryPlaceLaser(rand, worldW, pitX, pitW, obstacles);
-    else if (kind === "portal") placed = tryPlacePortals(rand, worldW, pitX, pitW, obstacles);
-    else if (kind === "gravity") placed = tryPlaceGravity(rand, worldW, pitX, pitW);
-    else if (kind === "saw") placed = tryPlaceSaw(rand, worldW, pitX, pitW);
-    if (placed) elements.push(placed);
-  }
-
-  // Sticky stages are more likely to also get a saw.
-  const hasSticky = elements.some((el) => el.kind === "sticky");
-  const hasSaw = elements.some((el) => el.kind === "saw");
-  if (hasSticky && !hasSaw && rand() < 0.45) {
-    const saw = tryPlaceSaw(rand, worldW, pitX, pitW);
-    if (saw) elements.push(saw);
-  }
-
-  // Lasers were often skipped (portal-first + tiny element budget). Guarantee a try.
-  if (!elements.some((el) => el.kind === "laser") && rand() < 0.72) {
-    const laser = tryPlaceLaser(rand, worldW, pitX, pitW, obstacles);
-    if (laser) elements.push(laser);
-  }
-
-  // Drop lasers that sit on / through portal openings.
-  const keepOut = collectPortalKeepOut(elements, obstacles);
-  if (keepOut.length > 0) {
-    for (let i = elements.length - 1; i >= 0; i--) {
-      const el = elements[i];
-      if (el.kind !== "laser") continue;
-      if (!laserConflictsWithPortals(el, obstacles, keepOut)) continue;
-      elements.splice(i, 1);
-    }
-    // Retry once for a laser in a clear spot if we removed the only one.
-    if (!elements.some((el) => el.kind === "laser") && rand() < 0.8) {
-      for (let n = 0; n < 6; n++) {
-        const laser = tryPlaceLaser(rand, worldW, pitX, pitW, obstacles);
-        if (!laser) continue;
-        if (laserConflictsWithPortals(laser, obstacles, keepOut)) continue;
-        elements.push(laser);
-        break;
-      }
-    }
-  }
-
-  // Re-clear portal mouths now that lasers/sticky exist (protect their hosts).
-  for (const el of elements) {
-    if (el.kind !== "portal") continue;
-    clearObstaclesOverPortals(obstacles, el.blue, el.orange, elements);
-  }
-
-  // Full-height wall between a portal pair — only when portals exist.
-  const portal = elements.find((el): el is PortalPair => el.kind === "portal");
-  if (portal && rand() < 0.55) {
-    const portalAnchorX = (pad: PortalPad) => {
-      if (pad.attach === "ground") return pad.x + pad.w / 2;
-      const obs = obstacles[pad.attach.obsIndex];
-      return obs ? obs.x + obs.w / 2 : pad.x;
-    };
-    const x0 = portalAnchorX(portal.blue);
-    const x1 = portalAnchorX(portal.orange);
-    if (Math.abs(x1 - x0) > 130) {
-      const mid = (x0 + x1) / 2;
-      const w = 20 + Math.floor(rand() * 12);
-      const x = mid - w / 2;
-      if (!overlapsPit(x, w, pitX, pitW, 55)) {
-        elements.push({ kind: "portalBarrier", x, w });
-      }
-    }
-  }
-
-  return elements;
-}
-
 function generateObstacles(
   rand: () => number,
   worldW: number,
@@ -1566,7 +1632,7 @@ function generateObstacles(
     return false;
   };
 
-  const ceilingCount = 2 + Math.floor(rand() * 3);
+  const ceilingCount = 1 + Math.floor(rand() * 2);
   for (let n = 0; n < ceilingCount; n++) {
     tryPlace(() => {
       const w = 80 + Math.floor(rand() * 140);
@@ -1582,7 +1648,7 @@ function generateObstacles(
     });
   }
 
-  const bumpCount = 2 + Math.floor(rand() * 4);
+  const bumpCount = 1 + Math.floor(rand() * 3);
   for (let n = 0; n < bumpCount; n++) {
     tryPlace(() => {
       const tall = rand() > 0.45;
@@ -1606,7 +1672,7 @@ function generateObstacles(
   }
 
   const propKinds: ObstacleKind[] = ["stone", "tree", "flag"];
-  const propCount = 1 + Math.floor(rand() * 3);
+  const propCount = Math.floor(rand() * 2);
   for (let n = 0; n < propCount; n++) {
     let kind = propKinds[Math.floor(rand() * propKinds.length)];
     if (theme === "space" && kind === "tree") kind = "flag";
@@ -2897,6 +2963,7 @@ export function TipTopGame({ width, height, onGameOver, paused = false }: Props)
         const ends = laserEndpoints(el, playH, stage);
         if (!ends) continue;
         if (circleHitsSegment(px, py, ballR, ends.x0, ends.y0, ends.x1, ends.y1)) {
+          playTipTopLaserZap();
           resetBall();
           return false;
         }
@@ -2906,6 +2973,7 @@ export function TipTopGame({ width, height, onGameOver, paused = false }: Props)
         if (el.kind !== "saw") continue;
         const c = sawCenter(el, playH, stage, performance.now());
         if (Math.hypot(px - c.x, py - c.y) <= ballR + el.r * 0.88) {
+          playTipTopSawSlice();
           resetBall();
           return false;
         }

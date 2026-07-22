@@ -96,6 +96,24 @@ export const TIPTOP_SOUND = {
     intensity: 0.88,
   },
   holeIn: { volume: 0.62, startTime: 0, endTime: 0.52, duration: 0.52 },
+  laserZap: {
+    volume: 0.18,
+    startTime: 0,
+    endTime: 0.16,
+    duration: 0.18,
+    fadeIn: 0.004,
+    fadeOut: 0.1,
+    intensity: 1,
+  },
+  sawSlice: {
+    volume: 0.35,
+    startTime: 0,
+    endTime: 0.14,
+    duration: 0.16,
+    fadeIn: 0.003,
+    fadeOut: 0.08,
+    intensity: 1,
+  },
 } as const satisfies Record<string, SoundTiming>;
 
 /** TipTop flap base pitch (Hz) and harmonic intervals above base. */

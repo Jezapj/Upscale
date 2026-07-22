@@ -450,6 +450,94 @@ export function playTipTopHoleIn() {
   clink.stop(t0 + config.duration);
 }
 
+export function playTipTopLaserZap() {
+  const audioCtx = ctx();
+  if (!audioCtx) return;
+
+  const config = TIPTOP_SOUND.laserZap;
+  const t0 = audioCtx.currentTime + config.startTime;
+
+  const buzz = audioCtx.createOscillator();
+  const buzzGain = audioCtx.createGain();
+  buzzGain.gain.value = 0;
+  buzz.type = "sawtooth";
+  buzz.frequency.setValueAtTime(1400, t0);
+  buzz.frequency.exponentialRampToValueAtTime(180, t0 + config.endTime);
+  buzz.connect(buzzGain);
+  buzzGain.connect(audioCtx.destination);
+  const buzzStop = scheduleFadedGainEnvelope(audioCtx, buzzGain, {
+    ...config,
+    volume: config.volume * 0.7,
+  });
+
+  const spark = audioCtx.createBufferSource();
+  spark.buffer = getNoise(audioCtx);
+  const sparkFilter = audioCtx.createBiquadFilter();
+  sparkFilter.type = "bandpass";
+  sparkFilter.frequency.setValueAtTime(3200, t0);
+  sparkFilter.frequency.exponentialRampToValueAtTime(900, t0 + config.endTime);
+  sparkFilter.Q.value = 1.4;
+  const sparkGain = audioCtx.createGain();
+  sparkGain.gain.value = 0;
+  spark.connect(sparkFilter);
+  sparkFilter.connect(sparkGain);
+  sparkGain.connect(audioCtx.destination);
+  const sparkStop = scheduleFadedGainEnvelope(audioCtx, sparkGain, {
+    ...config,
+    volume: config.volume * 0.55,
+  });
+
+  buzz.start(t0);
+  buzz.stop(buzzStop);
+  spark.start(t0);
+  spark.stop(sparkStop);
+}
+
+export function playTipTopSawSlice() {
+  const audioCtx = ctx();
+  if (!audioCtx) return;
+
+  const config = TIPTOP_SOUND.sawSlice;
+  const t0 = audioCtx.currentTime + config.startTime;
+
+  const slice = audioCtx.createBufferSource();
+  slice.buffer = getNoise(audioCtx);
+  const sliceFilter = audioCtx.createBiquadFilter();
+  sliceFilter.type = "bandpass";
+  sliceFilter.frequency.setValueAtTime(2400, t0);
+  sliceFilter.frequency.exponentialRampToValueAtTime(600, t0 + config.endTime);
+  sliceFilter.Q.value = 2.2;
+  const sliceGain = audioCtx.createGain();
+  sliceGain.gain.value = 0;
+  slice.connect(sliceFilter);
+  sliceFilter.connect(sliceGain);
+  sliceGain.connect(audioCtx.destination);
+  const sliceStop = scheduleFadedGainEnvelope(audioCtx, sliceGain, {
+    ...config,
+    volume: config.volume * 0.75,
+  });
+
+  const ring = audioCtx.createOscillator();
+  const ringGain = audioCtx.createGain();
+  ringGain.gain.value = 0;
+  ring.type = "triangle";
+  ring.frequency.setValueAtTime(680, t0);
+  ring.frequency.exponentialRampToValueAtTime(320, t0 + config.endTime * 0.7);
+  ring.connect(ringGain);
+  ringGain.connect(audioCtx.destination);
+  const ringStop = scheduleFadedGainEnvelope(audioCtx, ringGain, {
+    ...config,
+    volume: config.volume * 0.35,
+    duration: config.duration * 0.85,
+    endTime: config.endTime * 0.85,
+  });
+
+  slice.start(t0);
+  slice.stop(sliceStop);
+  ring.start(t0);
+  ring.stop(ringStop);
+}
+
 const sampleBuffers = new Map<string, AudioBuffer>();
 let octaneSamplesReady: Promise<void> | null = null;
 
