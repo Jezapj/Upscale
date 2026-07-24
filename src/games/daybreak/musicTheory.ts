@@ -64,12 +64,12 @@ export function pickKey(rng: Rng): MusicalKey {
 
 /**
  * BPM scales with the complexity of the key signature: simple keys sit around
- * 85-105 BPM while 5-6 accidental keys push into the 150-170 range.
+ * 100-120 BPM while 5-6 accidental keys push into the 165-185 range.
  */
 export function pickBpm(key: MusicalKey, rng: Rng): number {
-  const base = 88 + key.accidentals * 11;
+  const base = 103 + key.accidentals * 11;
   const jitter = rng() * 18 - 6; // skewed slightly upward
-  return Math.round(Math.min(172, Math.max(82, base + jitter)));
+  return Math.round(Math.min(187, Math.max(97, base + jitter)));
 }
 
 export function midiToHz(midi: number): number {

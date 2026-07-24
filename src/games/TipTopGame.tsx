@@ -430,7 +430,7 @@ function themePalette(theme: StageTheme, fallback: ThemePalette): ThemePalette {
 
 /** True when any part of the ball overlaps the pit horizontally (lenient margins). */
 function ballOverlapsPitX(px: number, ballR: number, pit: Pit): boolean {
-  const half = pit.width / 2 + ballR * 0.3;
+  const half = pit.width / 2 + ballR * 0.58;
   return px + ballR > pit.x - half && px - ballR < pit.x + half;
 }
 
@@ -1726,7 +1726,7 @@ function generateThemeDecor(
 
 function generateStage(seed: number): Stage {
   const rand = mulberry32(seed);
-  const pitW = 58 + Math.floor(rand() * 22);
+  const pitW = 66 + Math.floor(rand() * 28);
   /** Goal sits near the end — only a short runway after the cup. */
   const pitX = 720 + Math.floor(rand() * 1100);
   const afterGoal = 90 + Math.floor(rand() * 130);
@@ -1735,7 +1735,7 @@ function generateStage(seed: number): Stage {
   const pit = {
     x: pitX,
     width: pitW,
-    depth: 48 + Math.floor(rand() * 18),
+    depth: 26 + Math.floor(rand() * 14),
     scored: false,
   };
   const decor = generateThemeDecor(rand, theme, worldW);
@@ -3122,12 +3122,12 @@ export function TipTopGame({ width, height, onGameOver, paused = false }: Props)
             onGround = true;
           }
         } else if (overlapsPit && surface !== null) {
-          if (py + ballR >= surface - 8) {
-            const nearBottom = py + ballR >= bottomY - 28;
+          if (py + ballR >= surface - 12) {
+            const nearBottom = py + ballR >= bottomY - Math.max(22, pit.depth * 0.55);
             const settled =
               nearBottom &&
-              Math.abs(vy) < 22 &&
-              Math.abs(vx) < 18;
+              Math.abs(vy) < 34 &&
+              Math.abs(vx) < 26;
             if (settled) {
               pit.scored = true;
               vy = 0;
