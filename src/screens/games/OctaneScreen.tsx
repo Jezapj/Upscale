@@ -2,7 +2,17 @@ import { useState } from "react";
 import { GameShell } from "@/games/GameShell";
 import { OctaneGame } from "@/games/OctaneGame";
 import type { OctaneConfig } from "@/games/octaneConfig";
+import {
+  DAILY_OCTANE_DISTANCE_M,
+  DAILY_OCTANE_RACE_LABEL,
+} from "@/lib/dailyChallenge";
 import { OctaneLobby } from "./OctaneLobby";
+
+const DAILY_CONFIG: OctaneConfig = {
+  mode: "drag",
+  raceDistanceM: DAILY_OCTANE_DISTANCE_M,
+  raceLabel: DAILY_OCTANE_RACE_LABEL,
+};
 
 export function OctaneScreen() {
   const [config, setConfig] = useState<OctaneConfig | null>(null);
@@ -11,7 +21,7 @@ export function OctaneScreen() {
     <GameShell
       gameId="octane"
       onSessionReset={() => setConfig(null)}
-      renderLobby={(start) => (
+      renderPracticeLobby={(start) => (
         <OctaneLobby
           onBegin={(cfg) => {
             setConfig(cfg);
@@ -20,17 +30,19 @@ export function OctaneScreen() {
         />
       )}
     >
-      {({ width, height, onGameOver, paused }) =>
-        config ? (
+      {({ width, height, onGameOver, paused, playMode }) => {
+        const active = playMode === "daily" ? DAILY_CONFIG : config;
+        if (!active) return null;
+        return (
           <OctaneGame
             width={width}
             height={height}
-            config={config}
+            config={active}
             onGameOver={onGameOver}
             paused={paused}
           />
-        ) : null
-      }
+        );
+      }}
     </GameShell>
   );
 }

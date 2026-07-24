@@ -9,6 +9,19 @@ interface Props {
   height: number;
   onGameOver: (score: number) => void;
   paused?: boolean;
+  /** When set, tile spawns use this seed (daily challenge). */
+  seed?: number;
+}
+
+function mulberry32(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a += 0x6d2b79f5;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 interface Tile {
@@ -35,13 +48,15 @@ const MISS_PADDING = 14;
 const LANE_KEYS = ["D", "F", "J", "K"];
 
 /** Piano tiles with hit zone guide, lane highlights, and tight timing. */
-export function DissiadaGame({ width, height, onGameOver, paused = false }: Props) {
+export function DissiadaGame({ width, height, onGameOver, paused = false, seed }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const palette = useGamePalette();
   const sizeRef = useRef({ width, height });
   const onGameOverRef = useRef(onGameOver);
   const paletteRef = useRef(palette);
   const pausedRef = useRef(paused);
+  const seedRef = useRef(seed);
+  seedRef.current = seed;
 
   sizeRef.current = { width, height };
   onGameOverRef.current = onGameOver;
@@ -104,6 +119,7 @@ export function DissiadaGame({ width, height, onGameOver, paused = false }: Prop
     let speed = 6.5;
     let laneFlash = [0, 0, 0, 0];
     const tapFx: TapFx[] = [];
+    const rng = seedRef.current !== undefined ? mulberry32(seedRef.current) : Math.random;
 
     const judgeTile = (
       lane: number,
@@ -220,7 +236,7 @@ export function DissiadaGame({ width, height, onGameOver, paused = false }: Prop
         const spawnRate = Math.max(14, 32 - Math.floor(score / 8));
         if (spawnTimer >= spawnRate) {
           spawnTimer -= spawnRate;
-          const lane = Math.floor(Math.random() * LANES);
+          const lane = Math.floor(rng() * LANES);
           tiles.push({ lane, y: -TILE_H - 10, hit: false, missed: false });
         }
 

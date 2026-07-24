@@ -5,6 +5,9 @@ import { PageHeader } from "@/components/PageHeader";
 import { Tile } from "@/components/Tile";
 import { GAMES, gamePath } from "@/lib/games";
 import { useRegisterControls } from "@/store/useControls";
+import { useStore } from "@/store/useStore";
+import { getDailyCompletion, hasPlayedDaily } from "@/lib/dailyChallenge";
+import { prettyDay } from "@/lib/dates";
 
 const GAME_GLYPH: Record<string, string> = {
   tiptop: "⛳",
@@ -15,6 +18,8 @@ const GAME_GLYPH: Record<string, string> = {
 
 export function GamesScreen() {
   const nav = useNavigate();
+  const today = useStore((s) => s.today);
+  const data = useStore((s) => s.data);
 
   useRegisterControls(
     {
@@ -30,39 +35,50 @@ export function GamesScreen() {
       <div className="scroll-area px-4 pb-4">
         <PageHeader
           title="Arcade"
-          subtitle="Quick mini-games between check-ins."
+          subtitle={`${prettyDay(today)} — one shared daily challenge each.`}
         />
 
         <div className="card mb-4 flex items-start gap-3 p-4">
           <Gamepad2 size={22} className="mt-0.5 shrink-0 text-cat-project" />
           <p className="min-w-0 text-sm font-600 text-ink-soft">
-            <span className="font-800 text-ink">Unlimited plays</span> for now.
-            Daily limits and subscriptions via Stripe are planned for later.
+            <span className="font-800 text-ink">Daily challenge</span> is free once
+            per game. Practice stays unlimited for now (3 free plays / day coming
+            later).
           </p>
         </div>
 
         <div className="space-y-3">
-          {GAMES.map((g) => (
-            <button
-              key={g.id}
-              type="button"
-              onClick={() => nav(gamePath(g.id))}
-              className="card flex w-full items-center gap-3 p-4 text-left transition-all active:scale-[0.99]"
-            >
-              <Tile
-                glyph={GAME_GLYPH[g.id]}
-                color={g.color}
-                size={56}
-                state="selected"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="content-title font-display text-lg font-800">
-                  {g.name}
-                </p>
-                <p className="text-xs font-700 text-ink-faint">{g.tagline}</p>
-              </div>
-            </button>
-          ))}
+          {GAMES.map((g) => {
+            const done = hasPlayedDaily(data, g.id, today);
+            const completion = getDailyCompletion(data, g.id, today);
+            return (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => nav(gamePath(g.id))}
+                className="card flex w-full items-center gap-3 p-4 text-left transition-all active:scale-[0.99]"
+              >
+                <Tile
+                  glyph={GAME_GLYPH[g.id]}
+                  color={g.color}
+                  size={56}
+                  state="selected"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="content-title font-display text-lg font-800">
+                    {g.name}
+                  </p>
+                  <p className="text-xs font-700 text-ink-faint">
+                    {done
+                      ? completion && completion.score > 0
+                        ? `Played · ${completion.score.toLocaleString()}`
+                        : "Played today"
+                      : "Daily ready"}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
     </>

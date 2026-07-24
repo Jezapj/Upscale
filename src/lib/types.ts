@@ -86,7 +86,30 @@ export interface AppData {
   syncedAt?: string;
   /** Per-game high scores keyed by game id or sub-key (e.g. `octane:402`). */
   gameScores?: Record<string, GameScoreEntry[]>;
+  /** One official daily attempt per game per local calendar day. */
+  arcadeDaily?: ArcadeDailyState;
+  /** Global board display name preference. */
+  arcadeProfile?: ArcadeProfile;
   version: number;
+}
+
+export interface ArcadeDailyCompletion {
+  score: number;
+  playedAt: string;
+}
+
+export interface ArcadeDailyState {
+  date: string;
+  completed: Partial<Record<GameId, ArcadeDailyCompletion>>;
+}
+
+export interface ArcadeProfile {
+  /** Public board name; null when opted out (shows as Anonymous). */
+  username: string | null;
+  /** When true, post scores as Anonymous. */
+  optedOut: boolean;
+  /** True after the user has seen the username prompt at least once. */
+  prompted: boolean;
 }
 
 export type GameId = "tiptop" | "octane" | "dissiada" | "daybreak";

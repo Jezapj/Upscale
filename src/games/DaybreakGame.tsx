@@ -24,6 +24,8 @@ interface Props {
   onGameOver: (result: GameResult) => void;
   /** Shell pause menu — freezes sim + suspends audio. */
   paused?: boolean;
+  /** When set, level is generated from this seed (daily challenge). */
+  seed?: number;
 }
 
 // ── Physics tuning (rows / seconds / beats) ─────────────────────────────────
@@ -112,6 +114,7 @@ export function DaybreakGame({
   height,
   onGameOver,
   paused = false,
+  seed: seedProp,
 }: Props) {
   const palette = useGamePalette();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -125,6 +128,8 @@ export function DaybreakGame({
   const pausedRef = useRef(paused);
   const audioRef = useRef<ReturnType<typeof createDaybreakAudio> | null>(null);
   const wasPausedRef = useRef(false);
+  const seedRef = useRef(seedProp);
+  seedRef.current = seedProp;
 
   useEffect(() => {
     pausedRef.current = paused;
@@ -144,7 +149,7 @@ export function DaybreakGame({
     const g = canvas.getContext("2d");
     if (!g) return;
 
-    const seed = Math.floor(Math.random() * 0x7fffffff);
+    const seed = seedRef.current ?? Math.floor(Math.random() * 0x7fffffff);
     const level = generateLevel(seed);
     const audio = createDaybreakAudio(level.key, level.bpm);
     audioRef.current = audio;

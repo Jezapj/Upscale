@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type {
   AppData,
+  ArcadeProfile,
   GameId,
   GameScoreEntry,
   Goal,
@@ -23,6 +24,7 @@ import {
 import { recordGameScore as mergeGameScore, getGameScores } from "@/lib/gameLeaderboard";
 import { isCloudUser } from "@/lib/cloudSync";
 import { clearFiredReminder } from "@/lib/reminders";
+import { markDailyPlayed as applyDailyPlayed } from "@/lib/dailyChallenge";
 
 const uid = () => crypto.randomUUID();
 
@@ -59,6 +61,9 @@ interface StoreState {
     meta?: Record<string, string>,
   ) => boolean;
   getLeaderboard: (key: string) => GameScoreEntry[];
+
+  markDailyPlayed: (gameId: GameId, score: number, overwrite?: boolean) => void;
+  setArcadeProfile: (profile: ArcadeProfile) => void;
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -265,6 +270,14 @@ export const useStore = create<StoreState>((set, get) => {
 
     getLeaderboard(key) {
       return getGameScores(get().data, key);
+    },
+
+    markDailyPlayed(gameId, score, overwrite = false) {
+      mutate((d) => applyDailyPlayed(d, gameId, score, todayKey(), new Date().toISOString(), overwrite));
+    },
+
+    setArcadeProfile(profile) {
+      mutate((d) => ({ ...d, arcadeProfile: profile }));
     },
   };
 });

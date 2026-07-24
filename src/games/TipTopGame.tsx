@@ -9,6 +9,8 @@ interface Props {
   height: number;
   onGameOver: (result: number | GameResult) => void;
   paused?: boolean;
+  /** When set, stages are generated from this seed (daily challenge). */
+  seed?: number;
 }
 
 type StageTheme = "forest" | "beach" | "mountain" | "space";
@@ -2683,7 +2685,7 @@ function drawStageElements(
 }
 
 /** Flappy Golf 2 style: flap left/right, 3 random stages with one hole each. */
-export function TipTopGame({ width, height, onGameOver, paused = false }: Props) {
+export function TipTopGame({ width, height, onGameOver, paused = false, seed }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const palette = useGamePalette();
   const btnRef = useRef({ left: false, right: false });
@@ -2691,6 +2693,8 @@ export function TipTopGame({ width, height, onGameOver, paused = false }: Props)
   const onGameOverRef = useRef(onGameOver);
   const paletteRef = useRef(palette);
   const pausedRef = useRef(paused);
+  const seedRef = useRef(seed);
+  seedRef.current = seed;
 
   sizeRef.current = { width, height };
   onGameOverRef.current = onGameOver;
@@ -2733,7 +2737,9 @@ export function TipTopGame({ width, height, onGameOver, paused = false }: Props)
 
     resizeCanvas(sizeRef.current.width, sizeRef.current.height);
 
-    const stages = generateStages((Date.now() ^ (initW * 7919)) >>> 0);
+    const stages = generateStages(
+      seedRef.current ?? ((Date.now() ^ (initW * 7919)) >>> 0),
+    );
     const forestPal: ThemePalette = {
       skyTop: p.skyTop,
       skyBot: p.skyBot,
