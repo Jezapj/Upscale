@@ -13,8 +13,23 @@ import {
   computeRoutineStats,
   dailyCompletionSeries,
 } from "@/lib/stats";
-import { weekdayShort } from "@/lib/dates";
+import { parseDay, weekdayShort } from "@/lib/dates";
 import { useRegisterControls } from "@/store/useControls";
+
+/** Bar tint by local weekday (Sun=0 … Sat=6). */
+const WEEKDAY_CHART_COLORS = [
+  "#f472b6", // Sun
+  "#fb923c", // Mon
+  "#facc15", // Tue
+  "#4ade80", // Wed
+  "#38bdf8", // Thu
+  "#a78bfa", // Fri
+  "#2dd4bf", // Sat
+] as const;
+
+function weekdayColor(key: string): string {
+  return WEEKDAY_CHART_COLORS[parseDay(key).getDay()];
+}
 
 export function ProgressScreen() {
   const nav = useNavigate();
@@ -83,31 +98,48 @@ export function ProgressScreen() {
           <p className="mb-3 font-display text-lg font-800 text-ink">
             Last 30 days
           </p>
-          <div className="flex h-28 items-end gap-[3px]">
-            {series.map((d, i) => (
-              <div
-                key={d.key}
-                className="group flex h-full flex-1 flex-col items-center justify-end"
-                title={`${Math.round(d.ratio * 100)}%`}
-              >
+          <div>
+            <div className="flex h-28 items-end gap-[3px]">
+              {series.map((d) => {
+                const color = weekdayColor(d.key);
+                const hasScheduled = d.scheduled > 0;
+                return (
+                  <div
+                    key={d.key}
+                    className="group flex h-full min-w-0 flex-1 flex-col justify-end"
+                    title={`${weekdayShort(d.key)} · ${Math.round(d.ratio * 100)}%`}
+                  >
+                    <div
+                      className="w-full rounded-t-[4px] transition-all"
+                      style={{
+                        height: `${Math.max(4, hasScheduled ? d.ratio * 100 : 8)}%`,
+                        background: hasScheduled
+                          ? `linear-gradient(180deg, ${color}cc, ${color})`
+                          : color,
+                        opacity: hasScheduled ? 0.5 + d.ratio * 0.5 : 0.22,
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-1 flex gap-[3px]">
+              {series.map((d, i) => (
                 <div
-                  className="w-full rounded-t-[4px] transition-all"
-                  style={{
-                    height: `${Math.max(4, d.ratio * 100)}%`,
-                    background:
-                      d.scheduled === 0
-                        ? "rgba(120,150,180,0.15)"
-                        : `linear-gradient(180deg, #74c0ff, #3a8ef0)`,
-                    opacity: d.scheduled === 0 ? 0.5 : 0.5 + d.ratio * 0.5,
-                  }}
-                />
-                {i % 5 === 0 && (
-                  <span className="mt-1 text-[8px] font-700 text-ink-faint">
-                    {weekdayShort(d.key)}
-                  </span>
-                )}
-              </div>
-            ))}
+                  key={`${d.key}-label`}
+                  className="flex min-h-[11px] min-w-0 flex-1 items-start justify-center"
+                >
+                  {i % 5 === 0 ? (
+                    <span
+                      className="text-[8px] font-800 leading-none"
+                      style={{ color: weekdayColor(d.key) }}
+                    >
+                      {weekdayShort(d.key)}
+                    </span>
+                  ) : null}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
