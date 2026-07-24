@@ -15,8 +15,9 @@ import {
   type Firestore,
 } from "firebase/firestore";
 import { getFirebaseAuth, getFirebaseDb, cloudConfigured } from "./firebase";
+import { waitForFirebaseAuth } from "./firebaseAuth";
 import { dailyBoardDocId } from "./dailyChallenge";
-import { googleSubFromUserId } from "./cloudSync";
+import { firestoreUserDocId } from "./cloudSync";
 import type { GameId } from "./types";
 import { todayKey } from "./dates";
 
@@ -48,10 +49,13 @@ export async function submitDailyScore(args: {
 }): Promise<{ ok: boolean; reason?: string }> {
   if (!cloudConfigured()) return { ok: false, reason: "cloud_unavailable" };
   const db = getFirebaseDb();
-  const auth = getFirebaseAuth();
-  if (!db || !auth?.currentUser) return { ok: false, reason: "not_signed_in" };
+  if (!db) return { ok: false, reason: "cloud_unavailable" };
 
-  const uid = googleSubFromUserId(args.userId);
+  const authed = await waitForFirebaseAuth();
+  const auth = getFirebaseAuth();
+  if (!authed || !auth?.currentUser) return { ok: false, reason: "not_signed_in" };
+
+  const uid = firestoreUserDocId(args.userId);
   if (!uid) return { ok: false, reason: "guest" };
 
   const day = args.day ?? todayKey();
@@ -85,15 +89,23 @@ export async function listDailyBoard(
 ): Promise<DailyBoardEntry[]> {
   if (!cloudConfigured()) return [];
   const db = getFirebaseDb();
+  if (!db) return [];
+
+  const authed = await waitForFirebaseAuth();
   const auth = getFirebaseAuth();
-  if (!db || !auth?.currentUser) return [];
+  if (!authed || !auth?.currentUser) return [];
 
   try {
     const q = query(entriesCol(db, gameId, day), orderBy("score", "desc"), limit(max));
-    const snap = await getDocs(q);
+    const snap = await Promise.race([
+      getDocs(q),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("daily board timeout")), 12_000),
+      ),
+    ]);
     return snap.docs.map((d) => d.data() as DailyBoardEntry);
   } catch (err) {
     console.warn("daily board list failed", err);
-    return [];
+    throw err;
   }
 }

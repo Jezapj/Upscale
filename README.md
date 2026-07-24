@@ -79,6 +79,46 @@ To enable real Google sign‑in:
 > Firebase config enables cross-device sync for Google accounts. Deploy `firestore.rules`
 > from this repo. Guest mode stays local-only.
 
+### Firebase + Google: how they work together
+
+Upscale uses **two** pieces from Google:
+
+| Piece | Env var(s) | Purpose |
+| ----- | ---------- | ------- |
+| **Google Identity (GIS)** | `VITE_GOOGLE_CLIENT_ID` | Shows the “Continue with Google” button and gives a JWT |
+| **Firebase** | `VITE_FIREBASE_*` | Signs that JWT into **Firebase Auth**, then reads/writes **Firestore** |
+
+The GCP **OAuth Web client** and Firebase must belong to the **same Google Cloud project** (or the Web client ID must be added in Firebase).
+
+**Setup checklist**
+
+1. [Firebase Console](https://console.firebase.google.com) → your project → **Build → Authentication → Sign-in method** → enable **Google**.
+2. Under Google provider, ensure the **Web client ID** matches `VITE_GOOGLE_CLIENT_ID` (Firebase often creates one automatically; you can copy it from **Project settings → Your apps**).
+3. **Build → Firestore** → create database (production mode is fine once rules are deployed).
+4. **Project settings → Your apps → Web** → copy the `firebaseConfig` values into all `VITE_FIREBASE_*` vars (local `.env` and Vercel).
+5. **Authentication → Settings → Authorized domains** → add `localhost` and your production domain (e.g. `your-app.vercel.app`).
+6. In [GCP Credentials](https://console.cloud.google.com/apis/credentials), the same Web client must list **Authorized JavaScript origins** for those URLs.
+
+**Deploy Firestore rules** (allows `userdata/{uid}` sync + `dailyBoards/...`):
+
+```bash
+npm install -g firebase-tools
+firebase login
+firebase use YOUR_FIREBASE_PROJECT_ID   # once per machine
+firebase deploy --only firestore:rules
+```
+
+(`firebase.json` in this repo points at `firestore.rules`.)
+
+**Verify in the browser**
+
+1. Sign in with Google.
+2. Open DevTools → **Console**. You should **not** see `Firebase sign-in failed` or the Upscale warning about Firebase Auth not active.
+3. DevTools → **Application → IndexedDB** → look for Firebase Auth persistence.
+4. In Firestore Console, after using the app, you should see `userdata/{your-google-sub}` with your routines JSON.
+
+If routines never appear in Firestore, sync is off: usually missing `VITE_FIREBASE_*` on the deployed site, rules not deployed, or Firebase Google sign-in failed while GIS still logged you in locally.
+
 ---
 
 ## Install on your phone

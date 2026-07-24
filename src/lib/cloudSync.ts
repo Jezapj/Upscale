@@ -1,8 +1,6 @@
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import type { AppData } from "./types";
-import { emptyAppData } from "./types";
+import { emptyAppData, type AppData } from "./types";import { doc, getDoc, setDoc } from "firebase/firestore";
 import { getFirebaseDb } from "./firebase";
-
+import { activeFirestoreUid } from "./firebaseAuth";
 interface CloudPayload {
   updatedAt: string;
   data: AppData;
@@ -16,6 +14,11 @@ export function googleSubFromUserId(userId: string): string | null {
 
 export function isCloudUser(userId: string): boolean {
   return userId.startsWith("google:");
+}
+
+/** Firestore `userdata` / leaderboard doc id — must match `request.auth.uid`. */
+export function firestoreUserDocId(userId: string): string | null {
+  return activeFirestoreUid() ?? googleSubFromUserId(userId);
 }
 
 function hasContent(data: AppData): boolean {
@@ -41,12 +44,31 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 
 export async function loadCloudData(userId: string): Promise<CloudPayload | null> {
   const db = getFirebaseDb();
-  const sub = googleSubFromUserId(userId);
-  if (!db || !sub) return null;
+  const uid = firestoreUserDocId(userId);
+  if (!db || !uid) return null;
 
   try {
-    const snap = await withTimeout(getDoc(doc(db, "userdata", sub)), CLOUD_LOAD_TIMEOUT_MS);
-    if (!snap.exists()) return null;
+    const snap = await withTimeout(getDoc(doc(db, "userdata", uid)), CLOUD_LOAD_TIMEOUT_MS);
+    if (!snap.exists()) {
+      // Legacy: data may have been written under Google OAuth `sub` before Firebase uid fix.
+      const legacy = googleSubFromUserId(userId);
+      if (legacy && legacy !== uid) {
+        const legacySnap = await withTimeout(
+          getDoc(doc(db, "userdata", legacy)),
+          CLOUD_LOAD_TIMEOUT_MS,
+        );
+        if (legacySnap.exists()) {
+          const raw = legacySnap.data() as CloudPayload;
+          if (raw?.data) {
+            return {
+              updatedAt: raw.updatedAt ?? "",
+              data: { ...emptyAppData(), ...raw.data },
+            };
+          }
+        }
+      }
+      return null;
+    }
     const raw = snap.data() as CloudPayload;
     if (!raw?.data) return null;
     return {
@@ -61,8 +83,8 @@ export async function loadCloudData(userId: string): Promise<CloudPayload | null
 
 export async function saveCloudData(userId: string, data: AppData): Promise<void> {
   const db = getFirebaseDb();
-  const sub = googleSubFromUserId(userId);
-  if (!db || !sub) return;
+  const uid = firestoreUserDocId(userId);
+  if (!db || !uid) return;
 
   const payload: CloudPayload = {
     updatedAt: data.syncedAt ?? new Date().toISOString(),
@@ -70,7 +92,7 @@ export async function saveCloudData(userId: string, data: AppData): Promise<void
   };
 
   try {
-    await setDoc(doc(db, "userdata", sub), payload);
+    await setDoc(doc(db, "userdata", uid), payload);
   } catch (e) {
     console.warn("Cloud save failed", e);
   }

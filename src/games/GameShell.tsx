@@ -22,6 +22,8 @@ import {
   type DailyBoardEntry,
 } from "@/lib/dailyLeaderboard";
 import { googleSubFromUserId } from "@/lib/cloudSync";
+import { cloudConfigured } from "@/lib/firebase";
+import { activeFirestoreUid } from "@/lib/firebaseAuth";
 import { prettyDay, todayKey } from "@/lib/dates";
 
 export type PlayMode = "daily" | "practice";
@@ -99,6 +101,7 @@ export function GameShell({
   const [showPracticePicker, setShowPracticePicker] = useState(false);
   const [dailyEntries, setDailyEntries] = useState<DailyBoardEntry[]>([]);
   const [boardLoading, setBoardLoading] = useState(false);
+  const [boardError, setBoardError] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [pendingDailySubmit, setPendingDailySubmit] = useState<GameResult | null>(
     null,
@@ -115,6 +118,7 @@ export function GameShell({
   const dailyCompletion = getDailyCompletion(data, gameId, today);
   const googleSub = user ? googleSubFromUserId(user.id) : null;
   const isGoogle = !!googleSub;
+  const boardUid = activeFirestoreUid() ?? googleSub;
   const daySeed = dailySeed(gameId, today);
   const practiceEntries = useStore((s) =>
     getGameScores(s.data, activePracticeKey),
@@ -123,12 +127,24 @@ export function GameShell({
   const refreshDailyBoard = useCallback(async () => {
     if (!isGoogle) {
       setDailyEntries([]);
+      setBoardError(null);
+      return;
+    }
+    if (!cloudConfigured()) {
+      setDailyEntries([]);
+      setBoardError("Firebase is not configured (missing VITE_FIREBASE_* in .env).");
       return;
     }
     setBoardLoading(true);
+    setBoardError(null);
     try {
       const entries = await listDailyBoard(gameId, todayKey());
       setDailyEntries(entries);
+    } catch {
+      setBoardError(
+        "Could not load today's board. Deploy firestore.rules and check the browser console.",
+      );
+      setDailyEntries([]);
     } finally {
       setBoardLoading(false);
     }
@@ -330,10 +346,12 @@ export function GameShell({
               ) : null}
 
               {isGoogle ? (
-                boardLoading && dailyEntries.length === 0 ? (
+                boardLoading && dailyEntries.length === 0 && !boardError ? (
                   <p className="text-xs font-700 text-ink-faint">Loading board…</p>
+                ) : boardError ? (
+                  <p className="max-w-xs text-xs font-700 text-cat-health">{boardError}</p>
                 ) : (
-                  <DailyBoardList entries={dailyEntries} highlightUid={googleSub} compact />
+                  <DailyBoardList entries={dailyEntries} highlightUid={boardUid} compact />
                 )
               ) : (
                 <p className="max-w-xs text-xs font-700 text-ink-faint">
@@ -418,7 +436,7 @@ export function GameShell({
                 isGoogle ? (
                   <DailyBoardList
                     entries={dailyEntries}
-                    highlightUid={googleSub}
+                    highlightUid={boardUid}
                     compact
                   />
                 ) : (

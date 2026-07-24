@@ -14,8 +14,9 @@ import { storage } from "@/lib/storage";
 import { todayKey } from "@/lib/dates";
 import { buildEntry } from "@/lib/rating";
 import { signOutGoogle } from "@/lib/auth";
+import { signOut as firebaseSignOut } from "firebase/auth";
 import { getFirebaseAuth, cloudConfigured } from "@/lib/firebase";
-import { signOut as firebaseSignOut, onAuthStateChanged } from "firebase/auth";
+import { waitForFirebaseAuth } from "@/lib/firebaseAuth";
 import {
   canPlayGame,
   playsRemaining,
@@ -25,6 +26,7 @@ import { recordGameScore as mergeGameScore, getGameScores } from "@/lib/gameLead
 import { isCloudUser } from "@/lib/cloudSync";
 import { clearFiredReminder } from "@/lib/reminders";
 import { markDailyPlayed as applyDailyPlayed } from "@/lib/dailyChallenge";
+import { alignGoogleUserWithFirebase } from "@/lib/storage";
 
 const uid = () => crypto.randomUUID();
 
@@ -68,25 +70,9 @@ interface StoreState {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-async function waitForFirebaseAuth(maxMs = 3000): Promise<void> {
-  const auth = getFirebaseAuth();
-  if (!auth || auth.currentUser) return;
-
-  await new Promise<void>((resolve) => {
-    const timeout = setTimeout(resolve, maxMs);
-    const unsub = onAuthStateChanged(auth, (firebaseUser) => {
-      if (firebaseUser) {
-        clearTimeout(timeout);
-        unsub();
-        resolve();
-      }
-    });
-  });
-}
-
 async function syncUserData(userId: string): Promise<AppData> {
   if (isCloudUser(userId) && cloudConfigured()) {
-    await waitForFirebaseAuth();
+    await waitForFirebaseAuth(8000);
   }
   return storage.loadData(userId);
 }
@@ -121,19 +107,28 @@ export const useStore = create<StoreState>((set, get) => {
     today: todayKey(),
 
     async init() {
-      const user = storage.getUser();
+      let user = storage.getUser();
       if (user) {
+        if (isCloudUser(user.id) && cloudConfigured()) {
+          await waitForFirebaseAuth(8000);
+          user = alignGoogleUserWithFirebase(user);
+          storage.setUser(user);
+        }
         const data = storage.loadLocalData(user.id);
         set({ user, data, today: todayKey() });
         get().refreshToday();
         void syncUserData(user.id)
-          .then((synced) => applyUserData(user.id, synced))
+          .then((synced) => applyUserData(user!.id, synced))
           .catch((err) => console.warn("Background sync failed", err));
       }
       set({ ready: true });
     },
 
     async signIn(user) {
+      if (isCloudUser(user.id) && cloudConfigured()) {
+        await waitForFirebaseAuth(8000);
+        user = alignGoogleUserWithFirebase(user);
+      }
       storage.setUser(user);
       const data = storage.loadLocalData(user.id);
       set({ user, data, today: todayKey() });

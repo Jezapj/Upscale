@@ -8,6 +8,7 @@ import {
   saveCloudData,
 } from "./cloudSync";
 import { getFirebaseAuth } from "./firebase";
+import { activeFirestoreUid, waitForFirebaseAuth } from "./firebaseAuth";
 
 const USER_KEY = "upscale:user";
 const dataKey = (userId: string) => `upscale:data:${userId}`;
@@ -34,6 +35,34 @@ function saveLocal(userId: string, data: AppData): void {
   } catch (e) {
     console.error("Failed to persist data locally", e);
   }
+}
+
+function hasAppContent(data: AppData): boolean {
+  return (
+    data.goals.length > 0 ||
+    data.routines.length > 0 ||
+    Object.keys(data.logs).length > 0
+  );
+}
+
+/**
+ * Older builds stored `google:{googleOAuthSub}` while Firestore rules expect
+ * `request.auth.uid` (Firebase uid). Re-key local data after Auth restores.
+ */
+export function alignGoogleUserWithFirebase(user: User): User {
+  if (user.provider !== "google") return user;
+  const fbUid = activeFirestoreUid();
+  if (!fbUid) return user;
+
+  const canonicalId = `google:${fbUid}`;
+  if (user.id === canonicalId) return user;
+
+  const oldData = readLocalData(user.id);
+  const newData = readLocalData(canonicalId);
+  if (!hasAppContent(newData) && hasAppContent(oldData)) {
+    saveLocal(canonicalId, oldData);
+  }
+  return { ...user, id: canonicalId };
 }
 
 /**
@@ -67,8 +96,15 @@ export const storage = {
       return local;
     }
 
+    await waitForFirebaseAuth(8000);
+
     const auth = getFirebaseAuth();
     if (!auth?.currentUser) {
+      console.warn(
+        "Upscale: Google account is signed in locally but Firebase Auth is not active. " +
+          "Cross-device sync and daily boards need VITE_FIREBASE_* env vars and a successful Firebase sign-in. " +
+          "Sign out and sign in again after fixing Firebase setup.",
+      );
       return local;
     }
 

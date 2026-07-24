@@ -2,19 +2,19 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Google sign-in via Firebase Auth: token.sub matches the document id.
-    match /userdata/{googleSub} {
-      allow read, write: if request.auth != null && request.auth.token.sub == googleSub;
+    // Google sign-in: document id must equal Firebase Auth uid (request.auth.uid).
+    match /userdata/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
     // Global daily arcade boards — one create-once entry per user per day/game.
-    match /dailyBoards/{boardId}/entries/{uid} {
+    match /dailyBoards/{boardId}/entries/{userId} {
       allow read: if request.auth != null;
 
       allow create: if request.auth != null
-        && request.auth.token.sub == uid
+        && request.auth.uid == userId
         && request.resource.data.keys().hasAll(['uid', 'score', 'displayName', 'playedAt', 'gameId', 'day'])
-        && request.resource.data.uid == uid
+        && request.resource.data.uid == userId
         && request.resource.data.score is number
         && request.resource.data.playedAt is string
         && request.resource.data.gameId is string

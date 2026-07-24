@@ -78,24 +78,30 @@ export async function renderGoogleButton(
     client_id: CLIENT_ID!,
     callback: async (resp) => {
       const payload = decodeJwt(resp.credential);
-      const user: User = {
-        id: `google:${payload.sub}`,
-        name: payload.name ?? "Friend",
-        email: payload.email,
-        picture: payload.picture,
-        provider: "google",
-      };
+      let accountUid = payload.sub;
 
       if (cloudConfigured()) {
         try {
           const auth = getFirebaseAuth();
           if (auth) {
-            await signInWithCredential(auth, GoogleAuthProvider.credential(resp.credential));
+            const result = await signInWithCredential(
+              auth,
+              GoogleAuthProvider.credential(resp.credential),
+            );
+            accountUid = result.user.uid;
           }
         } catch (e) {
           console.warn("Firebase sign-in failed; using local storage only", e);
         }
       }
+
+      const user: User = {
+        id: `google:${accountUid}`,
+        name: payload.name ?? "Friend",
+        email: payload.email,
+        picture: payload.picture,
+        provider: "google",
+      };
 
       onUser(user);
     },

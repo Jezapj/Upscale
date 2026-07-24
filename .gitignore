@@ -1,10 +1,35 @@
+# Dependencies & build
 node_modules
 dist
 dist-ssr
-*.local
+dev-dist
+
+# Vite
+.vite
+
+# TypeScript incremental build
+*.tsbuildinfo
+
+# Secrets — never commit Firebase keys or Google client secret
 .env
 .env.*
 !.env.example
-.DS_Store
+*.local
+
+# Logs (Firebase CLI, etc.)
 *.log
-.vite
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors (optional local settings)
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Cursor (local agent state — not for the repo)
+.cursor/
