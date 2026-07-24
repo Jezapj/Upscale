@@ -85,6 +85,31 @@ export function markDailyPlayed(
   };
 }
 
+/** Union daily completions from two devices (same calendar day). */
+export function mergeArcadeDailyStates(
+  a: AppData["arcadeDaily"],
+  b: AppData["arcadeDaily"],
+  day: string = todayKey(),
+): NonNullable<AppData["arcadeDaily"]> {
+  const left = normalizeArcadeDaily(a, day);
+  const right = normalizeArcadeDaily(b, day);
+  const completed = { ...left.completed };
+  for (const [key, entry] of Object.entries(right.completed)) {
+    const gameId = key as GameId;
+    const cur = completed[gameId];
+    if (!cur) {
+      completed[gameId] = entry;
+      continue;
+    }
+    if (entry.score > cur.score) {
+      completed[gameId] = entry;
+    } else if (entry.score === cur.score && entry.playedAt > cur.playedAt) {
+      completed[gameId] = entry;
+    }
+  }
+  return { date: day, completed };
+}
+
 export function validateArcadeUsername(raw: string): string | null {
   const name = raw.trim().replace(/\s+/g, " ");
   if (name.length < 3 || name.length > 16) return null;

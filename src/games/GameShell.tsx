@@ -19,6 +19,7 @@ import {
 import {
   listDailyBoard,
   submitDailyScore,
+  hasUserDailyBoardEntry,
   type DailyBoardEntry,
 } from "@/lib/dailyLeaderboard";
 import { googleSubFromUserId } from "@/lib/cloudSync";
@@ -106,6 +107,7 @@ export function GameShell({
   const [pendingDailySubmit, setPendingDailySubmit] = useState<GameResult | null>(
     null,
   );
+  const [remoteDailyLocked, setRemoteDailyLocked] = useState(false);
 
   const today = useStore((s) => s.today);
   const user = useStore((s) => s.user);
@@ -114,7 +116,8 @@ export function GameShell({
   const markDailyPlayed = useStore((s) => s.markDailyPlayed);
   const setArcadeProfile = useStore((s) => s.setArcadeProfile);
 
-  const dailyDone = hasPlayedDaily(data, gameId, today);
+  const dailyDone =
+    hasPlayedDaily(data, gameId, today) || remoteDailyLocked;
   const dailyCompletion = getDailyCompletion(data, gameId, today);
   const googleSub = user ? googleSubFromUserId(user.id) : null;
   const isGoogle = !!googleSub;
@@ -154,6 +157,20 @@ export function GameShell({
     void refreshDailyBoard();
   }, [refreshDailyBoard]);
 
+  useEffect(() => {
+    if (!user || !isGoogle) {
+      setRemoteDailyLocked(false);
+      return;
+    }
+    let cancelled = false;
+    void hasUserDailyBoardEntry(user.id, gameId, today).then((locked) => {
+      if (!cancelled) setRemoteDailyLocked(locked);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, isGoogle, gameId, today]);
+
   const goArcade = useCallback(() => nav("/games"), [nav]);
 
   const resetToLobby = useCallback(() => {
@@ -179,12 +196,18 @@ export function GameShell({
     setShowPracticePicker(false);
   }, []);
 
-  const startDaily = useCallback(() => {
+  const startDaily = useCallback(async () => {
+    if (user && isGoogle) {
+      const locked = await hasUserDailyBoardEntry(user.id, gameId, todayKey());
+      if (locked) {
+        setRemoteDailyLocked(true);
+        return;
+      }
+    }
     if (hasPlayedDaily(useStore.getState().data, gameId, todayKey())) return;
-    // Starting locks today's attempt (abandon still counts).
     markDailyPlayed(gameId, 0);
     beginRun("daily");
-  }, [beginRun, gameId, markDailyPlayed]);
+  }, [beginRun, gameId, isGoogle, markDailyPlayed, user]);
 
   const startPracticeDirect = useCallback(() => {
     beginRun("practice");
@@ -237,6 +260,7 @@ export function GameShell({
         return;
       }
       await postDailyScore(normalized);
+      setRemoteDailyLocked(true);
     },
     [gameId, isGoogle, markDailyPlayed, postDailyScore, refreshDailyBoard, user],
   );

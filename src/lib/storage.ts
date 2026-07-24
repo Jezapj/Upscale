@@ -112,11 +112,8 @@ export const storage = {
     const merged = mergeLocalAndCloud(local, cloud);
     saveLocal(userId, merged);
 
-    const localAhead =
-      (local.syncedAt ?? "") > (cloud?.updatedAt ?? "") &&
-      (local.goals.length > 0 || local.routines.length > 0 || Object.keys(local.logs).length > 0);
-    if (localAhead) {
-      void saveCloudData(userId, merged);
+    if (auth?.currentUser) {
+      await saveCloudData(userId, merged);
     }
 
     return merged;

@@ -82,6 +82,31 @@ export async function submitDailyScore(args: {
   }
 }
 
+/** True if this user already has an official daily score on the board (any device). */
+export async function hasUserDailyBoardEntry(
+  userId: string,
+  gameId: GameId,
+  day: string = todayKey(),
+): Promise<boolean> {
+  if (!cloudConfigured()) return false;
+  const db = getFirebaseDb();
+  if (!db) return false;
+
+  const authed = await waitForFirebaseAuth();
+  const auth = getFirebaseAuth();
+  if (!authed || !auth?.currentUser) return false;
+
+  const uid = firestoreUserDocId(userId);
+  if (!uid) return false;
+
+  try {
+    const snap = await getDoc(doc(entriesCol(db, gameId, day), uid));
+    return snap.exists();
+  } catch {
+    return false;
+  }
+}
+
 export async function listDailyBoard(
   gameId: GameId,
   day: string = todayKey(),

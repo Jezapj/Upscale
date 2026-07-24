@@ -1,6 +1,10 @@
-import { emptyAppData, type AppData } from "./types";import { doc, getDoc, setDoc } from "firebase/firestore";
+import { emptyAppData, type AppData, type ArcadeProfile } from "./types";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { getFirebaseDb } from "./firebase";
 import { activeFirestoreUid } from "./firebaseAuth";
+import { mergeArcadeDailyStates } from "./dailyChallenge";
+import { todayKey } from "./dates";
+
 interface CloudPayload {
   updatedAt: string;
   data: AppData;
@@ -21,8 +25,44 @@ export function firestoreUserDocId(userId: string): string | null {
   return activeFirestoreUid() ?? googleSubFromUserId(userId);
 }
 
-function hasContent(data: AppData): boolean {
-  return data.goals.length > 0 || data.routines.length > 0 || Object.keys(data.logs).length > 0;
+function hasCoreContent(data: AppData): boolean {
+  return (
+    data.goals.length > 0 ||
+    data.routines.length > 0 ||
+    Object.keys(data.logs).length > 0
+  );
+}
+
+function mergeArcadeProfile(
+  a: ArcadeProfile | undefined,
+  b: ArcadeProfile | undefined,
+): ArcadeProfile | undefined {
+  if (!a && !b) return undefined;
+  const left = a ?? { username: null, optedOut: false, prompted: false };
+  const right = b ?? { username: null, optedOut: false, prompted: false };
+  return {
+    prompted: left.prompted || right.prompted,
+    optedOut: (left.prompted && left.optedOut) || (right.prompted && right.optedOut),
+    username: left.username ?? right.username,
+  };
+}
+
+function mergeGameScores(
+  a: AppData["gameScores"],
+  b: AppData["gameScores"],
+): AppData["gameScores"] {
+  if (!a && !b) return undefined;
+  if (!a) return b;
+  if (!b) return a;
+  const out = { ...a };
+  for (const [key, entries] of Object.entries(b)) {
+    const existing = out[key] ?? [];
+    const combined = [...existing, ...entries]
+      .sort((x, y) => y.score - x.score)
+      .slice(0, 10);
+    out[key] = combined;
+  }
+  return out;
 }
 
 const CLOUD_LOAD_TIMEOUT_MS = 8_000;
@@ -50,7 +90,6 @@ export async function loadCloudData(userId: string): Promise<CloudPayload | null
   try {
     const snap = await withTimeout(getDoc(doc(db, "userdata", uid)), CLOUD_LOAD_TIMEOUT_MS);
     if (!snap.exists()) {
-      // Legacy: data may have been written under Google OAuth `sub` before Firebase uid fix.
       const legacy = googleSubFromUserId(userId);
       if (legacy && legacy !== uid) {
         const legacySnap = await withTimeout(
@@ -101,16 +140,29 @@ export async function saveCloudData(userId: string, data: AppData): Promise<void
 export function mergeLocalAndCloud(
   local: AppData,
   cloud: CloudPayload | null,
+  day: string = todayKey(),
 ): AppData {
   if (!cloud) return local;
 
   const localTs = local.syncedAt ?? "";
   const cloudTs = cloud.updatedAt ?? "";
 
-  if (!hasContent(local) && hasContent(cloud.data)) return cloud.data;
-  if (hasContent(local) && !hasContent(cloud.data)) return local;
-  if (!localTs && cloudTs) return cloud.data;
-  if (localTs && !cloudTs) return local;
+  let base: AppData;
+  if (!hasCoreContent(local) && hasCoreContent(cloud.data)) base = cloud.data;
+  else if (hasCoreContent(local) && !hasCoreContent(cloud.data)) base = local;
+  else if (!localTs && cloudTs) base = cloud.data;
+  else if (localTs && !cloudTs) base = local;
+  else base = cloudTs >= localTs ? cloud.data : local;
 
-  return cloudTs >= localTs ? cloud.data : local;
+  const other = base === local ? cloud.data : local;
+  const syncedAt = localTs > cloudTs ? localTs : cloudTs;
+
+  return {
+    ...base,
+    syncedAt,
+    arcadeDaily: mergeArcadeDailyStates(local.arcadeDaily, other.arcadeDaily, day),
+    arcadeProfile: mergeArcadeProfile(local.arcadeProfile, other.arcadeProfile),
+    gameScores: mergeGameScores(local.gameScores, other.gameScores),
+    gamePlays: base.gamePlays ?? other.gamePlays,
+  };
 }

@@ -77,13 +77,6 @@ async function syncUserData(userId: string): Promise<AppData> {
   return storage.loadData(userId);
 }
 
-function applyUserData(userId: string, data: AppData) {
-  const { user, refreshToday } = useStore.getState();
-  if (user?.id !== userId) return;
-  useStore.setState({ data });
-  refreshToday();
-}
-
 export const useStore = create<StoreState>((set, get) => {
   // Debounced persistence whenever data changes.
   const persist = () => {
@@ -113,13 +106,21 @@ export const useStore = create<StoreState>((set, get) => {
           await waitForFirebaseAuth(8000);
           user = alignGoogleUserWithFirebase(user);
           storage.setUser(user);
+          try {
+            const synced = await syncUserData(user.id);
+            set({ user, data: synced, today: todayKey() });
+            get().refreshToday();
+          } catch (err) {
+            console.warn("Cloud sync failed", err);
+            const data = storage.loadLocalData(user.id);
+            set({ user, data, today: todayKey() });
+            get().refreshToday();
+          }
+        } else {
+          const data = storage.loadLocalData(user.id);
+          set({ user, data, today: todayKey() });
+          get().refreshToday();
         }
-        const data = storage.loadLocalData(user.id);
-        set({ user, data, today: todayKey() });
-        get().refreshToday();
-        void syncUserData(user.id)
-          .then((synced) => applyUserData(user!.id, synced))
-          .catch((err) => console.warn("Background sync failed", err));
       }
       set({ ready: true });
     },
@@ -130,12 +131,18 @@ export const useStore = create<StoreState>((set, get) => {
         user = alignGoogleUserWithFirebase(user);
       }
       storage.setUser(user);
-      const data = storage.loadLocalData(user.id);
-      set({ user, data, today: todayKey() });
       get().refreshToday();
-      void syncUserData(user.id)
-        .then((synced) => applyUserData(user.id, synced))
-        .catch((err) => console.warn("Background sync failed", err));
+      if (isCloudUser(user.id) && cloudConfigured()) {
+        try {
+          const synced = await syncUserData(user.id);
+          set({ user, data: synced, today: todayKey() });
+        } catch (err) {
+          console.warn("Cloud sync failed", err);
+          set({ user, data: storage.loadLocalData(user.id), today: todayKey() });
+        }
+      } else {
+        set({ user, data: storage.loadLocalData(user.id), today: todayKey() });
+      }
     },
 
     signOut() {
