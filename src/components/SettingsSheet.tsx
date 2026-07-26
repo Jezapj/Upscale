@@ -3,7 +3,7 @@ import { LogOut, Download, Upload, Info, Bell } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Sheet } from "./Sheet";
 import { storage } from "@/lib/storage";
-import { emptyAppData } from "@/lib/types";
+import { parseBackupJson, serializeBackup } from "@/lib/backup";
 import {
   getNotificationPermission,
   notificationsSupported,
@@ -41,7 +41,7 @@ export function SettingsSheet({ open, onClose }: Props) {
   const hasTimedRoutines = data.routines.some((r) => r.reminderTime && !r.archived);
 
   const exportData = () => {
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
+    const blob = new Blob([serializeBackup(data)], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);
@@ -56,7 +56,7 @@ export function SettingsSheet({ open, onClose }: Props) {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const parsed = { ...emptyAppData(), ...JSON.parse(String(reader.result)) };
+        const parsed = parseBackupJson(String(reader.result));
         if (user) {
           void storage.saveData(user.id, parsed);
           window.location.reload();
@@ -90,8 +90,17 @@ export function SettingsSheet({ open, onClose }: Props) {
           <div className="min-w-0">
             <p className="truncate font-800 text-ink">{user?.name}</p>
             <p className="truncate text-xs font-600 text-ink-faint">
-              {user?.email ?? (user?.provider === "guest" ? "Guest account · saved on this device" : "")}
+              {user?.email ??
+                (user?.provider === "guest"
+                  ? "Guest account · saved on this device"
+                  : "")}
             </p>
+            {user?.provider === "google" && (
+              <p className="mt-1 text-[10px] font-600 text-ink-faint">
+                Goals and routines auto-backup to your account on save; signing in on
+                another device imports the latest backup.
+              </p>
+            )}
           </div>
         </div>
 

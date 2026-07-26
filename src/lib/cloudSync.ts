@@ -4,8 +4,14 @@ import { getFirebaseDb } from "./firebase";
 import { activeFirestoreUid } from "./firebaseAuth";
 import { mergeArcadeDailyStates } from "./dailyChallenge";
 import { todayKey } from "./dates";
+import {
+  BACKUP_FORMAT_VERSION,
+  createBackupEnvelope,
+  resolveBackupConflict,
+} from "./backup";
 
 interface CloudPayload {
+  formatVersion: number;
   updatedAt: string;
   data: AppData;
 }
@@ -23,14 +29,6 @@ export function isCloudUser(userId: string): boolean {
 /** Firestore `userdata` / leaderboard doc id — must match `request.auth.uid`. */
 export function firestoreUserDocId(userId: string): string | null {
   return activeFirestoreUid() ?? googleSubFromUserId(userId);
-}
-
-function hasCoreContent(data: AppData): boolean {
-  return (
-    data.goals.length > 0 ||
-    data.routines.length > 0 ||
-    Object.keys(data.logs).length > 0
-  );
 }
 
 function mergeArcadeProfile(
@@ -82,6 +80,16 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+function normalizeCloudPayload(raw: Record<string, unknown>): CloudPayload | null {
+  if (!raw?.data || typeof raw.data !== "object") return null;
+  return {
+    formatVersion:
+      typeof raw.formatVersion === "number" ? raw.formatVersion : BACKUP_FORMAT_VERSION,
+    updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : "",
+    data: { ...emptyAppData(), ...(raw.data as AppData) },
+  };
+}
+
 export async function loadCloudData(userId: string): Promise<CloudPayload | null> {
   const db = getFirebaseDb();
   const uid = firestoreUserDocId(userId);
@@ -97,37 +105,29 @@ export async function loadCloudData(userId: string): Promise<CloudPayload | null
           CLOUD_LOAD_TIMEOUT_MS,
         );
         if (legacySnap.exists()) {
-          const raw = legacySnap.data() as CloudPayload;
-          if (raw?.data) {
-            return {
-              updatedAt: raw.updatedAt ?? "",
-              data: { ...emptyAppData(), ...raw.data },
-            };
-          }
+          return normalizeCloudPayload(legacySnap.data() as Record<string, unknown>);
         }
       }
       return null;
     }
-    const raw = snap.data() as CloudPayload;
-    if (!raw?.data) return null;
-    return {
-      updatedAt: raw.updatedAt ?? "",
-      data: { ...emptyAppData(), ...raw.data },
-    };
+    return normalizeCloudPayload(snap.data() as Record<string, unknown>);
   } catch (e) {
     console.warn("Cloud load failed", e);
     return null;
   }
 }
 
+/** Upload the same JSON shape as Settings → Export (stored in Firestore for auto-import). */
 export async function saveCloudData(userId: string, data: AppData): Promise<void> {
   const db = getFirebaseDb();
   const uid = firestoreUserDocId(userId);
   if (!db || !uid) return;
 
+  const envelope = createBackupEnvelope(data);
   const payload: CloudPayload = {
-    updatedAt: data.syncedAt ?? new Date().toISOString(),
-    data,
+    formatVersion: envelope.formatVersion,
+    updatedAt: envelope.exportedAt,
+    data: envelope.data,
   };
 
   try {
@@ -137,6 +137,7 @@ export async function saveCloudData(userId: string, data: AppData): Promise<void
   }
 }
 
+/** Login / sync: apply cloud export when newer (same rules as manual import). */
 export function mergeLocalAndCloud(
   local: AppData,
   cloud: CloudPayload | null,
@@ -144,25 +145,18 @@ export function mergeLocalAndCloud(
 ): AppData {
   if (!cloud) return local;
 
-  const localTs = local.syncedAt ?? "";
-  const cloudTs = cloud.updatedAt ?? "";
-
-  let base: AppData;
-  if (!hasCoreContent(local) && hasCoreContent(cloud.data)) base = cloud.data;
-  else if (hasCoreContent(local) && !hasCoreContent(cloud.data)) base = local;
-  else if (!localTs && cloudTs) base = cloud.data;
-  else if (localTs && !cloudTs) base = local;
-  else base = cloudTs >= localTs ? cloud.data : local;
-
-  const other = base === local ? cloud.data : local;
-  const syncedAt = localTs > cloudTs ? localTs : cloudTs;
+  const { data: winner, source } = resolveBackupConflict(
+    local,
+    cloud.data,
+    cloud.updatedAt,
+  );
+  const loser = source === "local" ? cloud.data : local;
 
   return {
-    ...base,
-    syncedAt,
-    arcadeDaily: mergeArcadeDailyStates(local.arcadeDaily, other.arcadeDaily, day),
-    arcadeProfile: mergeArcadeProfile(local.arcadeProfile, other.arcadeProfile),
-    gameScores: mergeGameScores(local.gameScores, other.gameScores),
-    gamePlays: base.gamePlays ?? other.gamePlays,
+    ...winner,
+    arcadeDaily: mergeArcadeDailyStates(winner.arcadeDaily, loser.arcadeDaily, day),
+    arcadeProfile: mergeArcadeProfile(winner.arcadeProfile, loser.arcadeProfile),
+    gameScores: mergeGameScores(winner.gameScores, loser.gameScores),
+    gamePlays: winner.gamePlays ?? loser.gamePlays,
   };
 }
