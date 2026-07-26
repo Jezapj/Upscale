@@ -268,7 +268,9 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
 
       if (target.kind === "hold") {
         target.holding = true;
-        startDissiadaHold(lane);
+        // Tail length ÷ scroll speed is how long the note will ring for.
+        const holdMs = (target.holdLen / Math.max(0.5, speed)) * (1000 / 60);
+        startDissiadaHold(lane, holdMs);
         pushFx(lane, quality, edgeHighlight, fullFlash);
         playDissiadaNote(lane, quality, noteCombo);
         awardHit(quality);

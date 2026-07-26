@@ -1,5 +1,6 @@
 import {
   DISSIADA_COMBO_HARMONICS,
+  DISSIADA_HOLD_ARP,
   DISSIADA_NOTE_HZ,
   DISSIADA_SOUND,
   type DissiadaComboHarmonic,
@@ -316,56 +317,89 @@ export function playDissiadaNote(
   }
 }
 
-const dissiadaHoldVoices = new Map<
-  number,
-  { osc: OscillatorNode; gain: GainNode; filter: BiquadFilterNode }
->();
+interface DissiadaHoldVoice {
+  osc: OscillatorNode;
+  gain: GainNode;
+}
 
-export function startDissiadaHold(lane: number) {
+const dissiadaHoldVoices = new Map<number, DissiadaHoldVoice[]>();
+
+/**
+ * Held note: the lane's arpeggio stretched across the hold — the same triangle
+ * timbre as a tap, spaced out and ringing longer so it fills the duration.
+ */
+export function startDissiadaHold(lane: number, durationMs = 900) {
   const audioCtx = ctx();
   if (!audioCtx) return;
   stopDissiadaHold(lane);
-  const hz = DISSIADA_NOTE_HZ[Math.max(0, Math.min(3, lane))] ?? 261.63;
+
+  const baseHz = DISSIADA_NOTE_HZ[Math.max(0, Math.min(3, lane))] ?? 261.63;
   const config = DISSIADA_SOUND.hold;
+  const arp = DISSIADA_HOLD_ARP;
+  const total = Math.max(0.25, durationMs / 1000);
+
+  // Spread the notes to fill the hold, keeping spacing inside the tuned range.
+  let count = Math.max(2, Math.round(total / arp.maxSpacing));
+  let spacing = total / count;
+  if (spacing < arp.minSpacing) {
+    spacing = arp.minSpacing;
+    count = Math.max(2, Math.floor(total / spacing));
+  }
+  const noteLen = spacing * arp.lengthRatio;
+
   const t0 = audioCtx.currentTime;
-  const osc = audioCtx.createOscillator();
-  const filter = audioCtx.createBiquadFilter();
-  const gain = audioCtx.createGain();
-  osc.type = "triangle";
-  osc.frequency.setValueAtTime(hz, t0);
-  filter.type = "lowpass";
-  filter.frequency.setValueAtTime(2800, t0);
-  gain.gain.setValueAtTime(0, t0);
-  gain.gain.linearRampToValueAtTime(config.volume, t0 + (config.fadeIn ?? 0.04));
-  osc.connect(filter);
-  filter.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.start(t0);
-  dissiadaHoldVoices.set(lane, { osc, gain, filter });
+  const voices: DissiadaHoldVoice[] = [];
+  // One past `count` so a slightly over-held note still has a note ringing.
+  for (let i = 0; i <= count; i++) {
+    const semis = arp.steps[i % arp.steps.length] ?? 0;
+    const at = t0 + i * spacing;
+    const taper = 1 - (1 - arp.tailVolume) * (count > 0 ? i / count : 0);
+    const peak = Math.max(0.0001, config.volume * taper);
+
+    const osc = audioCtx.createOscillator();
+    const filter = audioCtx.createBiquadFilter();
+    const gain = audioCtx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(baseHz * 2 ** (semis / 12), at);
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(3200, at);
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(peak, at + (config.fadeIn ?? 0.022));
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + noteLen);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(at);
+    osc.stop(at + noteLen + 0.05);
+    voices.push({ osc, gain });
+  }
+  dissiadaHoldVoices.set(lane, voices);
 }
 
 export function stopDissiadaHold(lane: number) {
-  const voice = dissiadaHoldVoices.get(lane);
-  if (!voice) return;
+  const voices = dissiadaHoldVoices.get(lane);
+  if (!voices) return;
   dissiadaHoldVoices.delete(lane);
   const audioCtx = ctx();
-  if (!audioCtx) {
+  const now = audioCtx?.currentTime ?? 0;
+  const fade = DISSIADA_SOUND.hold.fadeOut ?? 0.16;
+  for (const voice of voices) {
     try {
-      voice.osc.stop();
+      if (audioCtx) {
+        voice.gain.gain.cancelScheduledValues(now);
+        voice.gain.gain.setValueAtTime(
+          Math.max(0.0001, voice.gain.gain.value),
+          now,
+        );
+        voice.gain.gain.exponentialRampToValueAtTime(0.0001, now + fade);
+        voice.osc.stop(now + fade + 0.02);
+      } else {
+        voice.osc.stop();
+      }
     } catch {
       /* already stopped */
     }
-    return;
-  }
-  const now = audioCtx.currentTime;
-  const fade = DISSIADA_SOUND.hold.fadeOut ?? 0.12;
-  try {
-    voice.gain.gain.cancelScheduledValues(now);
-    voice.gain.gain.setValueAtTime(voice.gain.gain.value, now);
-    voice.gain.gain.linearRampToValueAtTime(0, now + fade);
-    voice.osc.stop(now + fade + 0.05);
-  } catch {
-    /* already stopped */
   }
 }
 
@@ -599,6 +633,76 @@ export function playTipTopSawSlice() {
 
 const sampleBuffers = new Map<string, AudioBuffer>();
 let octaneSamplesReady: Promise<void> | null = null;
+const sampleLoads = new Map<string, Promise<AudioBuffer | null>>();
+
+function ensureSample(
+  audioCtx: AudioContext,
+  src: string,
+): Promise<AudioBuffer | null> {
+  const cached = sampleBuffers.get(src);
+  if (cached) return Promise.resolve(cached);
+  let pending = sampleLoads.get(src);
+  if (!pending) {
+    pending = (async () => {
+      try {
+        const res = await fetch(src);
+        if (!res.ok) return null;
+        const buffer = await audioCtx.decodeAudioData(await res.arrayBuffer());
+        sampleBuffers.set(src, buffer);
+        return buffer;
+      } catch {
+        return null;
+      }
+    })();
+    sampleLoads.set(src, pending);
+  }
+  return pending;
+}
+
+/** Fire-and-forget one-shot from /public; the file loads on first use. */
+export function playSampleOneShot(src: string, volume = 0.8, playbackRate = 1) {
+  const audioCtx = ctx();
+  if (!audioCtx) return;
+  void ensureSample(audioCtx, src).then((buffer) => {
+    if (!buffer) return;
+    const source = audioCtx.createBufferSource();
+    const gain = audioCtx.createGain();
+    source.buffer = buffer;
+    source.playbackRate.value = playbackRate;
+    gain.gain.value = volume;
+    source.connect(gain);
+    gain.connect(audioCtx.destination);
+    source.start();
+  });
+}
+
+/** Warm the decode cache so the first play isn't late. */
+export function preloadSamples(...srcs: string[]) {
+  const audioCtx = ctx();
+  if (!audioCtx) return;
+  for (const src of srcs) void ensureSample(audioCtx, src);
+}
+
+export const SAMPLE_SRC = {
+  octaneWarning: "/danger.mp3",
+  octaneHit: "/ow.mp3",
+  tipTopComplete: "/done.mp3",
+} as const;
+
+/** Hazard closing in from off-screen. */
+export function playOctaneWarning() {
+  playSampleOneShot(SAMPLE_SRC.octaneWarning, 0.22);
+}
+
+/** Clipped an obstacle. */
+export function playOctaneHit() {
+  playSampleOneShot(SAMPLE_SRC.octaneHit, 0.45);
+}
+
+/** Stage cleared. */
+export function playTipTopStageComplete() {
+  playSampleOneShot(SAMPLE_SRC.tipTopComplete, 0.8);
+}
 
 function clampClip(buffer: AudioBuffer, config: SampleClip) {
   const start = Math.min(Math.max(0, config.startTime), buffer.duration - 0.05);

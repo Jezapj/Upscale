@@ -24,20 +24,21 @@ export interface SampleClip extends SoundTiming {
 
 /** Dissiada — piano-like lane taps */
 export const DISSIADA_SOUND = {
-  note: { volume: 0.48, startTime: 0, endTime: 0.16, duration: 0.2 },
+  note: { volume: 0.58, startTime: 0, endTime: 0.16, duration: 0.2 },
   noteMiss: { volume: 0.28, startTime: 0, endTime: 0.09, duration: 0.11 },
+  /** One note of the sustained arpeggio played while a tile is held. */
   hold: {
-    volume: 0.32,
+    volume: 0.49,
     startTime: 0,
-    endTime: 8,
-    duration: 8,
-    fadeIn: 0.04,
-    fadeOut: 0.12,
+    endTime: 0.4,
+    duration: 0.5,
+    fadeIn: 0.022,
+    fadeOut: 0.16,
   },
   /** Harmonic layer level relative to harmonic.volume */
   harmonicVolume: 0.62,
   /** Longer tail for combo harmonics */
-  harmonic: { volume: 0.40, startTime: 0, endTime: 0.45, duration: 0.58 },
+  harmonic: { volume: 0.49, startTime: 0, endTime: 0.45, duration: 0.58 },
   harmonicChorus: { detuneCents: 5, voiceWet: 0.4 },
   harmonicReverb: { wet: 0.42, duration: 1.15, decay: 2.6 },
 } as const satisfies Record<string, SoundTiming | number | { detuneCents: number; voiceWet: number } | { wet: number; duration: number; decay: number }>;
@@ -67,6 +68,22 @@ export const DISSIADA_COMBO_HARMONICS = [
 export const DISSIADA_COMBO_VISUALS = {
   edgeHighlight: DISSIADA_COMBO_HARMONICS[0].minCombo,
   fullFlash: DISSIADA_COMBO_HARMONICS[1].minCombo,
+} as const;
+
+/**
+ * Held notes play the lane's arpeggio spread across the hold: same shape as a
+ * tap, just slower and with each note ringing longer.
+ */
+export const DISSIADA_HOLD_ARP = {
+  /** Semitones above the lane's base note, cycled in order. */
+  steps: [0, 4, 7, 12, 16, 12, 7, 4],
+  /** Seconds between notes; the hold picks a value inside this range. */
+  minSpacing: 0.17,
+  maxSpacing: 0.32,
+  /** Note length as a multiple of the spacing (>1 overlaps into the next). */
+  lengthRatio: 1.9,
+  /** Level of the last note relative to the first. */
+  tailVolume: 0.72,
 } as const;
 
 /** Per-lane base frequencies (Hz) */

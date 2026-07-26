@@ -400,13 +400,19 @@ export function DaybreakGame({
 
     const spawnCrack = (x: number, y: number) => {
       const spokes: CrackFx["spokes"] = [];
-      const count = 7 + Math.floor(Math.random() * 4);
+      const count = 11 + Math.floor(Math.random() * 5);
       for (let i = 0; i < count; i++) {
-        spokes.push({
-          angle: (i / count) * Math.PI * 2 + Math.random() * 0.35,
-          len: 0.5 + Math.random() * 0.75,
-          kink: (Math.random() - 0.5) * 0.7,
-        });
+        const angle = (i / count) * Math.PI * 2 + Math.random() * 0.3;
+        const len = 1.05 + Math.random() * 1.1;
+        spokes.push({ angle, len, kink: (Math.random() - 0.5) * 0.75 });
+        // Branch splintering off the main fracture.
+        if (Math.random() < 0.55) {
+          spokes.push({
+            angle: angle + (Math.random() - 0.5) * 0.9,
+            len: len * (0.4 + Math.random() * 0.35),
+            kink: (Math.random() - 0.5) * 1.1,
+          });
+        }
       }
       cracks.push({ x, y, life: CRACK_LIFE_S, spokes });
     };
@@ -995,7 +1001,7 @@ export function DaybreakGame({
         gc.globalCompositeOperation = "source-atop";
         const t = performance.now() / 45;
         const bands = 9;
-        const peak = 0.7 * rainbowIntensity;
+        const peak = 0.56 * rainbowIntensity;
         for (let i = 0; i < bands; i++) {
           const hue = (t * 24 + i * (360 / bands)) % 360;
           gc.globalAlpha = peak;
@@ -1197,20 +1203,44 @@ export function DaybreakGame({
         g.globalAlpha = 1;
       }
 
-      // Faint glass cracks under a double jump, fading over CRACK_LIFE_S.
+      // Shattered-glass burst under a double jump, fading over CRACK_LIFE_S.
       for (const cr of cracks) {
         const u = Math.max(0, cr.life / CRACK_LIFE_S);
+        const age = 1 - u;
         const ccx = screenX(cr.x);
         const ccy = rowToY(cr.y) + rowH * 0.14;
-        const spread = 1 - u * 0.18;
+        const spread = 0.82 + age * 0.28;
+        const radius = (s: { len: number }) => s.len * rowH * 0.62 * spread;
         g.save();
-        g.strokeStyle = "#ffffff";
         g.lineJoin = "round";
-        g.globalAlpha = 0.4 * u;
-        g.lineWidth = Math.max(1, rowH * 0.022);
+        g.lineCap = "round";
+
+        // Impact flash on the first frames.
+        if (age < 0.4) {
+          const flash = 1 - age / 0.4;
+          const glow = g.createRadialGradient(
+            ccx,
+            ccy,
+            0,
+            ccx,
+            ccy,
+            rowH * 0.7 * spread,
+          );
+          glow.addColorStop(0, `rgba(255,255,255,${0.35 * flash})`);
+          glow.addColorStop(1, "rgba(255,255,255,0)");
+          g.fillStyle = glow;
+          g.beginPath();
+          g.arc(ccx, ccy, rowH * 0.7 * spread, 0, Math.PI * 2);
+          g.fill();
+        }
+
+        // Dark fracture underlay so the white shards read on light terrain.
+        g.globalAlpha = 0.5 * u;
+        g.strokeStyle = "rgba(20,16,40,0.9)";
+        g.lineWidth = Math.max(2, rowH * 0.055);
         g.beginPath();
         for (const s of cr.spokes) {
-          const len = s.len * rowH * 0.5 * spread;
+          const len = radius(s);
           g.moveTo(ccx, ccy);
           g.lineTo(
             ccx + Math.cos(s.angle) * len * 0.55,
@@ -1222,18 +1252,31 @@ export function DaybreakGame({
           );
         }
         g.stroke();
+
+        g.globalAlpha = 0.95 * u;
+        g.strokeStyle = "#ffffff";
+        g.lineWidth = Math.max(1.5, rowH * 0.032);
+        g.stroke();
+
         // Web strands between neighbouring spokes.
-        g.globalAlpha = 0.2 * u;
-        g.lineWidth = Math.max(1, rowH * 0.014);
+        g.globalAlpha = 0.35 * u;
+        g.lineWidth = Math.max(1, rowH * 0.02);
         g.beginPath();
         for (let i = 0; i < cr.spokes.length; i++) {
           const a = cr.spokes[i];
           const b = cr.spokes[(i + 1) % cr.spokes.length];
-          const ra = a.len * rowH * 0.5 * spread * 0.55;
-          const rb = b.len * rowH * 0.5 * spread * 0.55;
+          const ra = radius(a) * 0.55;
+          const rb = radius(b) * 0.55;
           g.moveTo(ccx + Math.cos(a.angle) * ra, ccy + Math.sin(a.angle) * ra);
           g.lineTo(ccx + Math.cos(b.angle) * rb, ccy + Math.sin(b.angle) * rb);
         }
+        g.stroke();
+
+        // Outer ring of the fracture front.
+        g.globalAlpha = 0.35 * u;
+        g.lineWidth = Math.max(1, rowH * 0.016);
+        g.beginPath();
+        g.arc(ccx, ccy, rowH * 0.5 * spread * (0.9 + age * 0.5), 0, Math.PI * 2);
         g.stroke();
         g.restore();
       }
@@ -1249,7 +1292,8 @@ export function DaybreakGame({
           const u =
             (now - rainbowStartedAt) / (rainbowUntil - rainbowStartedAt);
           // Smooth fade in and out (sine hump).
-          rainbowIntensity = Math.sin(Math.min(1, Math.max(0, u)) * Math.PI);
+          rainbowIntensity =
+            Math.sin(Math.min(1, Math.max(0, u)) * Math.PI) * 0.72;
         }
         const chargeAmt = dropCharging
           ? Math.min(1, (now - dropChargeStart) / 900)
@@ -1257,7 +1301,7 @@ export function DaybreakGame({
         if (dropCharging && dropBoostArmed) {
           rainbowIntensity = Math.max(
             rainbowIntensity,
-            0.35 + chargeAmt * 0.65,
+            0.22 + chargeAmt * 0.45,
           );
         }
         for (const a of afterimages) {
@@ -1269,7 +1313,7 @@ export function DaybreakGame({
             cy,
             size * 0.96,
             a.angle,
-            Math.max(alpha, rainbowIntensity > 0 ? 0.62 * rainbowIntensity : alpha),
+            Math.max(alpha, rainbowIntensity > 0 ? 0.42 * rainbowIntensity : alpha),
             pal.accent,
             rainbowIntensity,
           );
@@ -1284,7 +1328,7 @@ export function DaybreakGame({
           angle,
           1,
           pal.accent,
-          dropCharging ? 0.3 + chargeAmt * 0.7 : 0,
+          dropCharging ? 0.18 + chargeAmt * 0.42 : 0,
         );
 
         // DropBoost charge: energy spiralling inward into the player.

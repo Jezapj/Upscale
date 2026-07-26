@@ -1,7 +1,15 @@
 import { useEffect, useRef } from "react";
 import { useGamePalette } from "./GamePaletteContext";
 import { formatRaceTime, scoreTipTop, type GameResult } from "./gameResult";
-import { playTipTopFlap, playTipTopHoleIn, playTipTopLaserZap, playTipTopSawSlice, unlockGameAudio } from "./gameAudio";
+import {
+  playTipTopFlap,
+  playTipTopLaserZap,
+  playTipTopSawSlice,
+  playTipTopStageComplete,
+  preloadSamples,
+  SAMPLE_SRC,
+  unlockGameAudio,
+} from "./gameAudio";
 import { frameDecay, frameScale, MAX_PHYSICS_STEPS, renderLerp } from "./gameLoop";
 
 interface Props {
@@ -2829,6 +2837,7 @@ export function TipTopGame({ width, height, onGameOver, paused = false, seed }: 
     const flap = (dir: -1 | 1) => {
       if (!alive || clearFrames > 0 || pausedRef.current) return;
       unlockGameAudio();
+      preloadSamples(SAMPLE_SRC.tipTopComplete);
       stageFlaps++;
       if (stuck) stickyImmune = STICKY_ESCAPE_FRAMES;
       stuck = null;
@@ -3141,7 +3150,7 @@ export function TipTopGame({ width, height, onGameOver, paused = false, seed }: 
               py = surface - ballR;
               onGround = true;
               clearFrames = STAGE_CLEAR_FRAMES;
-              playTipTopHoleIn();
+              playTipTopStageComplete();
             } else {
               py = surface - ballR;
               vy *= -0.15;

@@ -7,9 +7,13 @@ import {
   createOctaneEngineSound,
   playOctaneBadShift,
   playOctaneBrakeChirp,
+  playOctaneHit,
   playOctaneNitroPerfect,
   playOctaneRevShift,
+  playOctaneWarning,
   preloadOctaneAudio,
+  preloadSamples,
+  SAMPLE_SRC,
   unlockGameAudio,
 } from "./gameAudio";
 
@@ -1425,6 +1429,8 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
     let obstacles: RoadObstacle[] = [];
     let nextObstacleId = 1;
     let nextSpawnM = 80;
+    const warnedObstacles = new Set<number>();
+    let lastWarnSoundAt = 0;
     const occupiedLanesNear = (distM: number, windowM = 55): Set<number> => {
       const used = new Set<number>();
       for (const o of obstacles) {
@@ -1553,10 +1559,14 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       if (shiftQuality === 1) triggerBoostLunge(mph);
     };
 
+    const warmSamples = () =>
+      preloadSamples(SAMPLE_SRC.octaneWarning, SAMPLE_SRC.octaneHit);
+
     const onPointerDown = (e: PointerEvent) => {
       e.preventDefault();
       unlockGameAudio();
       preloadOctaneAudio();
+      warmSamples();
       const { clutchBtn, brakeBtn, gasBtn, laneUpBtn, laneDownBtn } = getLayout();
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -1598,6 +1608,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         e.preventDefault();
         unlockGameAudio();
         preloadOctaneAudio();
+        warmSamples();
         gasRef.current = true;
       }
       if (e.code === "ArrowUp" || e.code === "KeyW") {
@@ -1783,13 +1794,28 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
             rpm = Math.max(0, rpm - 900);
             hitCooldownMs = 600;
             hitFlash = 18;
-            if (o.kind === "oil") {
-              oilLockMs = 400;
-              playOctaneBrakeChirp(mph);
-            } else {
-              playOctaneBadShift();
-            }
+            if (o.kind === "oil") oilLockMs = 400;
+            playOctaneHit();
             break;
+          }
+        }
+
+        // Klaxon the first time a hazard enters warning range.
+        const nowMs = performance.now();
+        for (const o of obstacles) {
+          if (warnedObstacles.has(o.id)) continue;
+          const sx = carX + (o.distanceM - distance) * PX_PER_M;
+          if (sx <= width + 20 || sx > width + WARN_LEAD_PX) continue;
+          warnedObstacles.add(o.id);
+          if (nowMs - lastWarnSoundAt > 900) {
+            lastWarnSoundAt = nowMs;
+            playOctaneWarning();
+          }
+        }
+        if (warnedObstacles.size > 64) {
+          const live = new Set(obstacles.map((o) => o.id));
+          for (const id of warnedObstacles) {
+            if (!live.has(id)) warnedObstacles.delete(id);
           }
         }
 
@@ -1866,11 +1892,13 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         }
       }
 
-      // Obstacles (far lanes first so nearer ones draw on top).
-      const sortedObs = [...obstacles].sort((a, b) => a.lane - b.lane);
-      for (const o of sortedObs) {
+      /**
+       * Lanes are depth-sorted: everything in a lane nearer than the player is
+       * drawn after the car, so it passes in front of it.
+       */
+      const drawObstacle = (o: RoadObstacle) => {
         const screenX = carX + (o.distanceM - distance) * PX_PER_M;
-        if (screenX < -120 || screenX > width + 120) continue;
+        if (screenX < -120 || screenX > width + 120) return;
         const scale = laneScale(o.lane);
         const bas = laneBaseline(o.lane);
         const oh = roadH * CAR_HEIGHT_RATIO * scale * (o.kind === "car" ? 0.92 : 0.55);
@@ -1906,6 +1934,11 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
           ctx.fillStyle = o.hit ? "rgba(80,80,100,0.4)" : "#4a5568";
           ctx.fillRect(screenX, oy, ow, oh);
         }
+      };
+
+      const depthSorted = [...obstacles].sort((a, b) => a.lane - b.lane);
+      for (const o of depthSorted) {
+        if (o.lane <= playerLane) drawObstacle(o);
       }
 
       // Warning sign per lane for the nearest hazard still off the right edge.
@@ -1916,7 +1949,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         const prev = warnByLane.get(o.lane);
         if (!prev || o.distanceM < prev.distanceM) warnByLane.set(o.lane, o);
       }
-      for (const [lane, o] of warnByLane) {
+      for (const [lane, o] of [...warnByLane].sort((a, b) => a[0] - b[0])) {
         const sx = carX + (o.distanceM - distance) * PX_PER_M;
         const closeness = Math.min(1, Math.max(0, 1 - (sx - width) / WARN_LEAD_PX));
         const laneS = laneScale(lane);
@@ -2016,6 +2049,10 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
           drawCarHeadlights(ctx, width, roadY, roadH, carDrawX, carDrawY, carDrawW, carDrawH);
         }
       });
+
+      for (const o of depthSorted) {
+        if (o.lane > playerLane) drawObstacle(o);
+      }
 
       if (isNight) {
         drawNightScene(ctx, width, sceneH, roadY, roadH, scrollPx, time);
