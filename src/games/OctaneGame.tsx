@@ -1562,6 +1562,22 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
     const warmSamples = () =>
       preloadSamples(SAMPLE_SRC.octaneWarning, SAMPLE_SRC.octaneHit);
 
+    /**
+     * Each touch owns one control until it lifts, so a finger holding the gas
+     * doesn't block (or get cancelled by) a second finger on the clutch.
+     */
+    type HeldControl = "clutch" | "brake" | "gas";
+    const pointerControl = new Map<number, HeldControl>();
+
+    const releaseControl = (control: HeldControl) => {
+      if (control === "clutch") clutchDown = false;
+      else if (control === "brake") brakeDown = false;
+      else {
+        gasDown = false;
+        gasRef.current = false;
+      }
+    };
+
     const onPointerDown = (e: PointerEvent) => {
       e.preventDefault();
       unlockGameAudio();
@@ -1571,14 +1587,23 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
+      // Keep receiving this pointer's events even if the finger slides off.
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        /* capture unsupported */
+      }
       if (hit(x, y, clutchBtn)) {
         clutchDown = true;
+        pointerControl.set(e.pointerId, "clutch");
         shift();
       } else if (hit(x, y, brakeBtn)) {
         brakeDown = true;
+        pointerControl.set(e.pointerId, "brake");
       } else if (hit(x, y, gasBtn)) {
         gasDown = true;
         gasRef.current = true;
+        pointerControl.set(e.pointerId, "gas");
       } else if (hit(x, y, laneUpBtn)) {
         trySwitchLane(-1);
       } else if (hit(x, y, laneDownBtn)) {
@@ -1586,18 +1611,16 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       }
     };
     const onPointerUp = (e: PointerEvent) => {
-      const { clutchBtn, brakeBtn, gasBtn } = getLayout();
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      if (clutchDown && hit(x, y, clutchBtn)) clutchDown = false;
-      if (brakeDown && hit(x, y, brakeBtn)) brakeDown = false;
-      if (gasDown && hit(x, y, gasBtn)) {
-        gasDown = false;
-        gasRef.current = false;
-      }
+      const control = pointerControl.get(e.pointerId);
+      if (control === undefined) return;
+      pointerControl.delete(e.pointerId);
+      releaseControl(control);
     };
-    const onLeave = () => {
+    const onLeave = (e: PointerEvent) => {
+      // Touch pointers keep their control until they lift; only a mouse
+      // leaving the canvas should drop everything.
+      if (e.pointerType !== "mouse") return;
+      pointerControl.clear();
       clutchDown = false;
       brakeDown = false;
       gasDown = false;
@@ -1630,6 +1653,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
 
     canvas.addEventListener("pointerdown", onPointerDown);
     canvas.addEventListener("pointerup", onPointerUp);
+    canvas.addEventListener("pointercancel", onPointerUp);
     canvas.addEventListener("pointerleave", onLeave);
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
@@ -2267,6 +2291,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       brakeSound?.stop();
       canvas.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("pointercancel", onPointerUp);
       canvas.removeEventListener("pointerleave", onLeave);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);

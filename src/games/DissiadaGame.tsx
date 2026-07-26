@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useGamePalette } from "./GamePaletteContext";
+import type { GameResult } from "./gameResult";
 import {
   playDissiadaNote,
   startDissiadaHold,
@@ -13,7 +14,7 @@ import { frameScale } from "./gameLoop";
 interface Props {
   width: number;
   height: number;
-  onGameOver: (score: number) => void;
+  onGameOver: (result: GameResult) => void;
   paused?: boolean;
   /** When set, tile spawns use this seed (daily challenge). */
   seed?: number;
@@ -67,6 +68,22 @@ const MISS_PADDING = 14;
 const LANE_KEYS = ["D", "F", "J", "K"];
 const TEXT_GRAVITY = 0.55;
 const HOLD_TICK_FRAMES = 12;
+
+/** Score at which a tile type starts appearing, and how fast it ramps up. */
+interface SpawnRamp {
+  start: number;
+  full: number;
+  maxChance: number;
+}
+const DOUBLE_RAMP: SpawnRamp = { start: 8, full: 60, maxChance: 0.26 };
+const HOLD_RAMP: SpawnRamp = { start: 20, full: 90, maxChance: 0.28 };
+
+function ramp(score: number, r: SpawnRamp): number {
+  if (score < r.start) return 0;
+  const t = Math.min(1, (score - r.start) / (r.full - r.start));
+  // Ease in so the first few appearances stay rare.
+  return r.maxChance * t * t;
+}
 
 function makeTile(
   lane: number,
@@ -158,6 +175,8 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
     let tiles: Tile[] = [];
     let score = 0;
     let combo = 0;
+    let maxCombo = 0;
+    let notesHit = 0;
     let alive = true;
     let spawnTimer = 0;
     let speed = 6.5;
@@ -227,7 +246,22 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
         score += 1;
         combo = Math.max(1, combo);
       }
+      maxCombo = Math.max(maxCombo, combo);
+      notesHit += 1;
       speed = Math.min(12, 6.5 + score * 0.035);
+    };
+
+    const endRun = () => {
+      alive = false;
+      stopAllDissiadaHolds();
+      onGameOverRef.current({
+        score,
+        title: "Run over",
+        stats: [
+          { label: "Max combo", value: `${maxCombo}x` },
+          { label: "Notes", value: `${notesHit}` },
+        ],
+      });
     };
 
     const tapLane = (lane: number) => {
@@ -243,9 +277,7 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
         playDissiadaNote(lane, "miss");
         pushFx(lane, "miss", false, false);
         combo = 0;
-        alive = false;
-        stopAllDissiadaHolds();
-        onGameOverRef.current(score);
+        endRun();
         return;
       }
 
@@ -348,25 +380,28 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
         if (spawnTimer >= spawnRate) {
           spawnTimer -= spawnRate;
           const y = -TILE_H - 10;
-          const canSpecial = score > 6;
+          // Doubles ease in first, then holds; both keep getting more common.
+          const doubleChance = ramp(score, DOUBLE_RAMP);
+          const holdChance = ramp(score, HOLD_RAMP);
           const roll = rng();
-          if (canSpecial && roll < 0.2) {
+          if (roll < doubleChance) {
             const a = Math.floor(rng() * LANES);
             let b = Math.floor(rng() * LANES);
             if (b === a) b = (a + 1 + Math.floor(rng() * (LANES - 1))) % LANES;
             const pid = nextPairId++;
             tiles.push(makeTile(a, y, "tap", 0, pid));
             tiles.push(makeTile(b, y, "tap", 0, pid));
-          } else if (canSpecial && roll < 0.38) {
+          } else if (roll < doubleChance + holdChance) {
             let lane = Math.floor(rng() * LANES);
             let guard = 0;
             while (laneHasActiveHold(lane) && guard++ < 8) {
               lane = Math.floor(rng() * LANES);
             }
             if (!laneHasActiveHold(lane)) {
-              tiles.push(
-                makeTile(lane, y, "hold", TILE_H * (1.5 + rng() * 1.5)),
-              );
+              // Tails lengthen as the run goes on.
+              const grow = Math.min(1, Math.max(0, (score - HOLD_RAMP.start) / 60));
+              const len = TILE_H * (1.2 + grow * 0.9 + rng() * (1 + grow));
+              tiles.push(makeTile(lane, y, "hold", len));
             } else {
               tiles.push(makeTile(Math.floor(rng() * LANES), y));
             }
@@ -396,6 +431,7 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
               heldLanes[t.lane] = false;
               score += 2;
               combo += 1;
+              maxCombo = Math.max(maxCombo, combo);
               pushFx(t.lane, "perfect", true, false, "HOLD!");
             }
           }
@@ -406,9 +442,7 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
           if (t.y > hitY + okH + MISS_PADDING) {
             t.missed = true;
             combo = 0;
-            alive = false;
-            stopAllDissiadaHolds();
-            onGameOverRef.current(score);
+            endRun();
             return;
           }
         }

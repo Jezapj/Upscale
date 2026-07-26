@@ -27,6 +27,8 @@ interface Props {
   paused?: boolean;
   /** When set, level is generated from this seed (daily challenge). */
   seed?: number;
+  /** Caps retries — the run ends for good on the last death (daily = 10). */
+  maxAttempts?: number;
 }
 
 // ── Physics tuning (rows / seconds / beats) ─────────────────────────────────
@@ -100,6 +102,8 @@ interface CrackFx {
 
 /** Double-jump crack fade duration (seconds). */
 const CRACK_LIFE_S = 0.35;
+/** Minimum ground hold (ms) before a DropBoost charge is worth a pad launch. */
+const DROP_CHARGE_MIN_MS = 200;
 
 /** Smooth 0..1 ease for elevation color blends. */
 function smooth01(t: number): number {
@@ -140,6 +144,7 @@ export function DaybreakGame({
   onGameOver,
   paused = false,
   seed: seedProp,
+  maxAttempts,
 }: Props) {
   const palette = useGamePalette();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -155,6 +160,8 @@ export function DaybreakGame({
   const wasPausedRef = useRef(false);
   const seedRef = useRef(seedProp);
   seedRef.current = seedProp;
+  const maxAttemptsRef = useRef(maxAttempts);
+  maxAttemptsRef.current = maxAttempts;
 
   useEffect(() => {
     pausedRef.current = paused;
@@ -174,6 +181,7 @@ export function DaybreakGame({
     const g = canvas.getContext("2d");
     if (!g) return;
 
+    const attemptLimit = maxAttemptsRef.current;
     const seed = seedRef.current ?? Math.floor(Math.random() * 0x7fffffff);
     const level = generateLevel(seed);
     const audio = createDaybreakAudio(level.key, level.bpm);
@@ -578,9 +586,10 @@ export function DaybreakGame({
       );
       if (activePowerup === "doubleJump") doubleJumpReady = true;
       if (activePowerup === "dropBoost" && dropHeldInAir && holdJump) {
+        // Arms only once the hold passes DROP_CHARGE_MIN_MS (see step()).
         dropCharging = true;
         dropChargeStart = performance.now();
-        dropBoostArmed = true;
+        dropBoostArmed = false;
       }
       dropHeldInAir = false;
     };
@@ -889,14 +898,17 @@ export function DaybreakGame({
     const releaseHold = () => {
       holdJump = false;
       dropHeldInAir = false;
-      if (dropCharging) {
-        if (dropBoostArmed && grounded) {
-          fireDropBoost();
-        } else {
-          dropCharging = false;
-          dropBoostArmed = false;
-        }
+      if (!dropCharging) return;
+      if (dropBoostArmed && grounded) {
+        fireDropBoost();
+        return;
       }
+      // Let go too early — spend it as an ordinary jump so the tap isn't eaten.
+      const wasGrounded = grounded;
+      dropCharging = false;
+      dropBoostArmed = false;
+      energyMotes = [];
+      if (wasGrounded && phase === "playing") doJump();
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") {
@@ -1226,7 +1238,7 @@ export function DaybreakGame({
             ccy,
             rowH * 0.7 * spread,
           );
-          glow.addColorStop(0, `rgba(255,255,255,${0.35 * flash})`);
+          glow.addColorStop(0, `rgba(255,255,255,${0.25 * flash})`);
           glow.addColorStop(1, "rgba(255,255,255,0)");
           g.fillStyle = glow;
           g.beginPath();
@@ -1235,7 +1247,7 @@ export function DaybreakGame({
         }
 
         // Dark fracture underlay so the white shards read on light terrain.
-        g.globalAlpha = 0.5 * u;
+        g.globalAlpha = 0.4 * u;
         g.strokeStyle = "rgba(20,16,40,0.9)";
         g.lineWidth = Math.max(2, rowH * 0.055);
         g.beginPath();
@@ -1253,13 +1265,13 @@ export function DaybreakGame({
         }
         g.stroke();
 
-        g.globalAlpha = 0.95 * u;
+        g.globalAlpha = 0.15 * u;
         g.strokeStyle = "#ffffff";
         g.lineWidth = Math.max(1.5, rowH * 0.032);
         g.stroke();
 
         // Web strands between neighbouring spokes.
-        g.globalAlpha = 0.35 * u;
+        g.globalAlpha = 0.15 * u;
         g.lineWidth = Math.max(1, rowH * 0.02);
         g.beginPath();
         for (let i = 0; i < cr.spokes.length; i++) {
@@ -1273,14 +1285,14 @@ export function DaybreakGame({
         g.stroke();
 
         // Outer ring of the fracture front.
-        g.globalAlpha = 0.35 * u;
+        g.globalAlpha = 0.15 * u;
         g.lineWidth = Math.max(1, rowH * 0.016);
         g.beginPath();
         g.arc(ccx, ccy, rowH * 0.5 * spread * (0.9 + age * 0.5), 0, Math.PI * 2);
         g.stroke();
         g.restore();
       }
-      g.globalAlpha = 1;
+      g.globalAlpha = 0.15;
 
       const size = rowH * 0.94;
 
@@ -1481,7 +1493,13 @@ export function DaybreakGame({
       };
       g.textAlign = "left";
       chip(`${level.key.name} · ${level.bpm} BPM`, 14, 12);
-      chip(`Attempt ${attempts} · ${syncJumps} on-beat`, 14, 38);
+      chip(
+        attemptLimit !== undefined
+          ? `Attempt ${attempts}/${attemptLimit} · ${syncJumps} on-beat`
+          : `Attempt ${attempts} · ${syncJumps} on-beat`,
+        14,
+        38,
+      );
       g.textAlign = "center";
       g.fillStyle = pal.hudText;
       g.fillText(`${Math.round(progress * 100)}%`, barX + barW / 2, 26);
@@ -1549,8 +1567,12 @@ export function DaybreakGame({
           }
         } else if (phase === "dead") {
           if (now - phaseAt > 950) {
-            attempts++;
-            beginRun();
+            if (attemptLimit !== undefined && attempts >= attemptLimit) {
+              finish(false);
+            } else {
+              attempts++;
+              beginRun();
+            }
           }
         } else if (phase === "won") {
           if (now - phaseAt > 900) finish(true);
@@ -1561,9 +1583,22 @@ export function DaybreakGame({
         updateCracks(frameDt);
 
         if (dropCharging && phase === "playing") {
+          if (!dropBoostArmed && now - dropChargeStart >= DROP_CHARGE_MIN_MS) {
+            dropBoostArmed = true;
+            audio.landNote(clampElev(py));
+            spawnBurst(
+              xOf(simTime) + 0.5,
+              py,
+              10,
+              [paletteRef.current.daybreak.accent, "#f0c14a", "#ffffff"],
+              3.4,
+              false,
+            );
+          }
           energyAcc += frameDt;
-          while (energyAcc >= 0.028) {
-            energyAcc -= 0.028;
+          const rate = dropBoostArmed ? 0.028 : 0.05;
+          while (energyAcc >= rate) {
+            energyAcc -= rate;
             spawnEnergyMote();
           }
         } else {

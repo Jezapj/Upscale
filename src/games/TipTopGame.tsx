@@ -2770,6 +2770,7 @@ export function TipTopGame({ width, height, onGameOver, paused = false, seed }: 
     let stageStartTime = performance.now();
     let gameStartTime = stageStartTime;
     let clearFrames = 0;
+    const stageMedals: ("gold" | "silver" | "bronze" | "none")[] = [];
 
     let px = 120;
     let py = initPlayH * 0.35;
@@ -2811,10 +2812,16 @@ export function TipTopGame({ width, height, onGameOver, paused = false, seed }: 
       const flaps = totalFlaps + stageFlaps;
       const totalTimeMs = performance.now() - gameStartTime;
       const score = scoreTipTop(flaps, totalTimeMs, cleared);
+      // One medal slot per stage; unreached stages stay blank.
+      const medalRow = Array.from(
+        { length: STAGE_COUNT },
+        (_, i) => stageMedals[i] ?? "none",
+      ).join(",");
       onGameOverRef.current({
         score,
         title: cleared ? "Course complete!" : "Game over",
         stats: [
+          { label: "Medals", value: medalRow },
           { label: "Flaps", value: String(flaps) },
           { label: "Time", value: formatRaceTime(totalTimeMs) },
         ],
@@ -2822,6 +2829,8 @@ export function TipTopGame({ width, height, onGameOver, paused = false, seed }: 
     };
 
     const advanceStage = () => {
+      stageMedals[stageIndex] =
+        medalEarned(stageFlaps, currentStage().medals) ?? "none";
       totalFlaps += stageFlaps;
       if (stageIndex >= STAGE_COUNT - 1) {
         finishRun(true);

@@ -9,10 +9,12 @@ import { useStore } from "@/store/useStore";
 import { getGameScores } from "@/lib/gameLeaderboard";
 import { GameLeaderboardList } from "@/components/GameLeaderboardList";
 import { DailyBoardList } from "@/components/DailyBoardList";
+import { MedalStars } from "@/components/GameStatDetail";
 import { ArcadeUsernameModal } from "@/components/ArcadeUsernameModal";
 import {
   arcadeDisplayName,
   dailySeed,
+  DAILY_DAYBREAK_ATTEMPTS,
   getDailyCompletion,
   hasPlayedDaily,
 } from "@/lib/dailyChallenge";
@@ -360,6 +362,7 @@ export function GameShell({
               <p className="text-sm font-700 text-ink-soft">{meta.tagline}</p>
               <p className="rounded-full bg-black/25 px-3 py-1 text-[11px] font-800 uppercase tracking-wide text-ink-faint">
                 {prettyDay(today)} · one attempt
+                {gameId === "daybreak" ? ` · ${DAILY_DAYBREAK_ATTEMPTS} lives` : ""}
               </p>
               <p className="max-w-xs text-xs font-700 text-ink-faint">{meta.controls}</p>
 
@@ -375,7 +378,12 @@ export function GameShell({
                 ) : boardError ? (
                   <p className="max-w-xs text-xs font-700 text-cat-health">{boardError}</p>
                 ) : (
-                  <DailyBoardList entries={dailyEntries} highlightUid={boardUid} compact />
+                  <DailyBoardList
+                    entries={dailyEntries}
+                    gameId={gameId}
+                    highlightUid={boardUid}
+                    compact
+                  />
                 )
               ) : (
                 <p className="max-w-xs text-xs font-700 text-ink-faint">
@@ -447,12 +455,18 @@ export function GameShell({
                 Score: {result.score.toLocaleString()}
               </p>
               {result.stats && result.stats.length > 0 && (
-                <div className="flex flex-col gap-1 text-center">
-                  {result.stats.map((stat) => (
-                    <p key={stat.label} className="text-sm font-700 text-ink-soft">
-                      {stat.label}: <span className="text-ink">{stat.value}</span>
-                    </p>
-                  ))}
+                <div className="flex flex-col items-center gap-1 text-center">
+                  {result.stats.map((stat) =>
+                    stat.label === "Medals" ? (
+                      <span key={stat.label} className="flex items-center gap-1">
+                        <MedalStars value={stat.value} className="scale-125" />
+                      </span>
+                    ) : (
+                      <p key={stat.label} className="text-sm font-700 text-ink-soft">
+                        {stat.label}: <span className="text-ink">{stat.value}</span>
+                      </p>
+                    ),
+                  )}
                 </div>
               )}
 
@@ -460,6 +474,7 @@ export function GameShell({
                 isGoogle ? (
                   <DailyBoardList
                     entries={dailyEntries}
+                    gameId={gameId}
                     highlightUid={boardUid}
                     compact
                   />
@@ -471,6 +486,7 @@ export function GameShell({
               ) : user ? (
                 <GameLeaderboardList
                   entries={practiceEntries}
+                  gameId={gameId}
                   highlightScore={result.score}
                   compact
                 />

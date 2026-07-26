@@ -10,6 +10,9 @@ export const DAILY_OCTANE_DISTANCE_M = 402;
 export const DAILY_OCTANE_DISTANCE_KEY = "402" as const;
 export const DAILY_OCTANE_RACE_LABEL = "1/4 mile";
 
+/** Daybreak daily gives a fixed pool of retries instead of endless respawns. */
+export const DAILY_DAYBREAK_ATTEMPTS = 10;
+
 const emptyCompleted = (): Partial<Record<GameId, ArcadeDailyCompletion>> => ({});
 
 /** Stable uint32 from `${day}:${gameId}` so everyone shares the same course. */
