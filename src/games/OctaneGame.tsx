@@ -51,7 +51,7 @@ const BG_EXTEND_DOWN = 0.4;
 /** Chance each run is a night drive (dark + moon / street-light beams). */
 const NIGHT_RUN_CHANCE = 0.34;
 /** Car height as a fraction of road band height. */
-const CAR_HEIGHT_RATIO = 0.92;
+const CAR_HEIGHT_RATIO = 0.72;
 
 /** Perfect-shift speed-boost lunge — quick snap right, slow settle back with bounce. */
 const BOOST_LUNGE_TUNING = {
@@ -104,11 +104,11 @@ const BOOST_LUNGE_TUNING = {
   /** Once exceeded, burnout is disabled for the rest of the run (even back at 0). */
   burnoutDisableMph: 30,
   /** Frames until burnout oscillation fades out (60fps baseline). */
-  burnoutDecayDuration: 2000,
+  burnoutDecayDuration: 200,
   /** Peak rear lift pitch at burnout start (radians, front-axle pivot). */
-  burnoutPitch: 0.05,
+  burnoutPitch: 0.01,
   /** Starting oscillation speed (radians/frame). */
-  burnoutStartFreq: 0.05,
+  burnoutStartFreq: 0.15,
   /** Oscillation speed ramp per frame. */
   burnoutFreqRamp: 0.001,
   /** Burnout side-to-side shake at start (px). */
@@ -358,14 +358,43 @@ function withCarPitch(
   ctx.restore();
 }
 
-/** Center-lane dashed markings (world-locked to road scroll) */
+/** Multi-lane dashed markings (world-locked to road scroll) */
 const ROAD_MARKINGS = {
-  dashLength: 180,
-  dashGap: 102,
-  yRatio: 0.55,
-  lineWidth: 5,
+  dashLength: 220,
+  dashGap: 150,
+  lineWidth: 6,
   /** 1 = scrolls with road distance; keep at 1 for painted-on-road feel */
   scrollRate: 1,
+} as const;
+
+const LANE_COUNT = 3;
+/** Fraction of road band height for each lane's car baseline (far → near). */
+const LANE_BASELINES = [0.24, 0.62, 0.99] as const;
+const LANE_SCALE = [0.94, 1, 1.06] as const;
+/**
+ * The car PNG has transparent padding under the wheels; drop the sprite by this
+ * fraction of its own height so the tyres meet the lane it is driving in.
+ */
+const CAR_BASE_INSET = 0.07;
+const LANE_SWITCH_MS = 180;
+const PX_PER_M = 0.22 / 0.00745;
+/** How far ahead (px) an off-screen obstacle raises its lane warning sign. */
+const WARN_LEAD_PX = 1100;
+
+type ObstacleKind = "cone" | "oil" | "car";
+interface RoadObstacle {
+  id: number;
+  distanceM: number;
+  lane: number;
+  kind: ObstacleKind;
+  mph: number;
+  hit: boolean;
+}
+
+const OBSTACLE_PENALTY = {
+  cone: { base: 4, factor: 0.06 },
+  oil: { base: 6, factor: 0.1 },
+  car: { base: 10, factor: 0.16 },
 } as const;
 
 /**
@@ -557,74 +586,138 @@ function drawGauge(
   const endA = Math.PI * 2.25;
   const span = endA - startA;
 
-  ctx.fillStyle = faceColor;
+  ctx.save();
+
+  // Brushed metal bezel.
+  const bezel = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+  bezel.addColorStop(0, "#8d95a6");
+  bezel.addColorStop(0.35, "#454c5a");
+  bezel.addColorStop(0.62, "#7c8494");
+  bezel.addColorStop(1, "#2b303a");
+  ctx.fillStyle = bezel;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Recessed dial face.
+  const faceGrad = ctx.createRadialGradient(
+    cx - r * 0.3,
+    cy - r * 0.4,
+    r * 0.1,
+    cx,
+    cy,
+    r,
+  );
+  faceGrad.addColorStop(0, "#252b38");
+  faceGrad.addColorStop(0.7, faceColor);
+  faceGrad.addColorStop(1, "#05070c");
+  ctx.fillStyle = faceGrad;
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.strokeStyle = "rgba(0,0,0,0.35)";
-  ctx.lineWidth = 3;
+  // Sweep track.
+  ctx.strokeStyle = "rgba(255,255,255,0.09)";
+  ctx.lineWidth = 6;
+  ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.arc(cx, cy, r, startA, endA);
+  ctx.arc(cx, cy, r - 6, startA, endA);
   ctx.stroke();
+
+  // Value arc glows in the needle colour.
+  const pct = Math.min(1, Math.max(0, value / max));
+  if (pct > 0.001) {
+    ctx.save();
+    ctx.shadowColor = needleColor;
+    ctx.shadowBlur = 10;
+    ctx.strokeStyle = needleColor;
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r - 6, startA, startA + pct * span);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   if (redlineStart !== null && redlineEnd !== null) {
     const rs = startA + (redlineStart / max) * span;
     const re = startA + (redlineEnd / max) * span;
     ctx.strokeStyle = "#e03030";
-    ctx.lineWidth = 7;
+    ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.arc(cx, cy, r - 5, rs, re);
+    ctx.arc(cx, cy, r - 1.5, rs, re);
     ctx.stroke();
   }
 
   const majorTicks = max <= 10 ? 9 : 8;
-  for (let i = 0; i <= majorTicks; i++) {
-    const t = i / majorTicks;
+  for (let i = 0; i <= majorTicks * 2; i++) {
+    const t = i / (majorTicks * 2);
     const ang = startA + t * span;
-    const inner = r - 14;
-    const outer = r - 4;
-    ctx.strokeStyle = tickColor;
-    ctx.lineWidth = i % 2 === 0 ? 2 : 1;
+    const major = i % 2 === 0;
+    const inner = r - (major ? 15 : 10);
+    const outer = r - 11;
+    ctx.strokeStyle = major ? tickColor : "rgba(230,235,245,0.45)";
+    ctx.lineWidth = major ? 2 : 1;
     ctx.beginPath();
     ctx.moveTo(cx + Math.cos(ang) * inner, cy + Math.sin(ang) * inner);
     ctx.lineTo(cx + Math.cos(ang) * outer, cy + Math.sin(ang) * outer);
     ctx.stroke();
 
-    if (i % 2 === 0) {
+    if (major && (i / 2) % 2 === 0) {
+      const step = i / 2;
       const display =
         tickMode === "speed"
-          ? i * (max / majorTicks)
+          ? step * (max / majorTicks)
           : max <= 10
-            ? i
-            : i * (max / majorTicks / 1000);
+            ? step
+            : step * (max / majorTicks / 1000);
       ctx.fillStyle = tickColor;
       ctx.font = "bold 9px Nunito, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(String(Math.round(display)), cx + Math.cos(ang) * (r - 22), cy + Math.sin(ang) * (r - 22) + 3);
+      ctx.fillText(
+        String(Math.round(display)),
+        cx + Math.cos(ang) * (r - 24),
+        cy + Math.sin(ang) * (r - 24) + 3,
+      );
     }
   }
 
-  const pct = Math.min(1, value / max);
   const needleA = startA + pct * span;
-  ctx.strokeStyle = needleColor;
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.moveTo(cx, cy);
-  ctx.lineTo(cx + Math.cos(needleA) * (r - 18), cy + Math.sin(needleA) * (r - 18));
-  ctx.stroke();
+  const needleLen = r - 16;
+  const tailLen = r * 0.16;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(needleA);
+  ctx.shadowColor = "rgba(0,0,0,0.6)";
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetY = 2;
   ctx.fillStyle = needleColor;
   ctx.beginPath();
-  ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+  ctx.moveTo(needleLen, 0);
+  ctx.lineTo(0, -2.6);
+  ctx.lineTo(-tailLen, 0);
+  ctx.lineTo(0, 2.6);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // Chrome hub.
+  const hub = ctx.createLinearGradient(cx - 6, cy - 6, cx + 6, cy + 6);
+  hub.addColorStop(0, "#e9edf5");
+  hub.addColorStop(1, "#5b6272");
+  ctx.fillStyle = hub;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 5.5, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = tickColor;
-  ctx.font = "bold 10px Nunito, sans-serif";
+  ctx.fillStyle = "rgba(230,235,245,0.7)";
+  ctx.font = "bold 9px Nunito, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(label, cx, cy + r * 0.45);
-  ctx.font = "bold 13px Nunito, sans-serif";
-  ctx.fillText(unit, cx, cy + 8);
+  ctx.fillText(label, cx, cy + r * 0.5);
+  ctx.fillStyle = tickColor;
+  ctx.font = "bold 15px Nunito, sans-serif";
+  ctx.fillText(unit, cx, cy + 9);
   ctx.textAlign = "left";
+  ctx.restore();
 }
 
 function drawRotatedWheelLayer(
@@ -646,48 +739,79 @@ function drawRotatedWheelLayer(
   ctx.restore();
 }
 
-function drawCheckeredPedal(
+function roundRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  const rad = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rad, y);
+  ctx.lineTo(x + w - rad, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
+  ctx.lineTo(x + w, y + h - rad);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - rad, y + h);
+  ctx.lineTo(x + rad, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - rad);
+  ctx.lineTo(x, y + rad);
+  ctx.quadraticCurveTo(x, y, x + rad, y);
+  ctx.closePath();
+}
+
+/** Solid moulded control button; `accent` lights it up while held. */
+function drawPedal(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   w: number,
   h: number,
   active: boolean,
+  accent: string,
 ) {
-  ctx.fillStyle = "#2a2a2a";
-  ctx.fillRect(x, y, w, h);
+  const r = Math.min(10, w * 0.22);
+  const press = active ? 1.5 : 0;
 
-  const cell = 6;
-  const cols = Math.ceil(w / cell);
-  const rows = Math.ceil(h / cell);
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      const even = (row + col) % 2 === 0;
-      ctx.fillStyle = even ? "#f2f2f2" : "#1a1a1a";
-      const cw = Math.min(cell, x + w - (x + col * cell));
-      const ch = Math.min(cell, y + h - (y + row * cell));
-      ctx.fillRect(x + col * cell, y + row * cell, cw, ch);
-    }
+  ctx.save();
+  // Recessed socket behind the button.
+  roundRectPath(ctx, x - 2, y - 2, w + 4, h + 4, r + 2);
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.fill();
+
+  roundRectPath(ctx, x, y + press, w, h - press, r);
+  const body = ctx.createLinearGradient(x, y, x, y + h);
+  if (active) {
+    body.addColorStop(0, accent);
+    body.addColorStop(1, "rgba(20,22,28,0.95)");
+  } else {
+    body.addColorStop(0, "#4a505c");
+    body.addColorStop(0.52, "#333844");
+    body.addColorStop(1, "#20242c");
   }
+  ctx.fillStyle = body;
+  ctx.fill();
 
-  const grad = ctx.createLinearGradient(x, y, x, y + h);
-  grad.addColorStop(0, "rgba(255,255,255,0.22)");
-  grad.addColorStop(0.5, "rgba(255,255,255,0)");
-  grad.addColorStop(1, "rgba(0,0,0,0.25)");
-  ctx.fillStyle = grad;
-  ctx.fillRect(x, y, w, h);
+  // Top sheen.
+  ctx.save();
+  ctx.clip();
+  const sheen = ctx.createLinearGradient(x, y, x, y + h * 0.45);
+  sheen.addColorStop(0, "rgba(255,255,255,0.26)");
+  sheen.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = sheen;
+  ctx.fillRect(x, y, w, h * 0.45);
+  ctx.restore();
 
   if (active) {
-    ctx.fillStyle = "rgba(92, 208, 168, 0.4)";
-    ctx.fillRect(x, y, w, h);
+    ctx.shadowColor = accent;
+    ctx.shadowBlur = 12;
   }
-
-  ctx.strokeStyle = "#888";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
-  ctx.strokeStyle = "rgba(0,0,0,0.6)";
-  ctx.lineWidth = 1;
-  ctx.strokeRect(x, y, w, h);
+  roundRectPath(ctx, x + 0.5, y + press + 0.5, w - 1, h - press - 1, r);
+  ctx.strokeStyle = active ? accent : "rgba(220,228,240,0.45)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
 }
 
 /** Stable sub-tile scroll offset (avoids float drift on long drives). */
@@ -986,7 +1110,7 @@ function drawNightScene(
   ctx.rect(0, 0, width, sceneH);
   ctx.clip();
 
-  ctx.fillStyle = "rgba(1, 2, 10, 0.68)";
+  ctx.fillStyle = "rgba(1, 2, 10, 0.558)";
   ctx.fillRect(0, 0, width, sceneH);
 
   ctx.fillStyle = "rgba(0, 0, 8, 0.38)";
@@ -1253,6 +1377,8 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         clutchBtn: { x: 14, y: h - 62, w: 40, h: 40 },
         brakeBtn: { x: 60, y: h - 62, w: 40, h: 40 },
         gasBtn: { x: w - 62, y: h - 98, w: 48, h: 76 },
+        laneUpBtn: { x: 14, y: h - 148, w: 40, h: 36 },
+        laneDownBtn: { x: 60, y: h - 148, w: 40, h: 36 },
       };
     };
 
@@ -1266,6 +1392,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
     resizeCanvas(sizeRef.current.width, sizeRef.current.height);
 
     const carImg = new Image();
+    const trafficImg = new Image();
     const frontWheelImg = new Image();
     const backWheelImg = new Image();
     const bgImg = new Image();
@@ -1274,6 +1401,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
     const sakuraTop2 = new Image();
 
     carImg.src = "/OctanePixelCar2.png";
+    trafficImg.src = "/OctanePixelCar.png";
     frontWheelImg.src = "/FrontWheel.png";
     backWheelImg.src = "/BackWheel.png";
     bgImg.src = Math.random() < 0.99 ? "/bg1.png" : "/bg2.png"; // bg2 is not as good, find replacement then move then back to 0.5
@@ -1282,19 +1410,63 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
     sakuraTop2.src = "/sakuratop2.png";
 
     let carReady = false;
+    let trafficReady = false;
     let wheelsReady = false;
     let carDrawW = 100;
     let carDrawH = 36;
     let carY = 0;
+    let playerLane = 1;
+    let laneFrom = 1;
+    let laneTo = 1;
+    let laneAnimT = 1;
+    let oilLockMs = 0;
+    let hitCooldownMs = 0;
+    let hitFlash = 0;
+    let obstacles: RoadObstacle[] = [];
+    let nextObstacleId = 1;
+    let nextSpawnM = 80;
+    const occupiedLanesNear = (distM: number, windowM = 55): Set<number> => {
+      const used = new Set<number>();
+      for (const o of obstacles) {
+        if (Math.abs(o.distanceM - distM) < windowM) used.add(o.lane);
+      }
+      return used;
+    };
+    const laneBaseline = (lane: number) =>
+      LANE_BASELINES[Math.max(0, Math.min(LANE_COUNT - 1, lane))] ?? 0.52;
+    const laneScale = (lane: number) =>
+      LANE_SCALE[Math.max(0, Math.min(LANE_COUNT - 1, lane))] ?? 1;
+    const currentLaneFrac = () => {
+      if (laneAnimT >= 1) return laneBaseline(playerLane);
+      const t = laneAnimT * laneAnimT * (3 - 2 * laneAnimT);
+      return laneBaseline(laneFrom) + (laneBaseline(laneTo) - laneBaseline(laneFrom)) * t;
+    };
+    const currentLaneScale = () => {
+      if (laneAnimT >= 1) return laneScale(playerLane);
+      const t = laneAnimT * laneAnimT * (3 - 2 * laneAnimT);
+      return laneScale(laneFrom) + (laneScale(laneTo) - laneScale(laneFrom)) * t;
+    };
+    const trySwitchLane = (dir: -1 | 1) => {
+      if (laneAnimT < 1 || oilLockMs > 0 || finished || !alive) return;
+      const next = Math.max(0, Math.min(LANE_COUNT - 1, playerLane + dir));
+      if (next === playerLane) return;
+      laneFrom = playerLane;
+      laneTo = next;
+      playerLane = next;
+      laneAnimT = 0;
+    };
     const sizeCar = () => {
       const { roadY, roadH } = getLayout();
-      carDrawH = roadH * CAR_HEIGHT_RATIO;
+      const scale = currentLaneScale();
+      carDrawH = roadH * CAR_HEIGHT_RATIO * scale;
       carDrawW = (carImg.naturalWidth / carImg.naturalHeight) * carDrawH;
-      carY = roadY + roadH * 0.52 - carDrawH;
+      carY =
+        roadY + roadH * currentLaneFrac() - carDrawH * (1 - CAR_BASE_INSET);
     };
     const tryReady = () => {
       if (carImg.complete && carImg.naturalWidth > 0) sizeCar();
       carReady = carImg.complete && carImg.naturalWidth > 0;
+      trafficReady = trafficImg.complete && trafficImg.naturalWidth > 0;
       wheelsReady =
         frontWheelImg.complete &&
         frontWheelImg.naturalWidth > 0 &&
@@ -1302,6 +1474,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         backWheelImg.naturalWidth > 0;
     };
     carImg.onload = tryReady;
+    trafficImg.onload = tryReady;
     frontWheelImg.onload = tryReady;
     backWheelImg.onload = tryReady;
     tryReady();
@@ -1384,7 +1557,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       e.preventDefault();
       unlockGameAudio();
       preloadOctaneAudio();
-      const { clutchBtn, brakeBtn, gasBtn } = getLayout();
+      const { clutchBtn, brakeBtn, gasBtn, laneUpBtn, laneDownBtn } = getLayout();
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -1396,6 +1569,10 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       } else if (hit(x, y, gasBtn)) {
         gasDown = true;
         gasRef.current = true;
+      } else if (hit(x, y, laneUpBtn)) {
+        trySwitchLane(-1);
+      } else if (hit(x, y, laneDownBtn)) {
+        trySwitchLane(1);
       }
     };
     const onPointerUp = (e: PointerEvent) => {
@@ -1417,11 +1594,19 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       gasRef.current = false;
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code === "Space" || e.code === "ArrowUp") {
+      if (e.code === "Space") {
         e.preventDefault();
         unlockGameAudio();
         preloadOctaneAudio();
         gasRef.current = true;
+      }
+      if (e.code === "ArrowUp" || e.code === "KeyW") {
+        e.preventDefault();
+        trySwitchLane(-1);
+      }
+      if (e.code === "ArrowDown" || e.code === "KeyS") {
+        e.preventDefault();
+        trySwitchLane(1);
       }
       if (e.code === "ShiftLeft" || e.code === "KeyE") {
         e.preventDefault();
@@ -1429,7 +1614,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.code === "Space" || e.code === "ArrowUp") gasRef.current = false;
+      if (e.code === "Space") gasRef.current = false;
     };
 
     canvas.addEventListener("pointerdown", onPointerDown);
@@ -1461,6 +1646,8 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         clutchBtn,
         brakeBtn,
         gasBtn,
+        laneUpBtn,
+        laneDownBtn,
       } = syncLayout();
       const palette = paletteRef.current;
 
@@ -1531,6 +1718,81 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
 
         distance += mph * 0.00745 * dt;
         scrollPx += mph * 0.22 * dt;
+
+        if (laneAnimT < 1) {
+          laneAnimT = Math.min(1, laneAnimT + (dt * 16.67) / LANE_SWITCH_MS);
+          sizeCar();
+        }
+        if (oilLockMs > 0) oilLockMs = Math.max(0, oilLockMs - dt * 16.67);
+        if (hitCooldownMs > 0) hitCooldownMs = Math.max(0, hitCooldownMs - dt * 16.67);
+        if (hitFlash > 0) hitFlash = Math.max(0, hitFlash - dt);
+
+        // Spawn road obstacles ahead of the player.
+        while (nextSpawnM < distance + 900) {
+          const used = occupiedLanesNear(nextSpawnM);
+          const free: number[] = [];
+          for (let l = 0; l < LANE_COUNT; l++) {
+            if (!used.has(l)) free.push(l);
+          }
+          if (free.length === 0) {
+            nextSpawnM += 40 + Math.random() * 30;
+            continue;
+          }
+          // Keep at least one lane empty in this window when possible.
+          const spawnLane =
+            free.length === LANE_COUNT
+              ? free[Math.floor(Math.random() * free.length)]!
+              : free[Math.floor(Math.random() * free.length)]!;
+          const roll = Math.random();
+          const kind: ObstacleKind =
+            roll < 0.38 ? "cone" : roll < 0.68 ? "oil" : "car";
+          const trafficMph =
+            kind === "car"
+              ? Math.max(25, (GEAR_SPEED_CAP[gear - 1] ?? 80) * (0.45 + Math.random() * 0.25))
+              : 0;
+          obstacles.push({
+            id: nextObstacleId++,
+            distanceM: nextSpawnM,
+            lane: spawnLane,
+            kind,
+            mph: trafficMph,
+            hit: false,
+          });
+          const gap = Math.max(55, 140 - mph * 0.25) + Math.random() * 40;
+          nextSpawnM += gap;
+        }
+
+        for (const o of obstacles) {
+          if (o.kind === "car") {
+            o.distanceM += o.mph * 0.00745 * dt;
+          }
+        }
+        obstacles = obstacles.filter((o) => o.distanceM > distance - 40);
+
+        // Collision: same lane, overlapping car length.
+        if (hitCooldownMs <= 0) {
+          const carLenM = Math.max(4, carDrawW / PX_PER_M);
+          for (const o of obstacles) {
+            if (o.hit || o.lane !== playerLane) continue;
+            const dx = o.distanceM - distance;
+            if (dx < -2 || dx > carLenM + 6) continue;
+            o.hit = true;
+            const pen = OBSTACLE_PENALTY[o.kind];
+            const penalty = pen.base + mph * pen.factor;
+            mph = Math.max(0, mph - penalty);
+            rpm = Math.max(0, rpm - 900);
+            hitCooldownMs = 600;
+            hitFlash = 18;
+            if (o.kind === "oil") {
+              oilLockMs = 400;
+              playOctaneBrakeChirp(mph);
+            } else {
+              playOctaneBadShift();
+            }
+            break;
+          }
+        }
+
         const burnoutActive =
           !burnoutPermanentlyDisabled &&
           gasRef.current &&
@@ -1582,19 +1844,108 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       ctx.fillStyle = p.road;
       ctx.fillRect(0, roadY, width, roadH);
 
-      const markY = roadY + roadH * ROAD_MARKINGS.yRatio;
-      const spacing = ROAD_MARKINGS.dashLength + ROAD_MARKINGS.dashGap;
-      const offset =
-        ((scrollPx * ROAD_MARKINGS.scrollRate) % spacing + spacing) % spacing;
-
-      ctx.strokeStyle = "rgba(255,255,255,0.92)";
-      ctx.lineWidth = ROAD_MARKINGS.lineWidth;
+      // Lane dividers, scaled and parallaxed per lane like the cars they separate.
       ctx.lineCap = "butt";
-      for (let lx = -offset; lx < width + ROAD_MARKINGS.dashLength; lx += spacing) {
+      for (let i = 1; i < LANE_COUNT; i++) {
+        const a = LANE_BASELINES[i - 1]!;
+        const b = LANE_BASELINES[i]!;
+        const laneS = (LANE_SCALE[i - 1]! + LANE_SCALE[i]!) / 2;
+        const markY = roadY + roadH * ((a + b) / 2);
+        const dashLen = ROAD_MARKINGS.dashLength * laneS;
+        const spacing = dashLen + ROAD_MARKINGS.dashGap * laneS;
+        const offset =
+          ((scrollPx * ROAD_MARKINGS.scrollRate * laneS) % spacing + spacing) %
+          spacing;
+        ctx.strokeStyle = `rgba(255,255,255,${0.62 + (laneS - 1) * 2.4})`;
+        ctx.lineWidth = ROAD_MARKINGS.lineWidth * laneS;
+        for (let lx = -offset; lx < width + dashLen; lx += spacing) {
+          ctx.beginPath();
+          ctx.moveTo(lx, markY);
+          ctx.lineTo(lx + dashLen, markY);
+          ctx.stroke();
+        }
+      }
+
+      // Obstacles (far lanes first so nearer ones draw on top).
+      const sortedObs = [...obstacles].sort((a, b) => a.lane - b.lane);
+      for (const o of sortedObs) {
+        const screenX = carX + (o.distanceM - distance) * PX_PER_M;
+        if (screenX < -120 || screenX > width + 120) continue;
+        const scale = laneScale(o.lane);
+        const bas = laneBaseline(o.lane);
+        const oh = roadH * CAR_HEIGHT_RATIO * scale * (o.kind === "car" ? 0.92 : 0.55);
+        const oy = roadY + roadH * bas - oh;
+        if (o.kind === "cone") {
+          const ow = oh * 0.7;
+          ctx.fillStyle = o.hit ? "rgba(255,120,40,0.45)" : "#ff7a2e";
+          ctx.beginPath();
+          ctx.moveTo(screenX, oy + oh);
+          ctx.lineTo(screenX + ow / 2, oy);
+          ctx.lineTo(screenX + ow, oy + oh);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(screenX + ow * 0.2, oy + oh * 0.45, ow * 0.6, oh * 0.12);
+        } else if (o.kind === "oil") {
+          const ow = oh * 1.6;
+          ctx.fillStyle = o.hit ? "rgba(20,20,30,0.35)" : "rgba(18,18,28,0.82)";
+          ctx.beginPath();
+          ctx.ellipse(screenX + ow / 2, oy + oh * 0.75, ow / 2, oh * 0.28, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "rgba(120,180,255,0.25)";
+          ctx.beginPath();
+          ctx.ellipse(screenX + ow * 0.4, oy + oh * 0.68, ow * 0.18, oh * 0.1, -0.4, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (trafficReady) {
+          const ow = (trafficImg.naturalWidth / trafficImg.naturalHeight) * oh;
+          ctx.globalAlpha = o.hit ? 0.45 : 1;
+          ctx.drawImage(trafficImg, screenX, oy, ow, oh);
+          ctx.globalAlpha = 1;
+        } else {
+          const ow = oh * 1.8;
+          ctx.fillStyle = o.hit ? "rgba(80,80,100,0.4)" : "#4a5568";
+          ctx.fillRect(screenX, oy, ow, oh);
+        }
+      }
+
+      // Warning sign per lane for the nearest hazard still off the right edge.
+      const warnByLane = new Map<number, RoadObstacle>();
+      for (const o of obstacles) {
+        const sx = carX + (o.distanceM - distance) * PX_PER_M;
+        if (sx <= width + 20 || sx > width + WARN_LEAD_PX) continue;
+        const prev = warnByLane.get(o.lane);
+        if (!prev || o.distanceM < prev.distanceM) warnByLane.set(o.lane, o);
+      }
+      for (const [lane, o] of warnByLane) {
+        const sx = carX + (o.distanceM - distance) * PX_PER_M;
+        const closeness = Math.min(1, Math.max(0, 1 - (sx - width) / WARN_LEAD_PX));
+        const laneS = laneScale(lane);
+        const size = roadH * 0.34 * laneS;
+        const cx = width - size * 0.85;
+        const cy = roadY + roadH * laneBaseline(lane) - size * 0.7;
+        const blink = 0.6 + 0.4 * Math.sin(time * (0.18 + closeness * 0.5));
+
+        ctx.save();
+        ctx.globalAlpha = (0.3 + closeness * 0.7) * blink;
         ctx.beginPath();
-        ctx.moveTo(lx, markY);
-        ctx.lineTo(lx + ROAD_MARKINGS.dashLength, markY);
+        ctx.moveTo(cx, cy - size / 2);
+        ctx.lineTo(cx + size / 2, cy + size / 2);
+        ctx.lineTo(cx - size / 2, cy + size / 2);
+        ctx.closePath();
+        ctx.fillStyle = o.kind === "oil" ? "#7ec8ff" : "#ffcc33";
+        ctx.fill();
+        ctx.lineJoin = "round";
+        ctx.lineWidth = Math.max(2, size * 0.09);
+        ctx.strokeStyle = "rgba(30,22,4,0.9)";
         ctx.stroke();
+        ctx.fillStyle = "rgba(30,22,4,0.95)";
+        ctx.font = `bold ${Math.max(9, Math.round(size * 0.46))}px Nunito, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("!", cx, cy + size * 0.16);
+        ctx.restore();
+        ctx.textAlign = "left";
+        ctx.textBaseline = "alphabetic";
       }
 
       drawSakuraOverhead(ctx, width, roadY, roadH, scrollPx, sakuraTop1, sakuraTop2);
@@ -1621,9 +1972,19 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       const carDrawX = carX + boost.x;
       const carDrawY = carY + boost.y;
 
+      // Ground shadow tracks the car's lane (and its horizontal lunge), not the pitch.
+      const shadowY = carY + carDrawH * (1 - CAR_BASE_INSET * 0.5) - 15;
       ctx.fillStyle = "rgba(0,0,0,0.3)";
       ctx.beginPath();
-      ctx.ellipse(carDrawX + carDrawW * 0.45, roadY + roadH * 0.38, carDrawW * 0.4, 10, 0, 0, Math.PI * 2);
+      ctx.ellipse(
+        carDrawX + carDrawW * 0.45 + 5,
+        shadowY,
+        carDrawW * 0.4 + 20,
+        Math.max(5, carDrawH * 0.13),
+        0,
+        0,
+        Math.PI * 2,
+      );
       ctx.fill();
 
       withCarPitch(ctx, carDrawX, carDrawY, carDrawW, carDrawH, boost.pitch, boost.pivot, () => {
@@ -1686,8 +2047,15 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         }
       }
 
-      ctx.fillStyle = palette.isDark ? "#080a10" : "#1e2026";
+      const dashGrad = ctx.createLinearGradient(0, dashY, 0, dashY + dashH);
+      dashGrad.addColorStop(0, palette.isDark ? "#151922" : "#252a33");
+      dashGrad.addColorStop(0.25, palette.isDark ? "#0c0f16" : "#181c23");
+      dashGrad.addColorStop(1, "#05070c");
+      ctx.fillStyle = dashGrad;
       ctx.fillRect(0, dashY, width, dashH);
+      // Chrome lip along the top of the dash.
+      ctx.fillStyle = "rgba(255,255,255,0.14)";
+      ctx.fillRect(0, dashY, width, 2);
       ctx.strokeStyle = p.hudBorder;
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -1699,8 +2067,9 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       const rpmCx = width * 0.28;
       const mphCx = width * 0.72;
       const gaugeCy = dashY + dashH * 0.42;
-      const face = palette.isDark ? "#1a1c24" : "#e8eaee";
-      const tick = palette.isDark ? "#ccc" : "#333";
+      // The dash is always dark, so gauge colours don't follow the app theme.
+      const face = "#12151d";
+      const tick = "#e6ebf5";
 
       drawGauge(
         ctx,
@@ -1738,44 +2107,94 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
 
       const gearX = width * 0.5;
       const gearTop = dashY + dashH * 0.18;
-      ctx.fillStyle = tick;
-      ctx.font = "bold 11px Nunito, sans-serif";
+      ctx.fillStyle = "rgba(230,235,245,0.7)";
+      ctx.font = "bold 10px Nunito, sans-serif";
       ctx.textAlign = "center";
       ctx.fillText("GEAR", gearX, gearTop);
       const bars = ["#4aa3ff", "#5cd0a8", "#ffb43d", "#ff7a59", "#ff5a5a", "#c084fc"];
       for (let i = 0; i < GEARS; i++) {
-        ctx.fillStyle = i < gear ? bars[i % bars.length] : "rgba(120,120,120,0.35)";
-        ctx.fillRect(gearX - 28 + i * 10, gearTop + 8, 8, 22);
+        const bx = gearX - 28 + i * 10;
+        const lit = i < gear;
+        ctx.save();
+        if (lit) {
+          ctx.shadowColor = bars[i % bars.length];
+          ctx.shadowBlur = 8;
+        }
+        ctx.fillStyle = lit ? bars[i % bars.length] : "rgba(140,150,170,0.22)";
+        roundRectPath(ctx, bx, gearTop + 8, 8, 22, 3);
+        ctx.fill();
+        ctx.restore();
       }
-      ctx.font = "bold 28px Nunito, sans-serif";
+      ctx.save();
+      ctx.font = "bold 30px Nunito, sans-serif";
       ctx.fillStyle = gear === 0 ? tick : bars[(gear - 1) % bars.length];
-      ctx.fillText(gear >= 1 ? String(gear) : "N", gearX, gearTop + 58);
+      ctx.shadowColor = gear === 0 ? "transparent" : bars[(gear - 1) % bars.length];
+      ctx.shadowBlur = 14;
+      ctx.textAlign = "center";
+      ctx.fillText(gear >= 1 ? String(gear) : "N", gearX, gearTop + 60);
+      ctx.restore();
       ctx.font = "bold 10px Nunito, sans-serif";
-      ctx.fillStyle = "rgba(150,150,150,0.8)";
-      ctx.fillText("R", gearX - 20, gearTop + 58);
+      ctx.fillStyle = "rgba(190,198,214,0.7)";
+      ctx.fillText("R", gearX - 20, gearTop + 60);
       ctx.textAlign = "left";
 
-      ctx.fillStyle = tick;
-      ctx.font = "bold 11px Nunito, sans-serif";
-      ctx.fillText(`${Math.round(distance)}m`, 14, dashY + 16);
-      if (sessionIsDrag) {
-        ctx.fillText(`${sessionRaceDistanceM}m`, width - 58, dashY + 16);
-      } else {
-        ctx.textAlign = "right";
-        ctx.fillText("Free ride", width - 14, dashY + 16);
+      // Trip readouts on small chips so they stay legible over the dash.
+      const chip = (text: string, cxPos: number, align: CanvasTextAlign) => {
+        ctx.font = "bold 11px Nunito, sans-serif";
+        const tw = ctx.measureText(text).width;
+        const bx = align === "right" ? cxPos - tw - 10 : cxPos - 4;
+        roundRectPath(ctx, bx, dashY + 5, tw + 14, 18, 9);
+        ctx.fillStyle = "rgba(255,255,255,0.08)";
+        ctx.fill();
+        ctx.fillStyle = "#ffffff";
         ctx.textAlign = "left";
-      }
+        ctx.fillText(text, bx + 7, dashY + 18);
+      };
+      chip(`${Math.round(distance)} m`, 14, "left");
+      chip(
+        sessionIsDrag ? `${sessionRaceDistanceM} m` : "Free ride",
+        width - 14,
+        "right",
+      );
+      ctx.textAlign = "left";
 
-      drawCheckeredPedal(ctx, clutchBtn.x, clutchBtn.y, clutchBtn.w, clutchBtn.h, clutchDown);
-      drawCheckeredPedal(ctx, brakeBtn.x, brakeBtn.y, brakeBtn.w, brakeBtn.h, brakeDown);
-      drawCheckeredPedal(ctx, gasBtn.x, gasBtn.y, gasBtn.w, gasBtn.h, gasDown || gasRef.current);
+      drawPedal(ctx, clutchBtn.x, clutchBtn.y, clutchBtn.w, clutchBtn.h, clutchDown, "#4aa3ff");
+      drawPedal(ctx, brakeBtn.x, brakeBtn.y, brakeBtn.w, brakeBtn.h, brakeDown, "#ff5a5a");
+      drawPedal(
+        ctx,
+        gasBtn.x,
+        gasBtn.y,
+        gasBtn.w,
+        gasBtn.h,
+        gasDown || gasRef.current,
+        "#5cd0a8",
+      );
+      const laneSwitchable = laneAnimT >= 1 && oilLockMs <= 0;
+      drawPedal(ctx, laneUpBtn.x, laneUpBtn.y, laneUpBtn.w, laneUpBtn.h, false, "#c084fc");
+      drawPedal(
+        ctx,
+        laneDownBtn.x,
+        laneDownBtn.y,
+        laneDownBtn.w,
+        laneDownBtn.h,
+        false,
+        "#c084fc",
+      );
 
-      ctx.fillStyle = tick;
-      ctx.font = "9px Nunito, sans-serif";
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 9px Nunito, sans-serif";
       ctx.textAlign = "center";
       ctx.fillText("CLUTCH", clutchBtn.x + clutchBtn.w / 2, height - 6);
       ctx.fillText("BRAKE", brakeBtn.x + brakeBtn.w / 2, height - 6);
       ctx.fillText("GAS", gasBtn.x + gasBtn.w / 2, height - 6);
+      ctx.globalAlpha = laneSwitchable ? 1 : 0.4;
+      ctx.font = "bold 15px Nunito, sans-serif";
+      ctx.fillText("▲", laneUpBtn.x + laneUpBtn.w / 2, laneUpBtn.y + laneUpBtn.h / 2 + 6);
+      ctx.fillText("▼", laneDownBtn.x + laneDownBtn.w / 2, laneDownBtn.y + laneDownBtn.h / 2 + 6);
+      ctx.globalAlpha = 1;
+      ctx.font = "bold 8px Nunito, sans-serif";
+      ctx.fillStyle = "rgba(255,255,255,0.75)";
+      ctx.fillText("LANE", (laneUpBtn.x + laneDownBtn.x + laneDownBtn.w) / 2, laneUpBtn.y - 6);
       ctx.textAlign = "left";
 
       if (shiftFlash > 0) {

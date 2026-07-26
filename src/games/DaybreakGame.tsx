@@ -14,6 +14,7 @@ import {
   COLUMNS_PER_BEAT,
   generateLevel,
   scoreDaybreak,
+  type PowerupKind,
 } from "./daybreak/levelGen";
 import { ELEVATION_SPAN } from "./daybreak/musicTheory";
 import { SHOW_NEAR_BACKGROUND } from "./daybreak/config";
@@ -75,6 +76,30 @@ interface Afterimage {
   life: number;
   maxLife: number;
 }
+
+/** Energy drawn inward while a DropBoost charge is held on the ground. */
+interface EnergyMote {
+  angle: number;
+  /** Distance from the player in rows; shrinks to 0. */
+  radius: number;
+  startRadius: number;
+  spin: number;
+  life: number;
+  maxLife: number;
+  color: string;
+}
+
+/** Faint glass-crack burst left under a double jump. */
+interface CrackFx {
+  x: number;
+  y: number;
+  life: number;
+  /** Fixed spoke angles/lengths so the crack doesn't shimmer per frame. */
+  spokes: { angle: number; len: number; kink: number }[];
+}
+
+/** Double-jump crack fade duration (seconds). */
+const CRACK_LIFE_S = 0.35;
 
 /** Smooth 0..1 ease for elevation color blends. */
 function smooth01(t: number): number {
@@ -194,7 +219,21 @@ export function DaybreakGame({
     let particles: Particle[] = [];
     let afterimages: Afterimage[] = [];
     let afterimageAcc = 0;
+    let energyMotes: EnergyMote[] = [];
+    let energyAcc = 0;
+    let cracks: CrackFx[] = [];
     let clearedObstacles = new Set<number>();
+    let collectedPowerups = new Set<number>();
+    let activePowerup: PowerupKind | null = null;
+    let powerupEndCol = 0;
+    let powerupFlashUntil = 0;
+    let powerupFlashName = "";
+    let powerupsCollected = 0;
+    let doubleJumpReady = false;
+    let dropHeldInAir = false;
+    let dropCharging = false;
+    let dropChargeStart = 0;
+    let dropBoostArmed = false;
 
     // Columns that count as "obstacles" for clear chords (built once per level).
     const obstacleCols = new Set<number>();
@@ -238,6 +277,23 @@ export function DaybreakGame({
     const padAt = (c: number): boolean => {
       if (c < 0 || c >= level.totalColumns) return false;
       return level.columns[c].pad;
+    };
+    const powerupAt = (
+      c: number,
+    ): { kind: PowerupKind; elev: number } | null => {
+      if (c < 0 || c >= level.totalColumns) return null;
+      if (collectedPowerups.has(c)) return null;
+      const col = level.columns[c];
+      if (!col.powerup || col.powerupElev === null) return null;
+      return { kind: col.powerup, elev: col.powerupElev };
+    };
+    const clearPowerupState = () => {
+      activePowerup = null;
+      powerupEndCol = 0;
+      doubleJumpReady = false;
+      dropHeldInAir = false;
+      dropCharging = false;
+      dropBoostArmed = false;
     };
     const xOf = (t: number) => Math.max(0, t) * colsPerSec;
     const clampElev = (r: number) =>
@@ -312,6 +368,58 @@ export function DaybreakGame({
       afterimages = next;
     };
 
+    /** Motes spiral inward toward the player while a DropBoost charge builds. */
+    const updateEnergyMotes = (dt: number) => {
+      const next: EnergyMote[] = [];
+      for (const m of energyMotes) {
+        m.life -= dt;
+        if (m.life <= 0) continue;
+        const u = 1 - m.life / m.maxLife;
+        m.radius = m.startRadius * (1 - u) ** 1.6;
+        m.angle += m.spin * dt;
+        next.push(m);
+      }
+      energyMotes = next;
+    };
+
+    const spawnEnergyMote = () => {
+      const pal = paletteRef.current.daybreak;
+      const colors = [pal.accent, pal.particleJump, "#f0c14a", "#ffffff"];
+      const maxLife = 0.34 + Math.random() * 0.22;
+      const startRadius = 2.6 + Math.random() * 2.2;
+      energyMotes.push({
+        angle: Math.random() * Math.PI * 2,
+        radius: startRadius,
+        startRadius,
+        spin: (Math.random() < 0.5 ? -1 : 1) * (1.6 + Math.random() * 2.4),
+        life: maxLife,
+        maxLife,
+        color: colors[Math.floor(Math.random() * colors.length)],
+      });
+    };
+
+    const spawnCrack = (x: number, y: number) => {
+      const spokes: CrackFx["spokes"] = [];
+      const count = 7 + Math.floor(Math.random() * 4);
+      for (let i = 0; i < count; i++) {
+        spokes.push({
+          angle: (i / count) * Math.PI * 2 + Math.random() * 0.35,
+          len: 0.5 + Math.random() * 0.75,
+          kink: (Math.random() - 0.5) * 0.7,
+        });
+      }
+      cracks.push({ x, y, life: CRACK_LIFE_S, spokes });
+    };
+
+    const updateCracks = (dt: number) => {
+      const next: CrackFx[] = [];
+      for (const c of cracks) {
+        c.life -= dt;
+        if (c.life > 0) next.push(c);
+      }
+      cracks = next;
+    };
+
     const beginRun = () => {
       simTime = 0;
       py = 0;
@@ -322,10 +430,18 @@ export function DaybreakGame({
       particles = [];
       afterimages = [];
       afterimageAcc = 0;
+      energyMotes = [];
+      energyAcc = 0;
+      cracks = [];
       syncJumps = 0;
       rainbowUntil = 0;
       rainbowStartedAt = 0;
       clearedObstacles = new Set();
+      collectedPowerups = new Set();
+      clearPowerupState();
+      powerupFlashUntil = 0;
+      powerupFlashName = "";
+      powerupsCollected = 0;
       jumpBufferedAt = -1;
       runStart = audio.startTrack();
     };
@@ -362,6 +478,7 @@ export function DaybreakGame({
           { label: "BPM", value: `${level.bpm}` },
           { label: "Progress", value: `${Math.round(progress * 100)}%` },
           { label: "On-beat jumps", value: `${syncJumps}` },
+          { label: "Power-ups", value: `${powerupsCollected}` },
           { label: "Attempts", value: `${attempts}` },
         ],
       });
@@ -383,6 +500,16 @@ export function DaybreakGame({
 
     const doJump = () => {
       const fromElev = clampElev(py);
+      const useDouble =
+        !grounded && activePowerup === "doubleJump" && doubleJumpReady;
+
+      if (!grounded && !useDouble) return;
+
+      if (useDouble) {
+        doubleJumpReady = false;
+        spawnCrack(xOf(simTime) + 0.5, py);
+      }
+
       vy = jumpVel;
       grounded = false;
       jumpBufferedAt = -1;
@@ -393,11 +520,43 @@ export function DaybreakGame({
       spawnBurst(
         xOf(simTime) + 0.5,
         py,
-        7,
+        useDouble ? 10 : 7,
         [paletteRef.current.daybreak.particleJump],
-        3.5,
+        useDouble ? 4.5 : 3.5,
         false,
       );
+    };
+
+    /**
+     * DropBoost: charged by holding through a landing, launched on release at
+     * jump-pad strength.
+     */
+    const fireDropBoost = () => {
+      if (phase !== "playing" || !dropBoostArmed) return;
+      const fromElev = clampElev(py);
+      vy = padJumpVel;
+      grounded = false;
+      jumpBufferedAt = -1;
+      dropBoostArmed = false;
+      dropCharging = false;
+      dropHeldInAir = false;
+      energyMotes = [];
+      rainbowStartedAt = performance.now();
+      rainbowUntil = rainbowStartedAt + RAINBOW_FLASH_S * 1000;
+      audio.padBoost(fromElev, 1.6);
+      spawnBurst(
+        xOf(simTime) + 0.5,
+        py,
+        14,
+        [
+          paletteRef.current.daybreak.accent,
+          paletteRef.current.daybreak.particleJump,
+          "#f0c14a",
+        ],
+        6.5,
+        true,
+      );
+      if (isJumpOnBeat()) syncJumps += 1;
     };
 
     const onLand = (row: number) => {
@@ -411,6 +570,13 @@ export function DaybreakGame({
         2.5,
         true,
       );
+      if (activePowerup === "doubleJump") doubleJumpReady = true;
+      if (activePowerup === "dropBoost" && dropHeldInAir && holdJump) {
+        dropCharging = true;
+        dropChargeStart = performance.now();
+        dropBoostArmed = true;
+      }
+      dropHeldInAir = false;
     };
 
     const triggerPad = (row: number) => {
@@ -507,6 +673,18 @@ export function DaybreakGame({
       const c0 = Math.floor(left);
       const c1 = Math.floor(right);
       const prevY = py;
+
+      if (activePowerup && xNew >= powerupEndCol) {
+        clearPowerupState();
+      }
+
+      if (
+        !grounded &&
+        holdJump &&
+        activePowerup === "dropBoost"
+      ) {
+        dropHeldInAir = true;
+      }
 
       // Underside of thin platforms: rising into them kills.
       if (vy > 0) {
@@ -611,6 +789,41 @@ export function DaybreakGame({
         return;
       }
 
+      // Midair power-up pickup.
+      if (phase === "playing") {
+        for (let c = c0; c <= c1; c++) {
+          const pu = powerupAt(c);
+          if (!pu) continue;
+          if (pu.elev >= py - 0.5 && pu.elev <= py + PLAYER_HEIGHT + 0.5) {
+            collectedPowerups.add(c);
+            activePowerup = pu.kind;
+            powerupEndCol = xNew + 0.4 * level.totalColumns;
+            powerupFlashUntil = performance.now() + 1200;
+            powerupFlashName =
+              pu.kind === "dropBoost" ? "DROP BOOST" : "DOUBLE JUMP";
+            powerupsCollected += 1;
+            doubleJumpReady = pu.kind === "doubleJump";
+            dropHeldInAir = false;
+            dropCharging = false;
+            dropBoostArmed = false;
+            audio.clearChord(clampElev(pu.elev));
+            spawnBurst(
+              c + 0.5,
+              pu.elev,
+              14,
+              [
+                pu.kind === "dropBoost"
+                  ? "#f0c14a"
+                  : paletteRef.current.daybreak.accent,
+                paletteRef.current.daybreak.particleJump,
+              ],
+              5,
+              true,
+            );
+          }
+        }
+      }
+
       if (!grounded) {
         angle += (Math.PI / jumpDur) * dt;
       }
@@ -626,11 +839,21 @@ export function DaybreakGame({
         }
       }
 
-      if (grounded && phase === "playing") {
+      if (phase === "playing") {
         const buffered =
           jumpBufferedAt >= 0 &&
           performance.now() - jumpBufferedAt < JUMP_BUFFER_MS;
-        if (buffered || holdJump) doJump();
+        // A held DropBoost charge swallows the jump — it launches on release.
+        if (!dropCharging && grounded && (buffered || holdJump)) {
+          doJump();
+        } else if (
+          !grounded &&
+          buffered &&
+          activePowerup === "doubleJump" &&
+          doubleJumpReady
+        ) {
+          doJump();
+        }
       }
 
       // Chord when the player clears past an obstacle column.
@@ -657,17 +880,26 @@ export function DaybreakGame({
         if (!e.repeat && !pausedRef.current) queueJump();
       }
     };
+    const releaseHold = () => {
+      holdJump = false;
+      dropHeldInAir = false;
+      if (dropCharging) {
+        if (dropBoostArmed && grounded) {
+          fireDropBoost();
+        } else {
+          dropCharging = false;
+          dropBoostArmed = false;
+        }
+      }
+    };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") {
-        holdJump = false;
+        releaseHold();
       }
     };
     const onPointerDown = (e: PointerEvent) => {
       e.preventDefault();
       if (!pausedRef.current) queueJump();
-    };
-    const releaseHold = () => {
-      holdJump = false;
     };
 
     window.addEventListener("keydown", onKeyDown);
@@ -932,6 +1164,28 @@ export function DaybreakGame({
             drawSpike(gx, gy - thick, colW, rowH, cols.spike, cols.spikeEdge);
           }
         }
+
+        const pu = powerupAt(c);
+        if (pu) {
+          const gx = screenX(c);
+          const gy = rowToY(pu.elev);
+          const pulse = 0.85 + 0.15 * Math.sin(performance.now() / 180);
+          const r = Math.max(6, rowH * 0.32) * pulse;
+          const cx = gx + colW / 2;
+          const cy = gy - rowH * 0.2;
+          const color = pu.kind === "dropBoost" ? "#f0c14a" : pal.accent;
+          g.save();
+          g.translate(cx, cy);
+          g.rotate(Math.PI / 4);
+          g.fillStyle = color;
+          g.globalAlpha = 0.95;
+          g.fillRect(-r, -r, r * 2, r * 2);
+          g.fillStyle = "#fff";
+          g.globalAlpha = 0.45;
+          g.fillRect(-r * 0.45, -r * 0.45, r * 0.9, r * 0.9);
+          g.restore();
+          g.globalAlpha = 1;
+        }
       }
 
       if (level.totalColumns - xView < W / colW) {
@@ -942,6 +1196,48 @@ export function DaybreakGame({
         g.fillRect(fx + 4, 0, 12, H);
         g.globalAlpha = 1;
       }
+
+      // Faint glass cracks under a double jump, fading over CRACK_LIFE_S.
+      for (const cr of cracks) {
+        const u = Math.max(0, cr.life / CRACK_LIFE_S);
+        const ccx = screenX(cr.x);
+        const ccy = rowToY(cr.y) + rowH * 0.14;
+        const spread = 1 - u * 0.18;
+        g.save();
+        g.strokeStyle = "#ffffff";
+        g.lineJoin = "round";
+        g.globalAlpha = 0.4 * u;
+        g.lineWidth = Math.max(1, rowH * 0.022);
+        g.beginPath();
+        for (const s of cr.spokes) {
+          const len = s.len * rowH * 0.5 * spread;
+          g.moveTo(ccx, ccy);
+          g.lineTo(
+            ccx + Math.cos(s.angle) * len * 0.55,
+            ccy + Math.sin(s.angle) * len * 0.55,
+          );
+          g.lineTo(
+            ccx + Math.cos(s.angle + s.kink * 0.4) * len,
+            ccy + Math.sin(s.angle + s.kink * 0.4) * len,
+          );
+        }
+        g.stroke();
+        // Web strands between neighbouring spokes.
+        g.globalAlpha = 0.2 * u;
+        g.lineWidth = Math.max(1, rowH * 0.014);
+        g.beginPath();
+        for (let i = 0; i < cr.spokes.length; i++) {
+          const a = cr.spokes[i];
+          const b = cr.spokes[(i + 1) % cr.spokes.length];
+          const ra = a.len * rowH * 0.5 * spread * 0.55;
+          const rb = b.len * rowH * 0.5 * spread * 0.55;
+          g.moveTo(ccx + Math.cos(a.angle) * ra, ccy + Math.sin(a.angle) * ra);
+          g.lineTo(ccx + Math.cos(b.angle) * rb, ccy + Math.sin(b.angle) * rb);
+        }
+        g.stroke();
+        g.restore();
+      }
+      g.globalAlpha = 1;
 
       const size = rowH * 0.94;
 
@@ -954,6 +1250,15 @@ export function DaybreakGame({
             (now - rainbowStartedAt) / (rainbowUntil - rainbowStartedAt);
           // Smooth fade in and out (sine hump).
           rainbowIntensity = Math.sin(Math.min(1, Math.max(0, u)) * Math.PI);
+        }
+        const chargeAmt = dropCharging
+          ? Math.min(1, (now - dropChargeStart) / 900)
+          : 0;
+        if (dropCharging && dropBoostArmed) {
+          rainbowIntensity = Math.max(
+            rainbowIntensity,
+            0.35 + chargeAmt * 0.65,
+          );
         }
         for (const a of afterimages) {
           const alpha = Math.max(0, (a.life / a.maxLife) * 0.28);
@@ -972,7 +1277,51 @@ export function DaybreakGame({
 
         const cx = playerScreenX + colW / 2;
         const cy = rowToY(py) - rowH / 2;
-        drawPlayerSprite(cx, cy, size, angle, 1, pal.accent, 0);
+        drawPlayerSprite(
+          cx,
+          cy,
+          size,
+          angle,
+          1,
+          pal.accent,
+          dropCharging ? 0.3 + chargeAmt * 0.7 : 0,
+        );
+
+        // DropBoost charge: energy spiralling inward into the player.
+        if (energyMotes.length > 0) {
+          for (const m of energyMotes) {
+            const u = 1 - m.life / m.maxLife;
+            const r = m.radius * rowH * 0.55;
+            const mx = cx + Math.cos(m.angle) * r;
+            const my = cy + Math.sin(m.angle) * r * 0.85;
+            const tx = cx + Math.cos(m.angle + 0.14) * r * 1.3;
+            const ty = cy + Math.sin(m.angle + 0.14) * r * 1.3 * 0.85;
+            const s = Math.max(1.5, rowH * 0.05 * (0.5 + u));
+            g.globalAlpha = Math.min(1, 0.2 + u * 0.8);
+            g.strokeStyle = m.color;
+            g.lineWidth = Math.max(1, s * 0.5);
+            g.beginPath();
+            g.moveTo(mx, my);
+            g.lineTo(tx, ty);
+            g.stroke();
+            g.fillStyle = m.color;
+            g.fillRect(mx - s / 2, my - s / 2, s, s);
+          }
+          g.globalAlpha = 1;
+        }
+
+        // Pulsing halo that tightens as the charge builds.
+        if (dropCharging) {
+          const pulse = 0.5 + 0.5 * Math.sin(now / 90);
+          const haloR = rowH * (1.15 - chargeAmt * 0.35) + pulse * rowH * 0.08;
+          g.globalAlpha = 0.18 + chargeAmt * 0.22;
+          g.strokeStyle = "#f0c14a";
+          g.lineWidth = Math.max(1.5, rowH * 0.035);
+          g.beginPath();
+          g.arc(cx, cy, haloR, 0, Math.PI * 2);
+          g.stroke();
+          g.globalAlpha = 1;
+        }
       }
 
       for (const p of particles) {
@@ -1034,6 +1383,48 @@ export function DaybreakGame({
       g.fillRect(barX, 14, barW, 8);
       g.fillStyle = pal.accent;
       g.fillRect(barX, 14, barW * progress, 8);
+
+      if (activePowerup && powerupEndCol > xView) {
+        const remain = Math.max(
+          0,
+          Math.min(1, (powerupEndCol - xView) / (0.4 * level.totalColumns)),
+        );
+        const gaugeW = Math.min(90, W * 0.22);
+        const gaugeX = (W - gaugeW) / 2;
+        const tint =
+          activePowerup === "dropBoost" ? "#f0c14a" : pal.accent;
+        g.fillStyle = pal.progressTrack;
+        g.fillRect(gaugeX, 28, gaugeW, 5);
+        g.fillStyle = tint;
+        g.fillRect(gaugeX, 28, gaugeW * remain, 5);
+        g.font = "800 9px Nunito, sans-serif";
+        g.textAlign = "center";
+        g.fillStyle = pal.hudText;
+        g.fillText(
+          activePowerup === "dropBoost" ? "DROP BOOST" : "DOUBLE JUMP",
+          W / 2,
+          36,
+        );
+        g.textAlign = "left";
+      }
+
+      const flashNow = performance.now();
+      if (flashNow < powerupFlashUntil && powerupFlashName) {
+        const u = 1 - (powerupFlashUntil - flashNow) / 1200;
+        const scale = 0.85 + Math.min(1, u * 2) * 0.35;
+        const alpha = u < 0.2 ? u / 0.2 : Math.max(0, 1 - (u - 0.2) / 0.8);
+        g.save();
+        g.translate(W / 2, H * 0.32);
+        g.scale(scale, scale);
+        g.globalAlpha = alpha;
+        g.font = "800 28px 'Baloo 2', Nunito, sans-serif";
+        g.textAlign = "center";
+        g.textBaseline = "middle";
+        g.fillStyle = "#fff";
+        g.fillText(powerupFlashName, 0, 0);
+        g.restore();
+        g.globalAlpha = 1;
+      }
 
       g.font = "800 12px Nunito, sans-serif";
       g.textBaseline = "top";
@@ -1122,6 +1513,18 @@ export function DaybreakGame({
         }
         updateParticles(frameDt);
         updateAfterimages(frameDt);
+        updateEnergyMotes(frameDt);
+        updateCracks(frameDt);
+
+        if (dropCharging && phase === "playing") {
+          energyAcc += frameDt;
+          while (energyAcc >= 0.028) {
+            energyAcc -= 0.028;
+            spawnEnergyMote();
+          }
+        } else {
+          energyAcc = 0;
+        }
 
         const targetCam = Math.min(5, Math.max(-5, py * 0.85));
         camRow += (targetCam - camRow) * Math.min(1, frameDt * 5);

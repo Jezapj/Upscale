@@ -26,6 +26,14 @@ export interface SampleClip extends SoundTiming {
 export const DISSIADA_SOUND = {
   note: { volume: 0.48, startTime: 0, endTime: 0.16, duration: 0.2 },
   noteMiss: { volume: 0.28, startTime: 0, endTime: 0.09, duration: 0.11 },
+  hold: {
+    volume: 0.32,
+    startTime: 0,
+    endTime: 8,
+    duration: 8,
+    fadeIn: 0.04,
+    fadeOut: 0.12,
+  },
   /** Harmonic layer level relative to harmonic.volume */
   harmonicVolume: 0.62,
   /** Longer tail for combo harmonics */

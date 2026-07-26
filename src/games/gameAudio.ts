@@ -316,6 +316,65 @@ export function playDissiadaNote(
   }
 }
 
+const dissiadaHoldVoices = new Map<
+  number,
+  { osc: OscillatorNode; gain: GainNode; filter: BiquadFilterNode }
+>();
+
+export function startDissiadaHold(lane: number) {
+  const audioCtx = ctx();
+  if (!audioCtx) return;
+  stopDissiadaHold(lane);
+  const hz = DISSIADA_NOTE_HZ[Math.max(0, Math.min(3, lane))] ?? 261.63;
+  const config = DISSIADA_SOUND.hold;
+  const t0 = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const filter = audioCtx.createBiquadFilter();
+  const gain = audioCtx.createGain();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(hz, t0);
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(2800, t0);
+  gain.gain.setValueAtTime(0, t0);
+  gain.gain.linearRampToValueAtTime(config.volume, t0 + (config.fadeIn ?? 0.04));
+  osc.connect(filter);
+  filter.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(t0);
+  dissiadaHoldVoices.set(lane, { osc, gain, filter });
+}
+
+export function stopDissiadaHold(lane: number) {
+  const voice = dissiadaHoldVoices.get(lane);
+  if (!voice) return;
+  dissiadaHoldVoices.delete(lane);
+  const audioCtx = ctx();
+  if (!audioCtx) {
+    try {
+      voice.osc.stop();
+    } catch {
+      /* already stopped */
+    }
+    return;
+  }
+  const now = audioCtx.currentTime;
+  const fade = DISSIADA_SOUND.hold.fadeOut ?? 0.12;
+  try {
+    voice.gain.gain.cancelScheduledValues(now);
+    voice.gain.gain.setValueAtTime(voice.gain.gain.value, now);
+    voice.gain.gain.linearRampToValueAtTime(0, now + fade);
+    voice.osc.stop(now + fade + 0.05);
+  } catch {
+    /* already stopped */
+  }
+}
+
+export function stopAllDissiadaHolds() {
+  for (const lane of [...dissiadaHoldVoices.keys()]) {
+    stopDissiadaHold(lane);
+  }
+}
+
 function scheduleTipTopFlapHarmonic(
   audioCtx: AudioContext,
   flapT0: number,

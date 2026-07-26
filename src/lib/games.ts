@@ -28,7 +28,7 @@ export const GAMES: GameMeta[] = [
     name: "Octane",
     tagline: "Drag race or free ride - rev to redline",
     color: "#ff7a59",
-    controls: "Hold gas pedal (shift) · Tap clutch pedal (L-Shift) at redline to shift",
+    controls: "Space gas · W/S or ▲▼ change lane · L-Shift / clutch to shift",
   },
   {
     id: "dissiada",

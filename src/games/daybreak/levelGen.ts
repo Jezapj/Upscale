@@ -38,6 +38,8 @@ export const PAD_MAX_RISE = 4;
 /** Columns after a pad where a pad-height landing is still reachable. */
 export const PAD_REACH_COLS = 7;
 
+export type PowerupKind = "dropBoost" | "doubleJump";
+
 export interface LevelColumn {
   /** Walkable ground elevation (-7..+7) or null for a pitfall. */
   floor: number | null;
@@ -52,6 +54,10 @@ export interface LevelColumn {
   platformSpike: boolean;
   /** Geometry Dash-style jump pad on the floor — auto-launches upward. */
   pad: boolean;
+  /** Midair collectible at this column, or null. */
+  powerup: PowerupKind | null;
+  /** Absolute elevation row of the collectible. */
+  powerupElev: number | null;
 }
 
 export interface DaybreakLevel {
@@ -135,7 +141,15 @@ export function generateLevel(seed: number): DaybreakLevel {
     pad = false,
   ) => {
     for (let i = 0; i < count; i++) {
-      columns.push({ floor: f, spike, platform, platformSpike, pad });
+      columns.push({
+        floor: f,
+        spike,
+        platform,
+        platformSpike,
+        pad,
+        powerup: null,
+        powerupElev: null,
+      });
     }
   };
   const flat = (count: number) => push(count, floor);
@@ -521,6 +535,7 @@ export function generateLevel(seed: number): DaybreakLevel {
   flat(COLUMNS_PER_MEASURE);
 
   sanitizeClimbs(columns);
+  placePowerups(columns, rng);
 
   return {
     seed,
@@ -530,6 +545,46 @@ export function generateLevel(seed: number): DaybreakLevel {
     columns,
     totalColumns: columns.length,
   };
+}
+
+/** Place 1–3 midair power-ups across the level (after terrain is final). */
+function placePowerups(columns: LevelColumn[], rng: Rng): void {
+  const n = 1 + Math.floor(rng() * 3);
+  const intro = COLUMNS_PER_MEASURE;
+  const outro = COLUMNS_PER_MEASURE;
+  const playable = columns.length - intro - outro;
+  if (playable < COLUMNS_PER_BEAT * 2) return;
+
+  const kinds: PowerupKind[] = ["dropBoost", "doubleJump"];
+  let lastKind: PowerupKind | null = null;
+
+  for (let i = 0; i < n; i++) {
+    const sliceStart = intro + Math.floor((playable * i) / n);
+    const sliceEnd = intro + Math.floor((playable * (i + 1)) / n);
+    const candidates: number[] = [];
+    for (let c = sliceStart + 2; c < sliceEnd - 2; c++) {
+      const col = columns[c];
+      if (col.floor === null || col.spike || col.platform !== null) continue;
+      if (col.powerup) continue;
+      const left = columns[c - 1];
+      const right = columns[c + 1];
+      if (!left || !right) continue;
+      if (left.floor === null || right.floor === null) continue;
+      if (left.spike || right.spike) continue;
+      candidates.push(c);
+    }
+    if (candidates.length === 0) continue;
+    const c = candidates[Math.floor(rng() * candidates.length)];
+    let kind: PowerupKind =
+      kinds[Math.floor(rng() * kinds.length)] ?? "dropBoost";
+    if (kind === lastKind && rng() < 0.7) {
+      kind = kind === "dropBoost" ? "doubleJump" : "dropBoost";
+    }
+    lastKind = kind;
+    const elev = clampFloor(columns[c].floor! + 1.4);
+    columns[c].powerup = kind;
+    columns[c].powerupElev = elev;
+  }
 }
 
 /**

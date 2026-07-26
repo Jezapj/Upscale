@@ -34,7 +34,7 @@ export interface DaybreakAudioHandle {
   /** Soft musical land chime pitched by the elevation landed on. */
   landNote(elevation: number): void;
   /** In-key ascending arpeggio when a jump pad launches (replaces jump SFX). */
-  padBoost(elevation: number): void;
+  padBoost(elevation: number, volumeScale?: number): void;
   /** In-key resolving arpeggio when landing from a pad launch (replaces land SFX). */
   padLand(elevation: number): void;
   /**
@@ -281,9 +281,9 @@ export function createDaybreakAudio(
     });
   };
 
-  const padBoost = (elevation: number) => {
+  const padBoost = (elevation: number, volumeScale = 1) => {
     // Ascending arpeggio around the pad elevation (root–3rd–5th–octave).
-    playArpeggio(elevation, [0, 2, 4, 7], 0.048, 0.12, "triangle");
+    playArpeggio(elevation, [0, 2, 4, 7], 0.048, 0.12 * volumeScale, "triangle");
   };
 
   const padLand = (elevation: number) => {

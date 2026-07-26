@@ -1,6 +1,12 @@
 import { useEffect, useRef } from "react";
 import { useGamePalette } from "./GamePaletteContext";
-import { playDissiadaNote, unlockGameAudio } from "./gameAudio";
+import {
+  playDissiadaNote,
+  startDissiadaHold,
+  stopAllDissiadaHolds,
+  stopDissiadaHold,
+  unlockGameAudio,
+} from "./gameAudio";
 import { DISSIADA_COMBO_VISUALS } from "./gameSoundConfigs";
 import { frameScale } from "./gameLoop";
 
@@ -24,14 +30,24 @@ function mulberry32(seed: number) {
   };
 }
 
+type TileKind = "tap" | "hold";
+
 interface Tile {
   lane: number;
   y: number;
   hit: boolean;
   missed: boolean;
+  kind: TileKind;
+  holdLen: number;
+  holding: boolean;
+  holdTicks: number;
+  holdDone: boolean;
+  holdAcc: number;
+  pairId: number | null;
 }
 
-type HitQuality = "perfect" | "good" | "ok" | "miss";
+type HitQuality = "perfect" | "good" | "ok" | "miss" | "released";
+type JudgedQuality = "perfect" | "good" | "ok";
 
 interface TapFx {
   lane: number;
@@ -40,12 +56,39 @@ interface TapFx {
   quality: HitQuality;
   edgeHighlight: boolean;
   fullFlash: boolean;
+  ty: number;
+  tvy: number;
+  label?: string;
 }
 
 const LANES = 4;
 const TILE_H = 52;
 const MISS_PADDING = 14;
 const LANE_KEYS = ["D", "F", "J", "K"];
+const TEXT_GRAVITY = 0.55;
+const HOLD_TICK_FRAMES = 12;
+
+function makeTile(
+  lane: number,
+  y: number,
+  kind: TileKind = "tap",
+  holdLen = 0,
+  pairId: number | null = null,
+): Tile {
+  return {
+    lane,
+    y,
+    hit: false,
+    missed: false,
+    kind,
+    holdLen,
+    holding: false,
+    holdTicks: 0,
+    holdDone: false,
+    holdAcc: 0,
+    pairId,
+  };
+}
 
 /** Piano tiles with hit zone guide, lane highlights, and tight timing. */
 export function DissiadaGame({ width, height, onGameOver, paused = false, seed }: Props) {
@@ -104,7 +147,8 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
       if (lastLayoutHitY > 0 && layout.hitY !== lastLayoutHitY) {
         const scale = layout.hitY / lastLayoutHitY;
         for (const t of tiles) {
-          if (!t.hit) t.y *= scale;
+          if (!t.hit && !t.holdDone) t.y *= scale;
+          if (t.kind === "hold") t.holdLen *= scale;
         }
       }
       lastLayoutHitY = layout.hitY;
@@ -118,68 +162,20 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
     let spawnTimer = 0;
     let speed = 6.5;
     let laneFlash = [0, 0, 0, 0];
+    let heldLanes = [false, false, false, false];
+    let nextPairId = 1;
     const tapFx: TapFx[] = [];
+    const pointerLane = new Map<number, number>();
     const rng = seedRef.current !== undefined ? mulberry32(seedRef.current) : Math.random;
 
-    const judgeTile = (
+    const pushFx = (
       lane: number,
-      hitY: number,
-      perfectH: number,
-      goodH: number,
-      okH: number,
-    ): HitQuality | null => {
-      let best: { tile: Tile; dist: number } | null = null;
-      for (const t of tiles) {
-        if (t.lane !== lane || t.hit || t.missed) continue;
-        const tileCenter = t.y + TILE_H / 2;
-        const dist = Math.abs(tileCenter - hitY);
-        if (!best || dist < best.dist) best = { tile: t, dist: dist };
-      }
-      if (!best || best.dist > okH) return null;
-      if (best.dist <= perfectH) return "perfect";
-      if (best.dist <= goodH) return "good";
-      return "ok";
-    };
-
-    const tapLane = (lane: number) => {
-      if (!alive || pausedRef.current) return;
-      const { hitY, perfectH, goodH, okH } = getLayout();
-      unlockGameAudio();
-      laneFlash[lane] = 14;
-
-      const quality = judgeTile(lane, hitY, perfectH, goodH, okH);
-      if (!quality) {
-        playDissiadaNote(lane, "miss");
-        tapFx.push({
-          lane,
-          t: 24,
-          maxT: 24,
-          quality: "miss",
-          edgeHighlight: false,
-          fullFlash: false,
-        });
-        combo = 0;
-        alive = false;
-        onGameOverRef.current(score);
-        return;
-      }
-
-      for (const t of tiles) {
-        if (t.lane !== lane || t.hit || t.missed) continue;
-        const tileCenter = t.y + TILE_H / 2;
-        const dist = Math.abs(tileCenter - hitY);
-        if (dist <= okH) {
-          t.hit = true;
-          break;
-        }
-      }
-
-      const noteCombo =
-        quality === "perfect" ? combo + 1 : quality === "ok" ? 0 : Math.max(1, combo);
-      const edgeHighlight = noteCombo >= DISSIADA_COMBO_VISUALS.edgeHighlight;
-      const fullFlash = noteCombo >= DISSIADA_COMBO_VISUALS.fullFlash;
-      const fxDuration = fullFlash ? 22 : edgeHighlight ? 26 : 20;
-
+      quality: HitQuality,
+      edgeHighlight: boolean,
+      fullFlash: boolean,
+      label?: string,
+    ) => {
+      const fxDuration = quality === "miss" ? 24 : fullFlash ? 32 : edgeHighlight ? 30 : 30;
       tapFx.push({
         lane,
         t: fxDuration,
@@ -187,36 +183,149 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
         quality,
         edgeHighlight,
         fullFlash,
+        ty: 0,
+        tvy: -4.2,
+        label,
       });
-      playDissiadaNote(lane, quality, noteCombo);
+    };
+
+    const laneHasActiveHold = (lane: number) =>
+      tiles.some(
+        (t) =>
+          t.lane === lane &&
+          t.kind === "hold" &&
+          !t.missed &&
+          !t.holdDone &&
+          (!t.hit || t.holding),
+      );
+
+    const judgeTile = (
+      lane: number,
+      hitY: number,
+      perfectH: number,
+      goodH: number,
+      okH: number,
+    ): JudgedQuality | null => {
+      let best: { tile: Tile; dist: number } | null = null;
+      for (const t of tiles) {
+        if (t.lane !== lane || t.hit || t.missed || t.holding || t.holdDone) continue;
+        const tileCenter = t.y + TILE_H / 2;
+        const dist = Math.abs(tileCenter - hitY);
+        if (!best || dist < best.dist) best = { tile: t, dist };
+      }
+      if (!best || best.dist > okH) return null;
+      if (best.dist <= perfectH) return "perfect";
+      if (best.dist <= goodH) return "good";
+      return "ok";
+    };
+
+    const awardHit = (quality: JudgedQuality) => {
       if (quality === "perfect") {
         score += 2;
         combo++;
-      } else if (quality === "good") {
-        score += 1;
-        combo = Math.max(1, combo);
-      } else {
+      } else if (quality === "good" || quality === "ok") {
         score += 1;
         combo = Math.max(1, combo);
       }
       speed = Math.min(12, 6.5 + score * 0.035);
     };
 
-    const onPointer = (e: PointerEvent) => {
+    const tapLane = (lane: number) => {
+      if (!alive || pausedRef.current) return;
+      if (heldLanes[lane]) return;
+      const { hitY, perfectH, goodH, okH } = getLayout();
+      unlockGameAudio();
+      laneFlash[lane] = 14;
+      heldLanes[lane] = true;
+
+      const quality = judgeTile(lane, hitY, perfectH, goodH, okH);
+      if (!quality) {
+        playDissiadaNote(lane, "miss");
+        pushFx(lane, "miss", false, false);
+        combo = 0;
+        alive = false;
+        stopAllDissiadaHolds();
+        onGameOverRef.current(score);
+        return;
+      }
+
+      let target: Tile | null = null;
+      for (const t of tiles) {
+        if (t.lane !== lane || t.hit || t.missed || t.holding || t.holdDone) continue;
+        const tileCenter = t.y + TILE_H / 2;
+        const dist = Math.abs(tileCenter - hitY);
+        if (dist <= okH) {
+          target = t;
+          break;
+        }
+      }
+      if (!target) return;
+
+      const noteCombo =
+        quality === "perfect" ? combo + 1 : quality === "ok" ? 0 : Math.max(1, combo);
+      const edgeHighlight = noteCombo >= DISSIADA_COMBO_VISUALS.edgeHighlight;
+      const fullFlash = noteCombo >= DISSIADA_COMBO_VISUALS.fullFlash;
+
+      if (target.kind === "hold") {
+        target.holding = true;
+        startDissiadaHold(lane);
+        pushFx(lane, quality, edgeHighlight, fullFlash);
+        playDissiadaNote(lane, quality, noteCombo);
+        awardHit(quality);
+        return;
+      }
+
+      target.hit = true;
+      pushFx(lane, quality, edgeHighlight, fullFlash);
+      playDissiadaNote(lane, quality, noteCombo);
+      awardHit(quality);
+    };
+
+    const releaseLane = (lane: number) => {
+      if (!heldLanes[lane]) return;
+      heldLanes[lane] = false;
+      for (const t of tiles) {
+        if (t.lane !== lane || !t.holding || t.holdDone) continue;
+        t.holding = false;
+        t.hit = true;
+        t.holdDone = true;
+        stopDissiadaHold(lane);
+        pushFx(lane, "released", false, false, "RELEASED");
+      }
+    };
+
+    const onPointerDown = (e: PointerEvent) => {
       const { laneW } = getLayout();
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
-      tapLane(Math.min(LANES - 1, Math.max(0, Math.floor(x / laneW))));
+      const lane = Math.min(LANES - 1, Math.max(0, Math.floor(x / laneW)));
+      pointerLane.set(e.pointerId, lane);
+      tapLane(lane);
     };
-    const onKey = (e: KeyboardEvent) => {
+    const onPointerUp = (e: PointerEvent) => {
+      const lane = pointerLane.get(e.pointerId);
+      pointerLane.delete(e.pointerId);
+      if (lane !== undefined) releaseLane(lane);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
       const map: Record<string, number> = { KeyD: 0, KeyF: 1, KeyJ: 2, KeyK: 3 };
       if (map[e.code] !== undefined) {
         e.preventDefault();
-        tapLane(map[e.code]);
+        if (!e.repeat) tapLane(map[e.code]);
       }
     };
-    canvas.addEventListener("pointerdown", onPointer);
-    window.addEventListener("keydown", onKey);
+    const onKeyUp = (e: KeyboardEvent) => {
+      const map: Record<string, number> = { KeyD: 0, KeyF: 1, KeyJ: 2, KeyK: 3 };
+      if (map[e.code] !== undefined) {
+        e.preventDefault();
+        releaseLane(map[e.code]);
+      }
+    };
+    canvas.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
 
     let raf = 0;
     let lastFrame = performance.now();
@@ -236,31 +345,87 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
         const spawnRate = Math.max(14, 32 - Math.floor(score / 8));
         if (spawnTimer >= spawnRate) {
           spawnTimer -= spawnRate;
-          const lane = Math.floor(rng() * LANES);
-          tiles.push({ lane, y: -TILE_H - 10, hit: false, missed: false });
+          const y = -TILE_H - 10;
+          const canSpecial = score > 6;
+          const roll = rng();
+          if (canSpecial && roll < 0.2) {
+            const a = Math.floor(rng() * LANES);
+            let b = Math.floor(rng() * LANES);
+            if (b === a) b = (a + 1 + Math.floor(rng() * (LANES - 1))) % LANES;
+            const pid = nextPairId++;
+            tiles.push(makeTile(a, y, "tap", 0, pid));
+            tiles.push(makeTile(b, y, "tap", 0, pid));
+          } else if (canSpecial && roll < 0.38) {
+            let lane = Math.floor(rng() * LANES);
+            let guard = 0;
+            while (laneHasActiveHold(lane) && guard++ < 8) {
+              lane = Math.floor(rng() * LANES);
+            }
+            if (!laneHasActiveHold(lane)) {
+              tiles.push(
+                makeTile(lane, y, "hold", TILE_H * (1.5 + rng() * 1.5)),
+              );
+            } else {
+              tiles.push(makeTile(Math.floor(rng() * LANES), y));
+            }
+          } else {
+            tiles.push(makeTile(Math.floor(rng() * LANES), y));
+          }
         }
 
         for (const t of tiles) {
-          if (!t.hit && !t.missed) t.y += speed * dt;
+          if (!t.hit && !t.missed && !t.holding) t.y += speed * dt;
+          if (t.holding && !t.holdDone) {
+            t.y += speed * dt;
+            t.holdAcc += dt;
+            while (t.holdAcc >= HOLD_TICK_FRAMES) {
+              t.holdAcc -= HOLD_TICK_FRAMES;
+              t.holdTicks += 1;
+              score += 1;
+              laneFlash[t.lane] = 10;
+            }
+            // Tail trails above the head; the hold ends once its top reaches the line.
+            const tailTop = t.y - t.holdLen;
+            if (tailTop >= hitY) {
+              t.holding = false;
+              t.hit = true;
+              t.holdDone = true;
+              stopDissiadaHold(t.lane);
+              heldLanes[t.lane] = false;
+              score += 2;
+              combo += 1;
+              pushFx(t.lane, "perfect", true, false, "HOLD!");
+            }
+          }
         }
 
         for (const t of tiles) {
-          if (!t.hit && !t.missed && t.y > hitY + okH + MISS_PADDING) {
+          if (t.hit || t.missed || t.holding || t.holdDone) continue;
+          if (t.y > hitY + okH + MISS_PADDING) {
             t.missed = true;
             combo = 0;
             alive = false;
+            stopAllDissiadaHolds();
             onGameOverRef.current(score);
             return;
           }
         }
-        tiles = tiles.filter((t) => t.y < height + 40 && !t.missed);
+        tiles = tiles.filter(
+          (t) =>
+            (t.y < height + 40 || t.holding) &&
+            !t.missed &&
+            !(t.hit && t.holdDone && t.y > height + 20),
+        );
 
         for (let i = 0; i < LANES; i++) {
           if (laneFlash[i] > 0) laneFlash[i] = Math.max(0, laneFlash[i] - dt);
         }
         for (let i = tapFx.length - 1; i >= 0; i--) {
-          tapFx[i].t -= dt;
-          if (tapFx[i].t <= 0) tapFx.splice(i, 1);
+          const fx = tapFx[i];
+          fx.t -= dt;
+          fx.tvy += TEXT_GRAVITY * dt;
+          fx.ty += fx.tvy * dt;
+          if (fx.t <= 0) tapFx.splice(i, 1);
         }
       }
 
@@ -272,10 +437,10 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
         const flash = laneFlash[i] / 14;
         ctx.fillStyle =
           flash > 0
-            ? `rgba(127, 127, 150, ${0.12 + flash * 0.2})`
+            ? `rgba(255,255,255,${0.06 * flash})`
             : i % 2 === 0
-              ? p.laneEven
-              : "transparent";
+              ? "rgba(255,255,255,0.03)"
+              : "rgba(0,0,0,0.04)";
         ctx.fillRect(x, 0, laneW, height);
 
         if (flash > 0) {
@@ -320,98 +485,137 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
         ctx.fillStyle = p.label;
         ctx.fillText(LANE_KEYS[i], i * laneW + laneW / 2, hitY + okH + 22);
       }
-      ctx.textAlign = "left";
+
+      // Double-note connectors
+      const pairCenters = new Map<number, { x: number; y: number }[]>();
+      for (const t of tiles) {
+        if (t.pairId === null || t.hit || t.missed) continue;
+        const list = pairCenters.get(t.pairId) ?? [];
+        list.push({
+          x: t.lane * laneW + laneW / 2,
+          y: t.y + TILE_H / 2,
+        });
+        pairCenters.set(t.pairId, list);
+      }
+      for (const pts of pairCenters.values()) {
+        if (pts.length < 2) continue;
+        ctx.strokeStyle = "rgba(192,132,252,0.65)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(pts[0]!.x, pts[0]!.y);
+        ctx.lineTo(pts[1]!.x, pts[1]!.y);
+        ctx.stroke();
+      }
 
       for (const t of tiles) {
-        if (t.hit || t.missed) continue;
+        if (t.missed || (t.hit && !t.holding && t.kind === "tap")) continue;
+        if (t.holdDone && !t.holding) continue;
         const x = t.lane * laneW + 8;
         const w = laneW - 16;
-        const dist = Math.abs(t.y + TILE_H / 2 - hitY);
-        const glow = dist < okH ? 1 - dist / okH : 0;
+        const color = laneColors[t.lane] ?? "#c084fc";
+        // A held head stays pinned on the line while its tail drains into it.
+        const headY = t.holding ? Math.min(t.y, hitY - TILE_H / 2) : t.y;
 
-        if (glow > 0) {
-          ctx.shadowColor = laneColors[t.lane];
-          ctx.shadowBlur = 12 * glow;
+        if (t.kind === "hold") {
+          const tailTop = t.y - t.holdLen;
+          const tailBottom = headY + 4;
+          const tailLen = tailBottom - tailTop;
+          if (tailLen > 2) {
+            const pulse = t.holding ? 0.55 + 0.25 * Math.sin(now / 90) : 0.4;
+            ctx.fillStyle = color;
+            ctx.globalAlpha = pulse;
+            ctx.beginPath();
+            const r = Math.min(10, w / 2);
+            ctx.moveTo(x + r, tailTop);
+            ctx.lineTo(x + w - r, tailTop);
+            ctx.quadraticCurveTo(x + w, tailTop, x + w, tailTop + r);
+            ctx.lineTo(x + w, tailTop + tailLen - r);
+            ctx.quadraticCurveTo(x + w, tailTop + tailLen, x + w - r, tailTop + tailLen);
+            ctx.lineTo(x + r, tailTop + tailLen);
+            ctx.quadraticCurveTo(x, tailTop + tailLen, x, tailTop + tailLen - r);
+            ctx.lineTo(x, tailTop + r);
+            ctx.quadraticCurveTo(x, tailTop, x + r, tailTop);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          }
         }
 
-        const grad = ctx.createLinearGradient(x, t.y, x, t.y + TILE_H);
-        grad.addColorStop(0, laneColors[t.lane]);
-        grad.addColorStop(1, laneColors[t.lane] + "aa");
-        ctx.fillStyle = grad;
-        ctx.fillRect(x, t.y, w, TILE_H - 4);
-
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = "rgba(255,255,255,0.25)";
-        ctx.fillRect(x + 4, t.y + 4, w - 8, 6);
+        if (!t.hit || t.holding) {
+          const dist = Math.abs(headY + TILE_H / 2 - hitY);
+          const glow = dist < okH ? 1 - dist / okH : 0;
+          ctx.fillStyle = "rgba(0,0,0,0.25)";
+          ctx.fillRect(x + 2, headY + 3, w, TILE_H - 4);
+          const grad = ctx.createLinearGradient(x, headY, x, headY + TILE_H);
+          grad.addColorStop(0, color);
+          grad.addColorStop(1, color + "cc");
+          ctx.fillStyle = grad;
+          ctx.globalAlpha = 0.85 + glow * 0.15;
+          ctx.fillRect(x, headY, w, TILE_H - 4);
+          ctx.fillStyle = "rgba(255,255,255,0.35)";
+          ctx.fillRect(x + 4, headY + 4, w - 8, 6);
+          ctx.globalAlpha = 1;
+        }
       }
 
       for (const fx of tapFx) {
         const cx = fx.lane * laneW + laneW / 2;
-        const tileX = fx.lane * laneW + 8;
-        const tileW = laneW - 16;
-        const tileDrawH = TILE_H - 4;
         const idealTileY = hitY - TILE_H / 2;
         const progress = 1 - fx.t / fx.maxT;
+        const alpha = fx.t / fx.maxT;
 
-        if (fx.edgeHighlight || fx.fullFlash) {
-          if (fx.fullFlash) {
-            const flashAlpha = (1 - progress) ** 1.4 * 0.9;
-            ctx.fillStyle = `rgba(255,255,255,${flashAlpha})`;
-            ctx.fillRect(tileX, idealTileY, tileW, tileDrawH);
-          }
-          if (fx.edgeHighlight) {
-            const edgeAlpha = (1 - progress) ** 0.85 * 0.95;
-            const spread = progress * 10;
-            ctx.strokeStyle = `rgba(255,255,255,${edgeAlpha})`;
-            ctx.lineWidth = 2.5 + progress * 5;
-            ctx.strokeRect(
-              tileX - spread * 0.35,
-              idealTileY - spread * 0.35,
-              tileW + spread * 0.7,
-              tileDrawH + spread * 0.7,
-            );
-          }
+        if (fx.fullFlash) {
+          ctx.fillStyle = `rgba(255,255,255,${Math.pow(1 - progress, 1.4) * 0.55})`;
+          ctx.fillRect(fx.lane * laneW + 4, idealTileY, laneW - 8, TILE_H);
+        }
+        if (fx.edgeHighlight) {
+          const expand = progress * 10;
+          ctx.strokeStyle = `rgba(255,255,255,${alpha * 0.8})`;
+          ctx.lineWidth = 3;
+          ctx.strokeRect(
+            fx.lane * laneW + 6 - expand,
+            idealTileY - expand,
+            laneW - 12 + expand * 2,
+            TILE_H + expand * 2,
+          );
         }
 
-        const alpha = fx.t / fx.maxT;
-        const color =
-          fx.quality === "perfect"
-            ? "#5cd0a8"
-            : fx.quality === "good"
-              ? "#e85d04"
-              : fx.quality === "ok"
-                ? "#fef08a"
-                : "#ff5a5a";
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
-        ctx.globalAlpha = alpha;
         ctx.beginPath();
         ctx.arc(cx, hitY, 28 + (fx.maxT - fx.t), 0, Math.PI * 2);
+        ctx.strokeStyle =
+          fx.quality === "miss"
+            ? `rgba(255,80,80,${alpha})`
+            : `rgba(255,255,255,${alpha * 0.7})`;
+        ctx.lineWidth = 2;
         ctx.stroke();
-        ctx.globalAlpha = 1;
+
         if (fx.quality !== "miss") {
           const label =
-            fx.quality === "perfect"
+            fx.label ??
+            (fx.quality === "perfect"
               ? "PERFECT"
               : fx.quality === "good"
                 ? "GOOD"
-                : "OK";
-          const labelY = hitY - 36;
-          const outline = 2;
-          ctx.font = "800 30px Nunito, sans-serif";
+                : fx.quality === "released"
+                  ? "RELEASED"
+                  : "OK");
+          const labelY = hitY - 36 + fx.ty;
+          const color =
+            fx.quality === "perfect"
+              ? "#c084fc"
+              : fx.quality === "good"
+                ? "#74c0ff"
+                : fx.quality === "released"
+                  ? "#ffb43d"
+                  : "#a3e635";
+          ctx.font = "800 20px Nunito, sans-serif";
           ctx.textAlign = "center";
-          ctx.fillStyle = `rgba(255,255,255,${alpha * 0.95})`;
-          for (let ox = -outline; ox <= outline; ox++) {
-            for (let oy = -outline; oy <= outline; oy++) {
-              if (ox === 0 && oy === 0) continue;
-              ctx.fillText(label, cx + ox, labelY + oy);
-            }
-          }
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+          ctx.strokeText(label, cx, labelY);
           ctx.fillStyle = color;
           ctx.globalAlpha = alpha;
           ctx.fillText(label, cx, labelY);
           ctx.globalAlpha = 1;
-          ctx.textAlign = "left";
         }
       }
 
@@ -435,8 +639,12 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
     raf = requestAnimationFrame(loop);
     return () => {
       cancelAnimationFrame(raf);
-      canvas.removeEventListener("pointerdown", onPointer);
-      window.removeEventListener("keydown", onKey);
+      stopAllDissiadaHolds();
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
     };
   }, []);
 
