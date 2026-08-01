@@ -63,6 +63,24 @@ function mergeGameScores(
   return out;
 }
 
+/** Firestore rejects `undefined` anywhere in a document (including optional AppData fields). */
+function stripUndefined<T>(value: T): T {
+  if (value === undefined) return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => stripUndefined(item)) as T;
+  }
+  if (value !== null && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value)) {
+      if (entry !== undefined) {
+        out[key] = stripUndefined(entry);
+      }
+    }
+    return out as T;
+  }
+  return value;
+}
+
 const CLOUD_LOAD_TIMEOUT_MS = 8_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
@@ -124,11 +142,11 @@ export async function saveCloudData(userId: string, data: AppData): Promise<void
   if (!db || !uid) return;
 
   const envelope = createBackupEnvelope(data);
-  const payload: CloudPayload = {
+  const payload = stripUndefined({
     formatVersion: envelope.formatVersion,
     updatedAt: envelope.exportedAt,
     data: envelope.data,
-  };
+  }) as CloudPayload;
 
   try {
     await setDoc(doc(db, "userdata", uid), payload);
