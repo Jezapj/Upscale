@@ -80,7 +80,7 @@ export interface AppData {
   lastActiveDate?: string;
   /** Daily arcade play counts (resets each calendar day). */
   gamePlays?: GamePlaysState;
-  /** Future: Stripe subscription unlocks unlimited plays. */
+  /** Pro subscription — unlimited endless plays (synced from RevenueCat / Stripe). */
   gamePremium?: boolean;
   /** ISO timestamp of last local/cloud save (for sync). */
   syncedAt?: string;
@@ -116,7 +116,10 @@ export type GameId = "tiptop" | "octane" | "dissiada" | "daybreak";
 
 export interface GamePlaysState {
   date: string;
-  counts: Record<GameId, number>;
+  /** Total endless-mode runs today across all arcade games. */
+  endlessTotal: number;
+  /** Legacy per-game counts (migrated to endlessTotal on read). */
+  counts?: Partial<Record<GameId, number>>;
 }
 
 /** A single saved high-score run for an arcade game. */

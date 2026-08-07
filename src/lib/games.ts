@@ -2,10 +2,15 @@
 
 export type GameId = "tiptop" | "octane" | "dissiada" | "daybreak";
 
-/** Daily cap when subscriptions launch; unlimited while true. */
-export const UNLIMITED_PLAYS = true;
+/** Bypass endless play limits (dev only — set VITE_UNLIMITED_PLAYS=true). */
+export const UNLIMITED_PLAYS =
+  import.meta.env.VITE_UNLIMITED_PLAYS === "true";
 
+/** Free endless plays per calendar day (Pro subscribers get unlimited). */
 export const DAILY_FREE_PLAYS = 3;
+
+/** Pro subscription price label shown in the UI. */
+export const PRO_PRICE_LABEL = "$10/month";
 
 export interface GameMeta {
   id: GameId;

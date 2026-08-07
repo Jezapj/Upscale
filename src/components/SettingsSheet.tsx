@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
-import { LogOut, Download, Upload, Info, Bell } from "lucide-react";
+import { LogOut, Download, Upload, Info, Bell, Crown } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Sheet } from "./Sheet";
+import { ProSubscriptionSheet } from "./ProSubscriptionSheet";
+import { PRO_PRICE_LABEL } from "@/lib/games";
 import { storage } from "@/lib/storage";
 import { parseBackupJson, serializeBackup } from "@/lib/backup";
 import {
@@ -21,6 +23,8 @@ export function SettingsSheet({ open, onClose }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [remindersOn, setRemindersOn] = useState(() => getReminderPrefs().enabled);
   const [perm, setPerm] = useState(getNotificationPermission);
+  const [proOpen, setProOpen] = useState(false);
+  const isPro = data.gamePremium === true;
 
   const toggleReminders = async () => {
     if (!notificationsSupported()) return;
@@ -104,6 +108,27 @@ export function SettingsSheet({ open, onClose }: Props) {
           </div>
         </div>
 
+        <div className="card flex items-start gap-3 p-4">
+          <Crown size={18} className="mt-0.5 shrink-0 text-cat-project" />
+          <div className="min-w-0 flex-1">
+            <p className="font-800 text-ink">Arcade Pro</p>
+            <p className="mt-1 text-sm font-600 text-ink-soft">
+              {isPro
+                ? "Unlimited Endless plays across all arcade games."
+                : `Endless mode is limited to 3 plays per day. Pro unlocks unlimited plays (${PRO_PRICE_LABEL}).`}
+            </p>
+          </div>
+          {!isPro && (
+            <button
+              type="button"
+              className="btn shrink-0 px-4 py-2 text-sm"
+              onClick={() => setProOpen(true)}
+            >
+              Upgrade
+            </button>
+          )}
+        </div>
+
         <div className="card flex items-start gap-3 p-4 text-sm font-600 text-ink-soft">
           <Info size={18} className="mt-0.5 shrink-0 text-cat-project" />
           <p>
@@ -182,6 +207,8 @@ export function SettingsSheet({ open, onClose }: Props) {
 
         <p className="text-center text-xs font-600 text-ink-faint">Upscale</p>
       </div>
+
+      <ProSubscriptionSheet open={proOpen} onClose={() => setProOpen(false)} />
     </Sheet>
   );
 }

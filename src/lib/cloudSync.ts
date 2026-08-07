@@ -176,5 +176,6 @@ export function mergeLocalAndCloud(
     arcadeProfile: mergeArcadeProfile(winner.arcadeProfile, loser.arcadeProfile),
     gameScores: mergeGameScores(winner.gameScores, loser.gameScores),
     gamePlays: winner.gamePlays ?? loser.gamePlays,
+    gamePremium: winner.gamePremium || loser.gamePremium || undefined,
   };
 }

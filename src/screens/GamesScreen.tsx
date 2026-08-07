@@ -1,13 +1,16 @@
-import { useNavigate } from "react-router-dom";
-import { Gamepad2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Gamepad2, Crown } from "lucide-react";
 import { StatusBar } from "@/components/StatusBar";
 import { PageHeader } from "@/components/PageHeader";
 import { Tile } from "@/components/Tile";
-import { GAMES, gamePath } from "@/lib/games";
+import { ProSubscriptionSheet } from "@/components/ProSubscriptionSheet";
+import { GAMES, gamePath, DAILY_FREE_PLAYS, PRO_PRICE_LABEL } from "@/lib/games";
 import { useRegisterControls } from "@/store/useControls";
 import { useStore } from "@/store/useStore";
 import { getDailyCompletion, hasPlayedDaily } from "@/lib/dailyChallenge";
 import { prettyDay } from "@/lib/dates";
+import { verifyCheckoutSession } from "@/lib/subscription";
 
 const GAME_GLYPH: Record<string, string> = {
   tiptop: "⛳",
@@ -18,8 +21,14 @@ const GAME_GLYPH: Record<string, string> = {
 
 export function GamesScreen() {
   const nav = useNavigate();
+  const [params, setParams] = useSearchParams();
   const today = useStore((s) => s.today);
   const data = useStore((s) => s.data);
+  const user = useStore((s) => s.user);
+  const endlessLeft = useStore((s) => s.endlessPlaysLeft());
+  const setGamePremium = useStore((s) => s.setGamePremium);
+  const isPro = data.gamePremium === true;
+  const [proOpen, setProOpen] = useState(false);
 
   useRegisterControls(
     {
@@ -28,6 +37,22 @@ export function GamesScreen() {
     },
     [nav],
   );
+
+  useEffect(() => {
+    const checkout = params.get("checkout");
+    const sessionId = params.get("session_id");
+    if (checkout === "success" && sessionId) {
+      void verifyCheckoutSession(sessionId).then((active) => {
+        if (active) setGamePremium(true);
+        params.delete("checkout");
+        params.delete("session_id");
+        setParams(params, { replace: true });
+      });
+    } else if (checkout === "cancel") {
+      params.delete("checkout");
+      setParams(params, { replace: true });
+    }
+  }, [params, setParams, setGamePremium]);
 
   return (
     <>
@@ -42,10 +67,30 @@ export function GamesScreen() {
           <Gamepad2 size={22} className="mt-0.5 shrink-0 text-cat-project" />
           <p className="min-w-0 text-sm font-600 text-ink-soft">
             <span className="font-800 text-ink">Daily challenge</span> is free once
-            per game. Practice stays unlimited for now (3 free plays / day coming
-            later).
+            per game.{" "}
+            <span className="font-800 text-ink">Endless</span> mode gives{" "}
+            {isPro ? "unlimited" : `${DAILY_FREE_PLAYS} free`} plays per day
+            {isPro ? "" : ` (${endlessLeft} left today)`}. Pro subscribers get
+            unlimited Endless plays ({PRO_PRICE_LABEL}).
           </p>
         </div>
+
+        {!isPro && (
+          <button
+            type="button"
+            onClick={() => setProOpen(true)}
+            className="card mb-4 flex w-full items-center gap-3 p-4 text-left transition-all active:scale-[0.99]"
+          >
+            <Crown size={22} className="shrink-0 text-cat-project" />
+            <div className="min-w-0">
+              <p className="font-800 text-ink">Get Upscale Pro</p>
+              <p className="text-xs font-700 text-ink-faint">
+                Unlimited Endless plays · {PRO_PRICE_LABEL}
+                {user?.provider !== "google" ? " · Sign in required" : ""}
+              </p>
+            </div>
+          </button>
+        )}
 
         <div className="space-y-3">
           {GAMES.map((g) => {
@@ -81,6 +126,8 @@ export function GamesScreen() {
           })}
         </div>
       </div>
+
+      <ProSubscriptionSheet open={proOpen} onClose={() => setProOpen(false)} />
     </>
   );
 }

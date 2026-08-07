@@ -19,6 +19,7 @@ import { getFirebaseAuth, cloudConfigured } from "@/lib/firebase";
 import { waitForFirebaseAuth } from "@/lib/firebaseAuth";
 import {
   canPlayGame,
+  endlessPlaysRemaining,
   playsRemaining,
   recordGamePlay,
 } from "@/lib/gamePlays";
@@ -66,6 +67,8 @@ interface StoreState {
 
   markDailyPlayed: (gameId: GameId, score: number, overwrite?: boolean) => void;
   setArcadeProfile: (profile: ArcadeProfile) => void;
+  setGamePremium: (premium: boolean) => void;
+  endlessPlaysLeft: () => number;
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -248,6 +251,11 @@ export const useStore = create<StoreState>((set, get) => {
       return playsRemaining(data, gameId, today);
     },
 
+    endlessPlaysLeft() {
+      const { data, today } = get();
+      return endlessPlaysRemaining(data, today);
+    },
+
     canPlay(gameId) {
       const { data, today } = get();
       return canPlayGame(data, gameId, today);
@@ -280,6 +288,12 @@ export const useStore = create<StoreState>((set, get) => {
 
     setArcadeProfile(profile) {
       mutate((d) => ({ ...d, arcadeProfile: profile }));
+    },
+
+    setGamePremium(premium) {
+      const { data } = get();
+      if (data.gamePremium === premium) return;
+      mutate((d) => ({ ...d, gamePremium: premium }));
     },
   };
 });

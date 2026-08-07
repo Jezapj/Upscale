@@ -27,6 +27,8 @@ import {
 import { googleSubFromUserId } from "@/lib/cloudSync";
 import { cloudConfigured } from "@/lib/firebase";
 import { activeFirestoreUid } from "@/lib/firebaseAuth";
+import { ProSubscriptionSheet } from "@/components/ProSubscriptionSheet";
+import { DAILY_FREE_PLAYS, PRO_PRICE_LABEL } from "@/lib/games";
 import { prettyDay, todayKey } from "@/lib/dates";
 
 export type PlayMode = "daily" | "practice";
@@ -110,6 +112,7 @@ export function GameShell({
     null,
   );
   const [remoteDailyLocked, setRemoteDailyLocked] = useState(false);
+  const [proOpen, setProOpen] = useState(false);
 
   const today = useStore((s) => s.today);
   const user = useStore((s) => s.user);
@@ -117,6 +120,9 @@ export function GameShell({
   const recordGameScore = useStore((s) => s.recordGameScore);
   const markDailyPlayed = useStore((s) => s.markDailyPlayed);
   const setArcadeProfile = useStore((s) => s.setArcadeProfile);
+  const consumePlay = useStore((s) => s.consumePlay);
+  const endlessLeft = useStore((s) => s.endlessPlaysLeft());
+  const isPro = data.gamePremium === true;
 
   const dailyDone =
     hasPlayedDaily(data, gameId, today) || remoteDailyLocked;
@@ -211,19 +217,31 @@ export function GameShell({
     beginRun("daily");
   }, [beginRun, gameId, isGoogle, markDailyPlayed, user]);
 
-  const startPracticeDirect = useCallback(() => {
+  const startEndlessDirect = useCallback(() => {
+    if (!isPro && endlessLeft <= 0) {
+      setProOpen(true);
+      return;
+    }
+    if (!consumePlay(gameId)) {
+      setProOpen(true);
+      return;
+    }
     beginRun("practice");
-  }, [beginRun]);
+  }, [beginRun, consumePlay, endlessLeft, gameId, isPro]);
 
-  const choosePractice = useCallback(() => {
+  const chooseEndless = useCallback(() => {
     if (renderPracticeLobby) {
+      if (!isPro && endlessLeft <= 0) {
+        setProOpen(true);
+        return;
+      }
       setPlayMode("practice");
       setShowPracticePicker(true);
       setResult(null);
       return;
     }
-    startPracticeDirect();
-  }, [renderPracticeLobby, startPracticeDirect]);
+    startEndlessDirect();
+  }, [endlessLeft, isPro, renderPracticeLobby, startEndlessDirect]);
 
   const postDailyScore = useCallback(
     async (normalized: GameResult) => {
@@ -413,9 +431,30 @@ export function GameShell({
               >
                 {dailyDone ? "Daily complete" : "Play today's challenge"}
               </button>
-              <button type="button" onClick={choosePractice} className="btn-ghost">
-                Practice
+              {isPro ? (
+                <p className="text-xs font-700 text-accent">Pro · unlimited Endless</p>
+              ) : (
+                <p className="text-xs font-700 text-ink-faint">
+                  Endless: {endlessLeft} of {DAILY_FREE_PLAYS} plays left today
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={chooseEndless}
+                disabled={!isPro && endlessLeft <= 0}
+                className="btn-ghost disabled:opacity-40"
+              >
+                Endless
               </button>
+              {!isPro && endlessLeft <= 0 && (
+                <button
+                  type="button"
+                  onClick={() => setProOpen(true)}
+                  className="text-xs font-800 text-cat-project underline"
+                >
+                  Get Pro for unlimited Endless · {PRO_PRICE_LABEL}
+                </button>
+              )}
             </div>
           )}
 
@@ -429,7 +468,7 @@ export function GameShell({
               >
                 <ArrowLeft size={20} />
               </button>
-              {renderPracticeLobby(startPracticeDirect)}
+              {renderPracticeLobby(startEndlessDirect)}
             </>
           )}
 
@@ -492,14 +531,14 @@ export function GameShell({
                 />
               ) : (
                 <p className="text-xs font-700 text-ink-faint">
-                  Sign in to save scores to your practice board.
+                  Sign in to save scores to your Endless board.
                 </p>
               )}
 
               {resultMode === "daily" ? (
                 <>
-                  <button type="button" onClick={choosePractice} className="btn">
-                    Practice
+                  <button type="button" onClick={chooseEndless} className="btn">
+                    Endless
                   </button>
                   <button type="button" onClick={resetToLobby} className="btn-ghost">
                     Back to lobby
@@ -510,6 +549,14 @@ export function GameShell({
                   <button
                     type="button"
                     onClick={() => {
+                      if (!isPro && endlessLeft <= 0) {
+                        setProOpen(true);
+                        return;
+                      }
+                      if (!consumePlay(gameId)) {
+                        setProOpen(true);
+                        return;
+                      }
                       onSessionReset?.();
                       setResult(null);
                       setIsNewBest(false);
@@ -565,7 +612,7 @@ export function GameShell({
                   </p>
                   <p className="game-shell-title font-display text-lg font-800">
                     {meta.name}
-                    {playMode === "daily" ? " · Daily" : " · Practice"}
+                    {playMode === "daily" ? " · Daily" : " · Endless"}
                   </p>
                   <p className="max-w-sm text-sm font-700 text-ink-soft">
                     {meta.controls}
@@ -593,6 +640,8 @@ export function GameShell({
               }}
             />
           )}
+
+          <ProSubscriptionSheet open={proOpen} onClose={() => setProOpen(false)} />
         </div>
       </div>
     </GamePaletteProvider>
