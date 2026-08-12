@@ -84,7 +84,7 @@ export function HomeScreen() {
               className="relative w-full overflow-hidden rounded-tile text-left shadow-panel active:scale-[0.99] transition-transform"
             >
               <div
-                className="relative min-h-[11rem] w-full sm:min-h-[9.5rem]"
+                className="relative min-h-[166px] w-full sm:min-h-[142px]"
                 style={{
                   background: featured
                     ? `linear-gradient(135deg, ${featured.color}cc 0%, ${featured.color}88 40%, #8a7cf0 100%)`
@@ -113,7 +113,7 @@ export function HomeScreen() {
                 )}
 
                 <div className="relative flex h-full flex-col justify-between p-4">
-                  <p className="font-display text-sm font-900 uppercase tracking-[0.18em] text-white/85 drop-shadow">
+                  <p className="font-display text-sm font-900 uppercase tracking-[0.18em] text-white/85 drop-shadow pb-[10px]">
                     Check-In
                   </p>
 
