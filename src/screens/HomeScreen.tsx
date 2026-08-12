@@ -113,6 +113,10 @@ export function HomeScreen() {
                 )}
 
                 <div className="relative flex h-full flex-col justify-between p-4">
+                  <p className="font-display text-sm font-900 uppercase tracking-[0.18em] text-white/85 drop-shadow">
+                    Check-In
+                  </p>
+
                   <div className="flex items-start gap-3">
                     {featured ? (
                       <Tile

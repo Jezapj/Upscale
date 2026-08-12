@@ -532,6 +532,18 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 [data-theme="dark"] .form-freq-inactive {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+}
+
+/* Goal chips: `bg-ink` turns white in dark mode, hiding the white label. */
+[data-theme="dark"] .form-chip-active {
+  background: linear-gradient(135deg, #c084fc 0%, #60a5fa 100%) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] .form-chip-inactive {
+  background: rgba(255, 255, 255, 0.1) !important;
   color: #ffffff !important;
 }
 

@@ -290,8 +290,8 @@ export function RoutineForm({
               onClick={() => setGoalId(null)}
               className={`rounded-pill px-3 py-2 text-sm font-700 transition-all active:scale-95 ${
                 goalId === null
-                  ? "bg-ink text-white shadow-soft"
-                  : "bg-white/60 text-ink-soft"
+                  ? "form-chip-active bg-ink text-white shadow-soft"
+                  : "form-chip-inactive bg-white/60 text-ink-soft"
               }`}
             >
               None
@@ -303,8 +303,8 @@ export function RoutineForm({
                 onClick={() => setGoalId(g.id)}
                 className={`flex items-center gap-1.5 rounded-pill px-3 py-2 text-sm font-700 transition-all active:scale-95 ${
                   goalId === g.id
-                    ? "bg-ink text-white shadow-soft"
-                    : "bg-white/60 text-ink-soft"
+                    ? "form-chip-active bg-ink text-white shadow-soft"
+                    : "form-chip-inactive bg-white/60 text-ink-soft"
                 }`}
               >
                 <span>{g.icon}</span>

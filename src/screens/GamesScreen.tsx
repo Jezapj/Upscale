@@ -63,34 +63,36 @@ export function GamesScreen() {
           subtitle={`${prettyDay(today)} — one shared daily challenge each.`}
         />
 
-        <div className="card mb-4 flex items-start gap-3 p-4">
-          <Gamepad2 size={22} className="mt-0.5 shrink-0 text-cat-project" />
-          <p className="min-w-0 text-sm font-600 text-ink-soft">
-            <span className="font-800 text-ink">Daily challenge</span> is free once
-            per game.{" "}
-            <span className="font-800 text-ink">Endless</span> mode gives{" "}
-            {isPro ? "unlimited" : `${DAILY_FREE_PLAYS} free`} plays per day
-            {isPro ? "" : ` (${endlessLeft} left today)`}. Pro subscribers get
-            unlimited Endless plays ({PRO_PRICE_LABEL}).
-          </p>
-        </div>
-
-        {!isPro && (
-          <button
-            type="button"
-            onClick={() => setProOpen(true)}
-            className="card mb-4 flex w-full items-center gap-3 p-4 text-left transition-all active:scale-[0.99]"
-          >
-            <Crown size={22} className="shrink-0 text-cat-project" />
+        <div className={`mb-4 grid gap-3 ${isPro ? "grid-cols-1" : "grid-cols-2"}`}>
+          <div className="card flex flex-col gap-2 p-4">
+            <Gamepad2 size={22} className="shrink-0 text-cat-project" />
             <div className="min-w-0">
-              <p className="font-800 text-ink">Get Upscale Pro</p>
+              <p className="font-800 text-ink">Daily challenge</p>
               <p className="text-xs font-700 text-ink-faint">
-                Unlimited Endless plays · {PRO_PRICE_LABEL}
-                {user?.provider !== "google" ? " · Sign in required" : ""}
+                Free once per game. Endless gives{" "}
+                {isPro ? "unlimited" : `${DAILY_FREE_PLAYS} free`} plays a day
+                {isPro ? "" : ` · ${endlessLeft} left today`}
               </p>
             </div>
-          </button>
-        )}
+          </div>
+
+          {!isPro && (
+            <button
+              type="button"
+              onClick={() => setProOpen(true)}
+              className="card flex flex-col gap-2 p-4 text-left transition-all active:scale-[0.99]"
+            >
+              <Crown size={22} className="shrink-0 text-cat-project" />
+              <div className="min-w-0">
+                <p className="font-800 text-ink">Get Upscale Pro</p>
+                <p className="text-xs font-700 text-ink-faint">
+                  Unlimited Endless plays · {PRO_PRICE_LABEL}
+                  {user?.provider !== "google" ? " · Sign in required" : ""}
+                </p>
+              </div>
+            </button>
+          )}
+        </div>
 
         <div className="space-y-3">
           {GAMES.map((g) => {

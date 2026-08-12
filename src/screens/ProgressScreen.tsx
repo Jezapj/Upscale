@@ -34,7 +34,7 @@ function weekdayColor(key: string): string {
 export function ProgressScreen() {
   const nav = useNavigate();
   const data = useStore((s) => s.data);
-  const [scope, setScope] = useState<"routines" | "goals">("routines");
+  const [scope, setScope] = useState<"routines" | "goals">("goals");
 
   const routines = data.routines.filter((r) => !r.archived);
   const goals = data.goals.filter((g) => !g.archived);
@@ -149,8 +149,8 @@ export function ProgressScreen() {
             value={scope}
             onChange={setScope}
             options={[
-              { key: "routines", label: "By routine" },
-              { key: "goals", label: "By goal" },
+              { key: "goals", label: "By Goal" },
+              { key: "routines", label: "By Routine" },
             ]}
           />
         </div>
