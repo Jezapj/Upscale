@@ -491,6 +491,7 @@ Inspired by the **IISU launcher** / **3DS eShop**:
 - Console-style **Ⓐ/Ⓑ/⊖/⊕** control hints (`ScreenHints`, `useControls`).
 - Floating bottom **dock** with mint active-tab highlight and LB/RB shoulder pills.
 - Typography: _Baloo 2_ / _Nunito_ (rounded display type).
+- Loading screen: the app logo over a wordmark whose letters rise and glow one at a time on a repeating wave, so a slow start-up never looks stalled. Glow colour comes from the `--loading-glow` token (blue in light mode, purple in dark).
 - Tailwind custom tokens in `index.css` and `tailwind.config.js` (`ink`, `cat-*` category colors, shadows, animations).
 
 ---
