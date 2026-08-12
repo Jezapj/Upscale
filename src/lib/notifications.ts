@@ -1,4 +1,4 @@
-import type { Routine } from "./types";
+import type { Note, Routine } from "./types";
 
 export type NotificationPermissionState = NotificationPermission | "unsupported";
 
@@ -34,17 +34,37 @@ async function getRegistration(): Promise<ServiceWorkerRegistration | null> {
 }
 
 export async function showRoutineReminder(routine: Routine): Promise<void> {
-  if (!notificationsSupported() || Notification.permission !== "granted") return;
-
   const title = `${routine.icon} ${routine.title}`;
   const body = routine.note?.trim() || "Time for your routine. Open Upscale to check in.";
 
-  const options: NotificationOptions = {
+  await showNotification(title, {
     body,
-    icon: "/icons/icon-192.png",
-    badge: "/icons/icon-192.png",
     tag: `routine-${routine.id}`,
     data: { url: "/checkin", routineId: routine.id },
+  });
+}
+
+export async function showNoteReminder(note: Note): Promise<void> {
+  const title = `📝 ${note.title.trim() || "Note reminder"}`;
+  const body = note.body.trim() || "Open Upscale to read this note.";
+
+  await showNotification(title, {
+    body,
+    tag: `note-${note.id}`,
+    data: { url: "/notes", noteId: note.id },
+  });
+}
+
+async function showNotification(
+  title: string,
+  init: NotificationOptions,
+): Promise<void> {
+  if (!notificationsSupported() || Notification.permission !== "granted") return;
+
+  const options: NotificationOptions = {
+    icon: "/icons/icon-192.png",
+    badge: "/icons/icon-192.png",
+    ...init,
   };
 
   try {

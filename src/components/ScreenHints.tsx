@@ -97,6 +97,20 @@ export function ScreenHints() {
     );
   }
 
+  if (pathname.startsWith("/notes")) {
+    return (
+      <HintBar
+        insetSafe={false}
+        left={[
+          settingsHint,
+          optionsHint,
+          ...wire([{ glyph: "←", label: "Back", action: "back" }], invoke),
+        ]}
+        right={wire([{ glyph: "A", label: "New note", action: "primary" }], invoke)}
+      />
+    );
+  }
+
   if (pathname.startsWith("/progress")) {
     return (
       <HintBar

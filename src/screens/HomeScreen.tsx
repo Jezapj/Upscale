@@ -7,6 +7,7 @@ import { ProgressRing } from "@/components/ProgressRing";
 import { Tile } from "@/components/Tile";
 import { ActivityRow } from "@/components/ActivityRow";
 import { GoalProgressStrip } from "@/components/GoalProgressStrip";
+import { NotesStrip } from "@/components/NotesStrip";
 import { CategoryGrid } from "@/components/CategoryGrid";
 import { Sheet } from "@/components/Sheet";
 import { RoutineForm } from "@/components/RoutineForm";
@@ -20,6 +21,9 @@ export function HomeScreen() {
   const { user, data, addRoutine, addGoal } = useStore();
   const [addRoutineOpen, setAddRoutineOpen] = useState(false);
   const [addGoalOpen, setAddGoalOpen] = useState(false);
+  // Only the pressed goal / routine reveals its extra row.
+  const [openGoalId, setOpenGoalId] = useState<string | null>(null);
+  const [openRoutineId, setOpenRoutineId] = useState<string | null>(null);
 
   const key = todayKey();
   const scheduled = useMemo(
@@ -39,6 +43,8 @@ export function HomeScreen() {
   ).length;
 
   const activeGoals = data.goals.filter((g) => !g.archived);
+  const notes = data.notes ?? [];
+  const latestNote = notes[0];
   const featured =
     due.find((r) => data.logs[key]?.entries[r.id]?.rating === "no") ??
     due[0] ??
@@ -198,6 +204,10 @@ export function HomeScreen() {
                     key={g.id}
                     goal={g}
                     data={data}
+                    expanded={openGoalId === g.id}
+                    onToggle={() =>
+                      setOpenGoalId((id) => (id === g.id ? null : g.id))
+                    }
                     onClick={() => nav(`/goals?id=${g.id}`)}
                   />
                 ))}
@@ -222,6 +232,16 @@ export function HomeScreen() {
                 </button>
               </div>
             )}
+
+            <div className="space-y-2">
+              <h2 className="content-title font-display text-lg font-800">Notes</h2>
+              <NotesStrip
+                note={latestNote}
+                count={notes.length}
+                onOpen={() => nav("/notes")}
+                onAdd={() => nav("/notes?new=1")}
+              />
+            </div>
           </div>
 
           {/* Right column - activity list + category grid (IISU centre/right) */}
@@ -236,7 +256,7 @@ export function HomeScreen() {
             <div>
               <div className="mb-2 flex items-center justify-between">
                 <h2 className="font-display text-lg font-800 text-ink">
-                  Due today
+                  Routines
                 </h2>
                 <button
                   onClick={() => setAddRoutineOpen(true)}
@@ -264,16 +284,20 @@ export function HomeScreen() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {due.slice(0, 5).map((r) => (
+                  {due.slice(0, 2).map((r) => (
                     <ActivityRow
                       key={r.id}
                       routine={r}
                       data={data}
                       showRating
                       compact
+                      expanded={openRoutineId === r.id}
+                      onToggle={() =>
+                        setOpenRoutineId((id) => (id === r.id ? null : r.id))
+                      }
                     />
                   ))}
-                  {due.length > 5 && (
+                  {due.length > 2 && (
                     <button
                       onClick={() => nav("/checkin")}
                       className="btn-ghost w-full py-2 text-sm"

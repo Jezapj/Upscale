@@ -20,6 +20,7 @@ import { HomeScreen } from "@/screens/HomeScreen";
 import { CheckinScreen } from "@/screens/CheckinScreen";
 import { GoalsScreen } from "@/screens/GoalsScreen";
 import { LibraryScreen } from "@/screens/LibraryScreen";
+import { NotesScreen } from "@/screens/NotesScreen";
 import { GamesScreen } from "@/screens/GamesScreen";
 import { TipTopScreen } from "@/screens/games/TipTopScreen";
 import { OctaneScreen } from "@/screens/games/OctaneScreen";
@@ -61,6 +62,7 @@ function AppShell() {
           <Route path="/checkin" element={<CheckinScreen />} />
           <Route path="/goals" element={<GoalsScreen />} />
           <Route path="/library" element={<LibraryScreen />} />
+          <Route path="/notes" element={<NotesScreen />} />
           <Route path="/games" element={<GamesScreen />} />
           <Route path="/games/tiptop" element={<TipTopScreen />} />
           <Route path="/games/octane" element={<OctaneScreen />} />

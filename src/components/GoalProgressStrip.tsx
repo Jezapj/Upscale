@@ -1,3 +1,4 @@
+import { ChevronRight } from "lucide-react";
 import type { AppData, Goal } from "@/lib/types";
 import { Tile } from "./Tile";
 import { routinesForGoal } from "@/lib/stats";
@@ -8,13 +9,22 @@ interface Props {
   goal: Goal;
   data: AppData;
   onClick?: () => void;
+  /** When provided, the routine icon row is only shown while pressed/expanded. */
+  expanded?: boolean;
+  onToggle?: () => void;
 }
 
 /**
  * IISU goal card: header + row of contributing routine icons + progress bar.
  * Mirrors the "Donkey Kong Country" strip in the reference home screen.
  */
-export function GoalProgressStrip({ goal, data, onClick }: Props) {
+export function GoalProgressStrip({
+  goal,
+  data,
+  onClick,
+  expanded,
+  onToggle,
+}: Props) {
   const routines = routinesForGoal(data, goal.id).slice(0, 8);
   const today = todayKey();
   const doneToday = routines.filter(
@@ -22,29 +32,38 @@ export function GoalProgressStrip({ goal, data, onClick }: Props) {
   ).length;
   const dueToday = routines.length;
   const rate = dueToday ? doneToday / dueToday : 0;
+  const showIcons = routines.length > 0 && (onToggle ? !!expanded : true);
 
   return (
-    <button
-      onClick={onClick}
-      className="card w-full p-3 text-left active:scale-[0.99] transition-transform"
-    >
+    <div className="card p-3">
       <div className="flex items-center gap-2">
-        <Tile
-          glyph={goal.icon}
-          color={goal.color}
-          size={36}
-          state="selected"
-        />
-        <div className="min-w-0 flex-1">
-          <p className="content-title truncate font-800">{goal.title}</p>
-          <p className="text-xs font-700 text-ink-faint">
-            {routines.length} routine{routines.length === 1 ? "" : "s"}
-            {dueToday > 0 && ` · ${doneToday}/${dueToday} today`}
-          </p>
-        </div>
+        <button
+          onClick={onToggle ?? onClick}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left active:scale-[0.99] transition-transform"
+        >
+          <Tile glyph={goal.icon} color={goal.color} size={36} state="selected" />
+          <span className="min-w-0 flex-1">
+            <span className="content-title block truncate font-800">
+              {goal.title}
+            </span>
+            <span className="block text-xs font-700 text-ink-faint">
+              {routines.length} routine{routines.length === 1 ? "" : "s"}
+              {dueToday > 0 && ` · ${doneToday}/${dueToday} today`}
+            </span>
+          </span>
+        </button>
+        {onToggle && onClick && (
+          <button
+            onClick={onClick}
+            aria-label={`Open ${goal.title}`}
+            className="capsule flex h-7 w-7 shrink-0 items-center justify-center text-ink-soft active:scale-90"
+          >
+            <ChevronRight size={16} strokeWidth={2.8} />
+          </button>
+        )}
       </div>
 
-      {routines.length > 0 && (
+      {showIcons && (
         <div className="goal-routine-icons mt-2.5 flex gap-1.5 overflow-x-auto">
           {routines.map((r) => (
             <div key={r.id} className="goal-routine-icon-wrap shrink-0">
@@ -80,6 +99,6 @@ export function GoalProgressStrip({ goal, data, onClick }: Props) {
           {doneToday}/{dueToday || routines.length}
         </span>
       </div>
-    </button>
+    </div>
   );
 }

@@ -53,6 +53,17 @@ export interface Routine {
   archived?: boolean;
 }
 
+export interface Note {
+  id: string;
+  title: string;
+  body: string;
+  color: string; // hex accent
+  /** Optional one-off reminder as a local ISO datetime (YYYY-MM-DDTHH:mm). */
+  reminderAt?: string;
+  createdAt: string; // ISO
+  updatedAt: string; // ISO
+}
+
 /** A single routine's outcome on a given day. */
 export interface DayEntry {
   rating: Rating;
@@ -76,6 +87,8 @@ export interface AppData {
   routines: Routine[];
   /** Keyed by YYYY-MM-DD. */
   logs: Record<string, DayLog>;
+  /** Free-form notes with optional reminders. */
+  notes: Note[];
   /** The last day the user opened/refreshed the app (YYYY-MM-DD). */
   lastActiveDate?: string;
   /** Daily arcade play counts (resets each calendar day). */
@@ -143,5 +156,6 @@ export const emptyAppData = (): AppData => ({
   goals: [],
   routines: [],
   logs: {},
+  notes: [],
   version: 1,
 });

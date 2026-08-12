@@ -1,4 +1,4 @@
-import type { AppData, Routine } from "./types";
+import type { AppData, Note, Routine } from "./types";
 import { isDueToday } from "./frequency";
 import { todayKey } from "./dates";
 
@@ -100,5 +100,62 @@ export function dueRemindersNow(
 export function markRemindersFired(routines: Routine[], dateKey = todayKey()): void {
   for (const routine of routines) {
     markFired(routine.id, dateKey);
+  }
+}
+
+/** Fired-state id for a note, namespaced so it can't collide with routine ids. */
+export function noteReminderId(noteId: string): string {
+  return `note:${noteId}`;
+}
+
+/** Split a local ISO datetime (`YYYY-MM-DDTHH:mm`) into date key and minutes. */
+export function splitReminderAt(
+  reminderAt: string,
+): { dateKey: string; minutes: number } | null {
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{1,2}):(\d{2})/.exec(reminderAt.trim());
+  if (!match) return null;
+  const hours = Number(match[2]);
+  const minutes = Number(match[3]);
+  if (hours > 23 || minutes > 59) return null;
+  return { dateKey: match[1], minutes: hours * 60 + minutes };
+}
+
+export function formatNoteReminderLabel(reminderAt: string): string {
+  const parts = splitReminderAt(reminderAt);
+  if (!parts) return reminderAt;
+  const d = new Date(reminderAt);
+  if (Number.isNaN(d.getTime())) return reminderAt;
+  return d.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/**
+ * Notes whose one-off reminder time has passed today. Unlike routines there is
+ * no upper grace bound — the per-day fired list already stops repeats.
+ */
+export function dueNoteRemindersNow(
+  data: AppData,
+  dateKey = todayKey(),
+  nowMinutes = minutesNow(),
+): Note[] {
+  const fired = getFiredIds(dateKey);
+
+  return (data.notes ?? []).filter((note) => {
+    if (!note.reminderAt) return false;
+    if (fired.has(noteReminderId(note.id))) return false;
+
+    const parts = splitReminderAt(note.reminderAt);
+    if (!parts) return false;
+    return parts.dateKey === dateKey && nowMinutes >= parts.minutes;
+  });
+}
+
+export function markNoteRemindersFired(notes: Note[], dateKey = todayKey()): void {
+  for (const note of notes) {
+    markFired(noteReminderId(note.id), dateKey);
   }
 }

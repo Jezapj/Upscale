@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Check, Home, Flame } from "lucide-react";
+import { ArrowLeft, Check, Home, Flame, StickyNote } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Tile } from "@/components/Tile";
 import { RatingButtons } from "@/components/RatingButtons";
@@ -113,6 +113,19 @@ export function CheckinScreen() {
             }}
           />
         </div>
+      </div>
+
+      {/* Notes shortcut */}
+      <div className="relative z-10 mt-3 flex justify-center px-4">
+        <button
+          onClick={() => nav("/notes")}
+          className="capsule flex items-center gap-2 px-3.5 py-2 text-sm font-800 text-ink-soft active:scale-95"
+        >
+          <span className="flex h-6 w-6 items-center justify-center rounded-xl bg-cat-learning text-white shadow-soft">
+            <StickyNote size={14} strokeWidth={2.6} />
+          </span>
+          Notes
+        </button>
       </div>
 
       {/* Card */}

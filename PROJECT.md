@@ -95,9 +95,17 @@ Ratings reset each calendar day and accumulate into per-routine completion stats
 - 30-day completion chart
 - Goal-level **progress rings** (by routine / by goal views)
 
+### Notes
+
+Free-form notes with an optional one-off reminder.
+
+- **Dashboard strip** — a thin row under Goals: ~70% shows the most recent note (or “Create a note” when empty), ~30% is a plus button that opens the composer.
+- **Notes screen** (`/notes`) — list, create, edit and delete notes; each has a title, body, accent colour and optional reminder date/time.
+- **Entry points** — the dashboard strip (both halves) and a Notes card on the check-in screen, under the progress bar.
+
 ### Reminders
 
-Optional browser notifications for routines with a `reminderTime` (24h `HH:mm`, device local timezone). Polled via `useRoutineReminders`; fired state is tracked per day in `localStorage`.
+Optional browser notifications for routines with a `reminderTime` (24h `HH:mm`, device local timezone) and for notes with a `reminderAt` (local `YYYY-MM-DDTHH:mm`). Polled via `useRoutineReminders`; fired state is tracked per day in `localStorage` (note ids are namespaced as `note:{id}`).
 
 ### Arcade
 
@@ -173,7 +181,8 @@ Upscale/
 │   │   ├── Sheet.tsx        # Modal bottom sheet
 │   │   ├── RatingButtons.tsx
 │   │   ├── Heatmap.tsx      # GitHub-style contribution grid
-│   │   ├── RoutineForm.tsx / GoalForm.tsx
+│   │   ├── RoutineForm.tsx / GoalForm.tsx / NoteForm.tsx
+│   │   ├── NotesStrip.tsx   # Dashboard notes row (latest note + add)
 │   │   ├── GameShell.tsx    # (via games/) Arcade session wrapper
 │   │   └── …
 │   ├── screens/             # Route-level views
@@ -181,6 +190,7 @@ Upscale/
 │   │   ├── CheckinScreen.tsx
 │   │   ├── GoalsScreen.tsx
 │   │   ├── LibraryScreen.tsx
+│   │   ├── NotesScreen.tsx
 │   │   ├── ProgressScreen.tsx
 │   │   ├── GamesScreen.tsx
 │   │   ├── LoginScreen.tsx
@@ -258,6 +268,7 @@ interface AppData {
   goals: Goal[];
   routines: Routine[];
   logs: Record<string, DayLog>;   // keyed by YYYY-MM-DD
+  notes: Note[];
   lastActiveDate?: string;
   gamePlays?: GamePlaysState;
   gamePremium?: boolean;
@@ -301,6 +312,20 @@ interface Routine {
   reminderTime?: string;  // HH:mm
   createdAt: string;
   archived?: boolean;
+}
+```
+
+### `Note`
+
+```ts
+interface Note {
+  id: string;
+  title: string;
+  body: string;
+  color: string;        // hex accent
+  reminderAt?: string;  // local YYYY-MM-DDTHH:mm
+  createdAt: string;
+  updatedAt: string;
 }
 ```
 
@@ -462,6 +487,7 @@ Inspired by the **IISU launcher** / **3DS eShop**:
 - Glossy light **squircle** tiles with colored glow frames (red pulse for priorities).
 - Wide **“jump back in”** hero card with circled-Ⓐ pill.
 - Segmented capsule tab bars with inset active segment.
+- Dashboard rows stay compact: a goal strip reveals its routine icons and a routine row reveals its rating buttons only while pressed (one open at a time); a chevron opens the goal itself.
 - Console-style **Ⓐ/Ⓑ/⊖/⊕** control hints (`ScreenHints`, `useControls`).
 - Floating bottom **dock** with mint active-tab highlight and LB/RB shoulder pills.
 - Typography: _Baloo 2_ / _Nunito_ (rounded display type).
@@ -560,6 +586,7 @@ firebase deploy --only firestore:rules
 | `/checkin` | Daily check-in flow (full-screen, no dock) |
 | `/goals` | Goals list and detail |
 | `/library` | Routine library by category |
+| `/notes` | Notes list, editor and reminders |
 | `/progress` | Heatmaps, streaks, charts |
 | `/games` | Arcade hub |
 | `/games/tiptop` | TipTop |

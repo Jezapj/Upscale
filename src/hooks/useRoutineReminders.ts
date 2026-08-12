@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useStore } from "@/store/useStore";
 import {
+  dueNoteRemindersNow,
   dueRemindersNow,
   getReminderPrefs,
+  markNoteRemindersFired,
   markRemindersFired,
   REMINDER_PREFS_EVENT,
 } from "@/lib/reminders";
-import { showRoutineReminder } from "@/lib/notifications";
+import { showNoteReminder, showRoutineReminder } from "@/lib/notifications";
 import { todayKey } from "@/lib/dates";
 
 const CHECK_INTERVAL_MS = 10_000;
@@ -29,11 +31,20 @@ export function useRoutineReminders() {
     const freshData = useStore.getState().data;
     const dateKey = todayKey();
     const due = dueRemindersNow(freshData, dateKey);
-    if (due.length === 0) return;
+    const dueNotes = dueNoteRemindersNow(freshData, dateKey);
+    if (due.length === 0 && dueNotes.length === 0) return;
 
-    void Promise.all(due.map((routine) => showRoutineReminder(routine)))
-      .then(() => markRemindersFired(due, dateKey))
-      .catch((err) => console.warn("Reminder notification failed", err));
+    if (due.length > 0) {
+      void Promise.all(due.map((routine) => showRoutineReminder(routine)))
+        .then(() => markRemindersFired(due, dateKey))
+        .catch((err) => console.warn("Reminder notification failed", err));
+    }
+
+    if (dueNotes.length > 0) {
+      void Promise.all(dueNotes.map((note) => showNoteReminder(note)))
+        .then(() => markNoteRemindersFired(dueNotes, dateKey))
+        .catch((err) => console.warn("Note reminder notification failed", err));
+    }
   }, []);
 
   useEffect(() => {

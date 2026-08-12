@@ -14,6 +14,9 @@ interface Props {
   compact?: boolean;
   showRating?: boolean;
   onOpen?: () => void;
+  /** When provided, the rating strip is only shown while pressed/expanded. */
+  expanded?: boolean;
+  onToggle?: () => void;
 }
 
 /**
@@ -26,12 +29,16 @@ export function ActivityRow({
   compact = false,
   showRating = false,
   onOpen,
+  expanded,
+  onToggle,
 }: Props) {
   const rate = useStore((s) => s.rate);
   const key = todayKey();
   const entry = data.logs[key]?.entries[routine.id];
   const tileState =
     entry?.rating === "no" ? "priority" : entry?.completed ? "done" : "default";
+  const press = onToggle ?? onOpen;
+  const ratingVisible = showRating && (onToggle ? !!expanded : true);
 
   return (
     <div
@@ -50,7 +57,7 @@ export function ActivityRow({
 
       <div className="relative flex items-center gap-3 p-3">
         <button
-          onClick={onOpen}
+          onClick={press}
           className="shrink-0 active:scale-95 transition-transform"
         >
           <Tile
@@ -61,7 +68,7 @@ export function ActivityRow({
           />
         </button>
 
-        <button onClick={onOpen} className="min-w-0 flex-1 text-left">
+        <button onClick={press} className="min-w-0 flex-1 text-left">
           <p className="content-title truncate font-800">{routine.title}</p>
           <p className="truncate text-xs font-700 text-ink-soft">
             {describeFrequency(routine.frequency)}
@@ -83,7 +90,7 @@ export function ActivityRow({
         )}
       </div>
 
-      {showRating && (
+      {ratingVisible && (
         <div className="relative border-t border-white/60 px-3 pb-3 pt-2">
           <RatingButtons
             value={entry?.rating}

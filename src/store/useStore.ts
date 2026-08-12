@@ -5,6 +5,7 @@ import type {
   GameId,
   GameScoreEntry,
   Goal,
+  Note,
   Rating,
   Routine,
   User,
@@ -25,7 +26,7 @@ import {
 } from "@/lib/gamePlays";
 import { recordGameScore as mergeGameScore, getGameScores } from "@/lib/gameLeaderboard";
 import { isCloudUser } from "@/lib/cloudSync";
-import { clearFiredReminder } from "@/lib/reminders";
+import { clearFiredReminder, noteReminderId } from "@/lib/reminders";
 import { markDailyPlayed as applyDailyPlayed } from "@/lib/dailyChallenge";
 import { alignGoogleUserWithFirebase } from "@/lib/storage";
 
@@ -48,6 +49,10 @@ interface StoreState {
   addRoutine: (r: Omit<Routine, "id" | "createdAt">) => Routine;
   updateRoutine: (id: string, patch: Partial<Routine>) => void;
   deleteRoutine: (id: string) => void;
+
+  addNote: (n: Omit<Note, "id" | "createdAt" | "updatedAt">) => Note;
+  updateNote: (id: string, patch: Partial<Note>) => void;
+  deleteNote: (id: string) => void;
 
   rate: (routineId: string, rating: Rating) => void;
   clearRating: (routineId: string) => void;
@@ -208,6 +213,26 @@ export const useStore = create<StoreState>((set, get) => {
         }
         return { ...d, routines: d.routines.filter((r) => r.id !== id), logs };
       });
+    },
+
+    addNote(n) {
+      const now = new Date().toISOString();
+      const note: Note = { ...n, id: uid(), createdAt: now, updatedAt: now };
+      mutate((d) => ({ ...d, notes: [note, ...(d.notes ?? [])] }));
+      return note;
+    },
+    updateNote(id, patch) {
+      if ("reminderAt" in patch) clearFiredReminder(noteReminderId(id));
+      mutate((d) => ({
+        ...d,
+        notes: (d.notes ?? []).map((n) =>
+          n.id === id ? { ...n, ...patch, updatedAt: new Date().toISOString() } : n,
+        ),
+      }));
+    },
+    deleteNote(id) {
+      clearFiredReminder(noteReminderId(id));
+      mutate((d) => ({ ...d, notes: (d.notes ?? []).filter((n) => n.id !== id) }));
     },
 
     rate(routineId, rating) {
