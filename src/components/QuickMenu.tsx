@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronRight, Moon, Music, Sun, X } from "lucide-react";
+import { ChevronRight, Moon, Music, Sun, Volume2, VolumeX, X } from "lucide-react";
 import { useControls } from "@/store/useControls";
 import { useBackgroundMusic, useBackgroundTrack } from "@/store/useBackgroundMusic";
 import { useTheme } from "@/store/useTheme";
@@ -10,7 +10,7 @@ export function QuickMenu() {
   const open = useControls((s) => s.quickMenuOpen);
   const setOpen = useControls((s) => s.setQuickMenuOpen);
   const { theme, toggleTheme } = useTheme();
-  const { volume, setVolume, cycleTrack } = useBackgroundMusic();
+  const { volume, muted, setVolume, toggleMuted, cycleTrack } = useBackgroundMusic();
   const track = useBackgroundTrack();
   const [shell, setShell] = useState<HTMLElement | null>(null);
 
@@ -125,6 +125,15 @@ export function QuickMenu() {
                 <ChevronRight size={14} className="shrink-0 opacity-70" />
               </button>
             </div>
+            <button
+              type="button"
+              onClick={toggleMuted}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-ink-soft transition-all active:scale-95"
+              aria-label={muted ? "Unmute music" : "Mute music"}
+              title={muted ? "Unmute" : "Mute"}
+            >
+              {muted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+            </button>
           </div>
 
           <div className="mt-3 flex items-center gap-3">

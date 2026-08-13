@@ -5,12 +5,27 @@ export type Theme = "light" | "dark";
 
 const STORAGE_KEY = "upscale:theme";
 
-function readStored(): Theme {
+function prefersDark(): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+function storedTheme(): Theme | null {
   try {
-    return localStorage.getItem(STORAGE_KEY) === "dark" ? "dark" : "light";
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw === "dark" || raw === "light") return raw;
   } catch {
-    return "light";
+    /* noop */
   }
+  return null;
+}
+
+function systemTheme(): Theme {
+  return prefersDark() ? "dark" : "light";
+}
+
+function readInitial(): Theme {
+  return storedTheme() ?? systemTheme();
 }
 
 function applyTheme(theme: Theme) {
@@ -24,10 +39,11 @@ interface ThemeState {
   theme: Theme;
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
+  applySystemTheme: () => void;
 }
 
 export const useTheme = create<ThemeState>((set, get) => {
-  const initial = readStored();
+  const initial = readInitial();
   applyTheme(initial);
 
   return {
@@ -45,13 +61,29 @@ export const useTheme = create<ThemeState>((set, get) => {
       const next = get().theme === "dark" ? "light" : "dark";
       get().setTheme(next);
     },
+    applySystemTheme: () => {
+      if (storedTheme()) return;
+      const theme = systemTheme();
+      applyTheme(theme);
+      set({ theme });
+    },
   };
 });
 
 export function ThemeSyncEffect() {
   const theme = useTheme((s) => s.theme);
+  const applySystemTheme = useTheme((s) => s.applySystemTheme);
+
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => applySystemTheme();
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [applySystemTheme]);
+
   return null;
 }

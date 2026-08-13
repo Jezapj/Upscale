@@ -1,5 +1,7 @@
 import { useRef, useState } from "react";
-import { LogOut, Download, Upload, Info, Bell, Crown } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { LogOut, Download, Upload, Info, Bell, Crown, CircleHelp } from "lucide-react";
+import { useWalkthrough } from "@/store/useWalkthrough";
 import { useStore } from "@/store/useStore";
 import { Sheet } from "./Sheet";
 import { ProSubscriptionSheet } from "./ProSubscriptionSheet";
@@ -19,6 +21,8 @@ interface Props {
 }
 
 export function SettingsSheet({ open, onClose }: Props) {
+  const nav = useNavigate();
+  const startTour = useWalkthrough((s) => s.start);
   const { user, data, signOut } = useStore();
   const fileRef = useRef<HTMLInputElement>(null);
   const [remindersOn, setRemindersOn] = useState(() => getReminderPrefs().enabled);
@@ -101,8 +105,8 @@ export function SettingsSheet({ open, onClose }: Props) {
             </p>
             {user?.provider === "google" && (
               <p className="mt-1 text-[10px] font-600 text-ink-faint">
-                Goals and routines auto-backup to your account on save; signing in on
-                another device imports the latest backup.
+                Goals, routines, and notes auto-backup to your account on save;
+                signing in on another device imports the latest backup.
               </p>
             )}
           </div>
@@ -137,6 +141,24 @@ export function SettingsSheet({ open, onClose }: Props) {
             runs full-screen and works offline.
           </p>
         </div>
+
+        <button
+          type="button"
+          className="card flex w-full items-start gap-3 p-4 text-left active:scale-[0.99]"
+          onClick={() => {
+            onClose();
+            nav("/");
+            window.setTimeout(() => startTour(), 250);
+          }}
+        >
+          <CircleHelp size={18} className="mt-0.5 shrink-0 text-cat-project" />
+          <div className="min-w-0 flex-1">
+            <p className="font-800 text-ink">Help</p>
+            <p className="mt-1 text-sm font-600 text-ink-soft">
+              Replay the Home walkthrough: what each part of this screen is for.
+            </p>
+          </div>
+        </button>
 
         {notificationsSupported() && (
           <div className="card space-y-3 p-4">

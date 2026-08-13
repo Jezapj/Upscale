@@ -39,7 +39,7 @@ interface Props {
     width: number;
     height: number;
     onGameOver: (result: number | GameResult) => void;
-    /** True while the shell pause menu is open — freeze the game loop. */
+    /** True while the shell pause menu is open: freeze the game loop. */
     paused: boolean;
     playMode: PlayMode;
     /** Set for daily runs (and optional practice seeds). */

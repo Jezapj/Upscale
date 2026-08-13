@@ -18,10 +18,11 @@ export function BackgroundMusicPlayer() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const location = useLocation();
   const volume = useBackgroundMusic((s) => s.volume);
+  const muted = useBackgroundMusic((s) => s.muted);
   const trackId = useBackgroundMusic((s) => s.trackId);
   const track = getBackgroundTrack(trackId);
   const unlockedRef = useRef(false);
-  const effectiveVolume = volume * gameMusicDuck(location.pathname);
+  const effectiveVolume = muted ? 0 : volume * gameMusicDuck(location.pathname);
 
   useEffect(() => {
     const audio = audioRef.current;

@@ -1,6 +1,6 @@
 /** Tunable timing/volume for game sounds. Times are in seconds. */
 export interface SoundTiming {
-  /** Output level 0–1 */
+  /** Output level 0-1 */
   volume: number;
   /** Seconds into the source where playback begins (clip start) */
   startTime: number;
@@ -12,7 +12,7 @@ export interface SoundTiming {
   fadeIn?: number;
   /** Fade-out length in seconds (peak → silence) at end of `duration`. */
   fadeOut?: number;
-  /** Peak level multiplier 0–1. */
+  /** Peak level multiplier 0-1. */
   intensity?: number;
 }
 
@@ -22,7 +22,7 @@ export interface SampleClip extends SoundTiming {
   loop?: boolean;
 }
 
-/** Dissiada — piano-like lane taps */
+/** Dissiada: piano-like lane taps */
 export const DISSIADA_SOUND = {
   note: { volume: 0.58, startTime: 0, endTime: 0.16, duration: 0.2 },
   noteMiss: { volume: 0.28, startTime: 0, endTime: 0.09, duration: 0.11 },
@@ -43,7 +43,7 @@ export const DISSIADA_SOUND = {
   harmonicReverb: { wet: 0.42, duration: 1.15, decay: 2.6 },
 } as const satisfies Record<string, SoundTiming | number | { detuneCents: number; voiceWet: number } | { wet: number; duration: number; decay: number }>;
 
-/** Combo milestone — extra harmonic above base (equal temperament) */
+/** Combo milestone: extra harmonic above base (equal temperament) */
 export interface DissiadaComboHarmonic {
   minCombo: number;
   semitones: number;
@@ -55,7 +55,7 @@ export interface DissiadaComboHarmonic {
   duration?: number;
 }
 
-/** Combo milestones — extra harmonic above base (equal temperament) */
+/** Combo milestones: extra harmonic above base (equal temperament) */
 export const DISSIADA_COMBO_HARMONICS = [
   { minCombo: 10, semitones: 4, startTime: 0.05, endTime: 0.20, duration: 0.4 },
   { minCombo: 20, semitones: 7,  startTime: 0.1, endTime: 0.25, duration: 0.3 },
@@ -64,7 +64,7 @@ export const DISSIADA_COMBO_HARMONICS = [
   { minCombo: 50, semitones: 19, startTime: 0.25, endTime: 0.45, duration: 0.1  },
 ] as const satisfies readonly DissiadaComboHarmonic[];
 
-/** Combo visual milestones — white hit feedback */
+/** Combo visual milestones: white hit feedback */
 export const DISSIADA_COMBO_VISUALS = {
   edgeHighlight: DISSIADA_COMBO_HARMONICS[0].minCombo,
   fullFlash: DISSIADA_COMBO_HARMONICS[1].minCombo,
@@ -89,7 +89,7 @@ export const DISSIADA_HOLD_ARP = {
 /** Per-lane base frequencies (Hz) */
 export const DISSIADA_NOTE_HZ = [261.63, 293.66, 349.23, 392.0] as const;
 
-/** TipTop — flap thump and hole-in-one */
+/** TipTop: flap thump and hole-in-one */
 export const TIPTOP_SOUND = {
   flap: {
     volume: 0.62,
@@ -100,7 +100,7 @@ export const TIPTOP_SOUND = {
     fadeOut: 0.09,
     intensity: 0.1,
   },
-  /** First flap harmonic — delay is seconds after the flap attack. */
+  /** First flap harmonic: delay is seconds after the flap attack. */
   flapHarmonic1: {
     volume: 0.2,
     startTime: 0.05,
@@ -110,7 +110,7 @@ export const TIPTOP_SOUND = {
     fadeOut: 0.11,
     intensity: 1,
   },
-  /** Second flap harmonic — delay is seconds after the flap attack. */
+  /** Second flap harmonic: delay is seconds after the flap attack. */
   flapHarmonic2: {
     volume: 0.5,
     startTime: 0.1,
@@ -152,7 +152,7 @@ export const TIPTOP_FLAP_TONE = {
   ],
 } as const;
 
-/** Octane — car samples from /public */
+/** Octane: car samples from /public */
 export const OCTANE_SAMPLES = {
   /** Looped idle rumble while coasting / off throttle */
   idle: {
@@ -163,7 +163,7 @@ export const OCTANE_SAMPLES = {
     duration: 8,
     loop: true,
   },
-  /** CarRev clip — loops only while pinned at the redline */
+  /** CarRev clip: loops only while pinned at the redline */
   revLoop: {
     src: "/CarRev.mp3",
     volume: 0.62,
@@ -197,10 +197,10 @@ export const OCTANE_SOUND = {
 /** Procedural shift rev pitch multiplier per gear (1-indexed gear after shift) */
 export const OCTANE_REV_GEAR_PITCH = [0.92, 1.0, 1.08, 1.16, 1.24, 1.32, 1.4] as const;
 
-/** Tach redline band — CarRev sample fades in across this RPM range */
+/** Tach redline band: CarRev sample fades in across this RPM range */
 export const OCTANE_REDLINE = { start: 7500, end: 9000 } as const;
 
-/** Off-throttle mix — duck synth/rev so CarIdle is clearer */
+/** Off-throttle mix: duck synth/rev so CarIdle is clearer */
 export const OCTANE_IDLE_MIX = {
   idleOffGas: 0.9,
   idleOnGas: 0.3,

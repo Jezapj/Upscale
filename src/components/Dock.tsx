@@ -45,7 +45,10 @@ export function Dock() {
           RB
         </button>
 
-        <div className="capsule relative z-0 flex items-center justify-between gap-1 px-2.5 py-2 shadow-dock">
+        <div
+          data-tour="dock"
+          className="capsule relative z-0 flex items-center justify-between gap-1 px-2.5 py-2 shadow-dock"
+        >
           {ITEMS.map((item) => (
             <NavLink
               key={item.to}

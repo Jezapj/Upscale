@@ -65,7 +65,7 @@ export function NotesScreen() {
             </div>
             <p className="font-display text-xl font-800 text-ink">No notes yet</p>
             <p className="mt-1 text-sm font-600 text-ink-soft">
-              Keep ideas, reflections and shopping lists here — add a reminder to
+              Keep ideas, reflections and shopping lists here - add a reminder to
               any note and Upscale will notify you.
             </p>
             <button onClick={() => setAddOpen(true)} className="btn mt-4">

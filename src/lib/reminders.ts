@@ -135,7 +135,7 @@ export function formatNoteReminderLabel(reminderAt: string): string {
 
 /**
  * Notes whose one-off reminder time has passed today. Unlike routines there is
- * no upper grace bound — the per-day fired list already stops repeats.
+ * no upper grace bound - the per-day fired list already stops repeats.
  */
 export function dueNoteRemindersNow(
   data: AppData,

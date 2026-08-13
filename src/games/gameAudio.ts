@@ -325,7 +325,7 @@ interface DissiadaHoldVoice {
 const dissiadaHoldVoices = new Map<number, DissiadaHoldVoice[]>();
 
 /**
- * Held note: the lane's arpeggio stretched across the hold — the same triangle
+ * Held note: the lane's arpeggio stretched across the hold - the same triangle
  * timbre as a tap, spaced out and ringing longer so it fills the duration.
  */
 export function startDissiadaHold(lane: number, durationMs = 900) {

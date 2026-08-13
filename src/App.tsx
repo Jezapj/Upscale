@@ -15,6 +15,8 @@ import { BackgroundMusicPlayer } from "@/components/BackgroundMusicPlayer";
 import { useKeyboardControls } from "@/hooks/useKeyboardControls";
 import { useRoutineReminders } from "@/hooks/useRoutineReminders";
 import { ThemeSyncEffect } from "@/store/useTheme";
+import { useWalkthrough, walkthroughSeen } from "@/store/useWalkthrough";
+import { Walkthrough } from "@/components/Walkthrough";
 import { LoginScreen } from "@/screens/LoginScreen";
 import { HomeScreen } from "@/screens/HomeScreen";
 import { CheckinScreen } from "@/screens/CheckinScreen";
@@ -31,6 +33,7 @@ import { ProgressScreen } from "@/screens/ProgressScreen";
 function AppShell() {
   const location = useLocation();
   const refreshToday = useStore((s) => s.refreshToday);
+  const startTour = useWalkthrough((s) => s.start);
 
   // Roll the day over when the app regains focus (e.g. opened next morning).
   useEffect(() => {
@@ -50,6 +53,13 @@ function AppShell() {
 
   useKeyboardControls();
   useRoutineReminders();
+
+  useEffect(() => {
+    if (location.pathname !== "/") return;
+    if (walkthroughSeen()) return;
+    const id = window.setTimeout(() => startTour(), 400);
+    return () => window.clearTimeout(id);
+  }, [location.pathname, startTour]);
 
   return (
     <div id="app-shell" className="app-shell">
@@ -73,6 +83,7 @@ function AppShell() {
         </Routes>
       </div>
       <QuickMenu />
+      <Walkthrough />
       {!hideChrome && (
         <div className="relative z-30">
           <ScreenHints />

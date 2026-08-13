@@ -19,7 +19,7 @@ export const BEATS_PER_MEASURE = 4;
 export const COLUMNS_PER_MEASURE = COLUMNS_PER_BEAT * BEATS_PER_MEASURE;
 
 /**
- * Physics caps — must stay in sync with DaybreakGame jump apex (~2.35 rows).
+ * Physics caps: must stay in sync with DaybreakGame jump apex (~2.35 rows).
  * A clean climb of 2 is clearable; a spiked landing needs ~0.5 extra clearance,
  * so spiked rises are capped at 1.
  */
@@ -32,7 +32,7 @@ export const MAX_RISE_WITH_SPIKE = 1;
 export const PLATFORM_HEIGHT = 2;
 /**
  * Jump-pad apex (~4.2 rows in the game). High steps / platforms after a pad
- * may rise up to this many rows — unreachable with a normal jump.
+ * may rise up to this many rows: unreachable with a normal jump.
  */
 export const PAD_MAX_RISE = 4;
 /** Columns after a pad where a pad-height landing is still reachable. */
@@ -52,7 +52,7 @@ export interface LevelColumn {
   platform: number | null;
   /** Spike sitting on top of the thin platform. */
   platformSpike: boolean;
-  /** Geometry Dash-style jump pad on the floor — auto-launches upward. */
+  /** Geometry Dash-style jump pad on the floor: auto-launches upward. */
   pad: boolean;
   /** Midair collectible at this column, or null. */
   powerup: PowerupKind | null;
@@ -125,7 +125,7 @@ export function generateLevel(seed: number): DaybreakLevel {
   const bpm = pickBpm(key, rng);
   const difficulty = key.accidentals;
 
-  // ~20% of the original 48–96 measure length → roughly 9–19 measures.
+  // ~20% of the original 48-96 measure length → roughly 9-19 measures.
   const measures = 9 + Math.round(difficulty * 1.5);
 
   const columns: LevelColumn[] = [];
@@ -335,7 +335,7 @@ export function generateLevel(seed: number): DaybreakLevel {
       return;
     }
     flat(4);
-    // Spiking the top of a +2 wall is uncleatable — only spike height-1 walls.
+    // Spiking the top of a +2 wall is uncleatable: only spike height-1 walls.
     const spiked = h <= MAX_RISE_WITH_SPIKE && difficulty >= 2 && rng() < 0.4;
     for (let i = 0; i < 8; i++) {
       push(1, floor + h, spiked && (i === 3 || i === 4));
@@ -346,7 +346,7 @@ export function generateLevel(seed: number): DaybreakLevel {
   };
 
   /**
-   * Thin platforms at PLATFORM_HEIGHT above the floor — walk under or jump on.
+   * Thin platforms at PLATFORM_HEIGHT above the floor: walk under or jump on.
    * No platform-top spikes (landing on a spiked +2 platform exceeds jump apex).
    * Floor spikes under the platform are fine (forces the hop up).
    */
@@ -362,7 +362,7 @@ export function generateLevel(seed: number): DaybreakLevel {
     }
 
     const platAt = rng() < 0.5 ? 4 : 6;
-    const platW = 4 + Math.floor(rng() * 5); // 4–8 columns
+    const platW = 4 + Math.floor(rng() * 5); // 4-8 columns
     const end = Math.min(COLUMNS_PER_MEASURE, platAt + platW);
 
     const floorSpike = difficulty >= 1 && rng() < 0.5;
@@ -412,16 +412,16 @@ export function generateLevel(seed: number): DaybreakLevel {
     push(1, floor, false, null, false, true);
     lastHazardCol = start + padAt;
 
-    // Gap after pad before the reward lands near pad apex (~2–4 cols out).
-    const gap = 2 + Math.floor(rng() * 2); // 2–3
+    // Gap after pad before the reward lands near pad apex (~2-4 cols out).
+    const gap = 2 + Math.floor(rng() * 2); // 2-3
     flat(gap);
 
     const outcome = rng();
     if (outcome < 0.42) {
-      // High thin platform — only pad reaches it; optional floor spikes under.
+      // High thin platform: only pad reaches it; optional floor spikes under.
       const h = rng() < 0.55 ? 3 : PAD_MAX_RISE;
       const platElev = clampFloor(floor + h);
-      const platW = 4 + Math.floor(rng() * 4); // 4–7
+      const platW = 4 + Math.floor(rng() * 4); // 4-7
       const underSpikes = rng() < 0.55 + difficulty * 0.05;
       for (let i = 0; i < platW; i++) {
         const mid = i === Math.floor(platW / 2) || i === Math.floor(platW / 2) + 1;
@@ -437,13 +437,13 @@ export function generateLevel(seed: number): DaybreakLevel {
       lastHazardCol = columns.length - 1;
       flat(Math.max(2, COLUMNS_PER_MEASURE - padAt - 1 - gap - platW));
     } else if (outcome < 0.82) {
-      // Pad-only floor step (3–4 rows) — normal jump cannot clear it.
+      // Pad-only floor step (3-4 rows): normal jump cannot clear it.
       const rise = Math.min(
         PAD_MAX_RISE,
         rng() < 0.5 ? 3 : PAD_MAX_RISE,
       );
       const next = clampFloor(floor + rise);
-      const stepW = 4 + Math.floor(rng() * 5); // 4–8
+      const stepW = 4 + Math.floor(rng() * 5); // 4-8
       floor = next;
       for (let i = 0; i < stepW; i++) {
         push(1, floor, false);
@@ -519,7 +519,7 @@ export function generateLevel(seed: number): DaybreakLevel {
     }
   }
 
-  // Safety pass moved to after outro — see below.
+  // Safety pass moved to after outro: see below.
 
   let outroGuard = 0;
   while (floor !== 0 && outroGuard++ < 24) {
@@ -547,7 +547,7 @@ export function generateLevel(seed: number): DaybreakLevel {
   };
 }
 
-/** Place 1–3 midair power-ups across the level (after terrain is final). */
+/** Place 1-3 midair power-ups across the level (after terrain is final). */
 function placePowerups(columns: LevelColumn[], rng: Rng): void {
   const n = 1 + Math.floor(rng() * 3);
   const intro = COLUMNS_PER_MEASURE;

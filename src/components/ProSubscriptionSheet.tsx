@@ -102,7 +102,7 @@ export function ProSubscriptionSheet({ open, onClose }: Props) {
 
           {isPro ? (
             <p className="text-center text-sm font-800 text-accent">
-              You&apos;re on Pro — enjoy unlimited Endless plays.
+              You&apos;re on Pro - enjoy unlimited Endless plays.
             </p>
           ) : needsSignIn ? (
             <p className="text-center text-sm font-700 text-ink-soft">
@@ -174,7 +174,7 @@ export function ProSubscriptionSheet({ open, onClose }: Props) {
 /**
  * Full-height panel for the RevenueCat-hosted paywall. It slides up from the
  * bottom over the whole app (leaving a strip of the screen visible) so the
- * paywall gets its own scroll context and always opens at the top — embedding
+ * paywall gets its own scroll context and always opens at the top - embedding
  * it inside the sheet made it inherit the sheet's scroll position.
  * Kept mounted so the container ref exists the moment checkout starts.
  */

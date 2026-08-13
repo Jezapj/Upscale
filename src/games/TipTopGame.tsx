@@ -128,7 +128,7 @@ interface GravityZone {
   dir: GravityDir;
 }
 
-/** Oscillating circular saw — moves slowly up and down. */
+/** Oscillating circular saw: moves slowly up and down. */
 interface SawBlade {
   kind: "saw";
   x: number;
@@ -182,7 +182,7 @@ const PORTAL_COOLDOWN_FRAMES = 18;
 /** Physics steps (~60/s) sticky stays off after a flap escape. */
 const STICKY_ESCAPE_FRAMES = 12;
 
-/** Mutually exclusive gimmick families — at most one pick from each per stage. */
+/** Mutually exclusive gimmick families: at most one pick from each per stage. */
 type GimmickGroup = "portal" | "laser" | "gravity" | "saw" | "sticky";
 const GIMMICK_GROUPS: GimmickGroup[] = [
   "portal",
@@ -192,7 +192,7 @@ const GIMMICK_GROUPS: GimmickGroup[] = [
   "sticky",
 ];
 
-/** White tangential hit flash after a flap — tune `size` and `alpha`. */
+/** White tangential hit flash after a flap: tune `size` and `alpha`. */
 const FLAP_IMPACT_TUNING = {
   size: 4.0,
   alpha: 0.52,
@@ -974,8 +974,8 @@ function tryPlaceVerticalLaser(
 }
 
 /**
- * Horizontal left–right beam. Mix of ground pillars and mid-air floating blocks,
- * with varying gap lengths — placed across the flight path so they hinder the player.
+ * Horizontal left-right beam. Mix of ground pillars and mid-air floating blocks,
+ * with varying gap lengths: placed across the flight path so they hinder the player.
  */
 function tryPlaceHorizontalLaser(
   rand: () => number,
@@ -1132,7 +1132,7 @@ function xOverlap(ax: number, aw: number, bx: number, bw: number, pad = 0): bool
   return ax < bx + bw + pad && ax + aw + pad > bx;
 }
 
-/** Ground bumps/walls that fill columns — portals must not sit inside their X footprint. */
+/** Ground bumps/walls that fill columns: portals must not sit inside their X footprint. */
 function columnBlocksStrip(
   x: number,
   w: number,
@@ -1171,7 +1171,7 @@ function sideFaceBlocked(
   );
 }
 
-/** Build one portal pad — biased toward side faces; orientations are independent. */
+/** Build one portal pad: biased toward side faces; orientations are independent. */
 function makePortalPad(
   rand: () => number,
   worldW: number,
@@ -1237,7 +1237,7 @@ function makePortalPad(
       };
     }
 
-    // Ground portal — never under a terrain column; honor side split if given.
+    // Ground portal: never under a terrain column; honor side split if given.
     const w = 44 + Math.floor(rand() * 28);
     let lo = 200;
     let hi = worldW - w - 40;
@@ -1360,7 +1360,7 @@ function clearObstaclesOverPortals(
     const hits = ranges.some((r) => o.x < r.x + r.w && o.x + o.w > r.x);
     if (!hits) continue;
     if (o.anchor === "ground" || (o.anchor === "float" && o.floatAbove < 50)) {
-      // Tombstone off-world — keeps indices stable for other attachments.
+      // Tombstone off-world: keeps indices stable for other attachments.
       obstacles[i] = {
         kind: "bump",
         x: -800,
@@ -1462,7 +1462,7 @@ function tryPlacePortalGroup(
   }
 
   if (!pair) {
-    // Can't place portals — drop the barrier too so we don't soft-lock.
+    // Can't place portals: drop the barrier too so we don't soft-lock.
     return [];
   }
 
@@ -1474,7 +1474,7 @@ function tryPlacePortalGroup(
       (ax < splitX - 30 && bx > splitX + 30) ||
       (bx < splitX - 30 && ax > splitX + 30);
     if (!straddles) {
-      // Barrier without a usable bypass — remove barrier, keep portals.
+      // Barrier without a usable bypass: remove barrier, keep portals.
       return [pair];
     }
   }
@@ -1737,7 +1737,7 @@ function generateThemeDecor(
 function generateStage(seed: number): Stage {
   const rand = mulberry32(seed);
   const pitW = 66 + Math.floor(rand() * 28);
-  /** Goal sits near the end — only a short runway after the cup. */
+  /** Goal sits near the end: only a short runway after the cup. */
   const pitX = 720 + Math.floor(rand() * 1100);
   const afterGoal = 90 + Math.floor(rand() * 130);
   const worldW = pitX + afterGoal;
@@ -3080,7 +3080,7 @@ export function TipTopGame({ width, height, onGameOver, paused = false, seed }: 
               vy *= 0.82;
             }
           } else {
-            // Bumps are bottom-rooted columns — collide through to screen bottom.
+            // Bumps are bottom-rooted columns: collide through to screen bottom.
             const colH =
               obs.kind === "bump" && obs.anchor === "ground"
                 ? Math.max(obs.h, playH - oy)

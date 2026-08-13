@@ -1,4 +1,4 @@
-import { emptyAppData, type AppData, type ArcadeProfile } from "./types";
+import { emptyAppData, type AppData, type ArcadeProfile, type Note } from "./types";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { getFirebaseDb } from "./firebase";
 import { activeFirestoreUid } from "./firebaseAuth";
@@ -26,7 +26,7 @@ export function isCloudUser(userId: string): boolean {
   return userId.startsWith("google:");
 }
 
-/** Firestore `userdata` / leaderboard doc id — must match `request.auth.uid`. */
+/** Firestore `userdata` / leaderboard doc id: must match `request.auth.uid`. */
 export function firestoreUserDocId(userId: string): string | null {
   return activeFirestoreUid() ?? googleSubFromUserId(userId);
 }
@@ -43,6 +43,22 @@ function mergeArcadeProfile(
     optedOut: (left.prompted && left.optedOut) || (right.prompted && right.optedOut),
     username: left.username ?? right.username,
   };
+}
+
+function noteStamp(note: Note): string {
+  return note.updatedAt || note.createdAt || "";
+}
+
+/** Union notes by id; newer `updatedAt` wins so they survive full-backup conflicts. */
+function mergeNotes(a: Note[] | undefined, b: Note[] | undefined): Note[] {
+  const map = new Map<string, Note>();
+  for (const note of [...(a ?? []), ...(b ?? [])]) {
+    const existing = map.get(note.id);
+    if (!existing || noteStamp(note) >= noteStamp(existing)) {
+      map.set(note.id, note);
+    }
+  }
+  return [...map.values()].sort((x, y) => noteStamp(y).localeCompare(noteStamp(x)));
 }
 
 function mergeGameScores(
@@ -172,6 +188,7 @@ export function mergeLocalAndCloud(
 
   return {
     ...winner,
+    notes: mergeNotes(winner.notes, loser.notes),
     arcadeDaily: mergeArcadeDailyStates(winner.arcadeDaily, loser.arcadeDaily, day),
     arcadeProfile: mergeArcadeProfile(winner.arcadeProfile, loser.arcadeProfile),
     gameScores: mergeGameScores(winner.gameScores, loser.gameScores),

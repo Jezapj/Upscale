@@ -21,7 +21,7 @@ export function GameLeaderboardList({
   if (entries.length === 0) {
     return (
       <p className="text-xs font-700 text-ink-faint">
-        No scores yet — your first run goes here.
+        No scores yet - your first run goes here.
       </p>
     );
   }

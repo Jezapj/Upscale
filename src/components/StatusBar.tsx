@@ -23,6 +23,7 @@ export function StatusBar() {
   return (
     <div className="flex items-center justify-between px-4 pb-1 pt-3 no-select">
       <button
+        data-tour="settings"
         onClick={() => setSettingsOpen(true)}
         className="relative flex items-center active:scale-95"
         title="Settings (hold L + T)"

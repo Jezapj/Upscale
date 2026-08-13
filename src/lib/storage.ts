@@ -24,7 +24,7 @@ function loadLocal(userId: string): AppData {
   }
 }
 
-/** Instant local read — use before async cloud merge. */
+/** Instant local read: use before async cloud merge. */
 function readLocalData(userId: string): AppData {
   return loadLocal(userId);
 }
@@ -41,7 +41,8 @@ function hasAppContent(data: AppData): boolean {
   return (
     data.goals.length > 0 ||
     data.routines.length > 0 ||
-    Object.keys(data.logs).length > 0
+    Object.keys(data.logs).length > 0 ||
+    (data.notes?.length ?? 0) > 0
   );
 }
 

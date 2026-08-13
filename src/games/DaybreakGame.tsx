@@ -1,5 +1,5 @@
 /**
- * Daybreak — a rhythm platformer. One-button (tap / space / click) cube
+ * Daybreak: a rhythm platformer. One-button (tap / space / click) cube
  * jumping over procedurally generated terrain whose obstacles sit on the
  * beat grid of a randomly chosen musical key + BPM. All audio is synthesized
  * live; the AudioContext clock drives the scroll so music and level never
@@ -23,18 +23,18 @@ interface Props {
   width: number;
   height: number;
   onGameOver: (result: GameResult) => void;
-  /** Shell pause menu — freezes sim + suspends audio. */
+  /** Shell pause menu: freezes sim + suspends audio. */
   paused?: boolean;
   /** When set, level is generated from this seed (daily challenge). */
   seed?: number;
-  /** Caps retries — the run ends for good on the last death (daily = 10). */
+  /** Caps retries: the run ends for good on the last death (daily = 10). */
   maxAttempts?: number;
 }
 
 // ── Physics tuning (rows / seconds / beats) ─────────────────────────────────
-/** Jump apex in rows. High enough to clear 2–3 row walls with snap forgiveness. */
+/** Jump apex in rows. High enough to clear 2-3 row walls with snap forgiveness. */
 const JUMP_APEX_ROWS = 2.35;
-/** Jump-pad launch apex — higher than a normal beat-timed jump. */
+/** Jump-pad launch apex: higher than a normal beat-timed jump. */
 const PAD_APEX_ROWS = 4.2;
 /** A full jump (take-off to landing at equal height) lasts exactly one beat. */
 const JUMP_BEATS = 1;
@@ -763,7 +763,7 @@ export function DaybreakGame({
               die();
               return;
             }
-            // Glancing a thin platform edge while rising — treat as miss-under.
+            // Glancing a thin platform edge while rising: treat as miss-under.
             py = prevY;
             vy = Math.min(vy, 0);
           }
@@ -858,7 +858,7 @@ export function DaybreakGame({
         const buffered =
           jumpBufferedAt >= 0 &&
           performance.now() - jumpBufferedAt < JUMP_BUFFER_MS;
-        // A held DropBoost charge swallows the jump — it launches on release.
+        // A held DropBoost charge swallows the jump: it launches on release.
         if (!dropCharging && grounded && (buffered || holdJump)) {
           doJump();
         } else if (
@@ -903,7 +903,7 @@ export function DaybreakGame({
         fireDropBoost();
         return;
       }
-      // Let go too early — spend it as an ordinary jump so the tap isn't eaten.
+      // Let go too early: spend it as an ordinary jump so the tap isn't eaten.
       const wasGrounded = grounded;
       dropCharging = false;
       dropBoostArmed = false;
@@ -1413,7 +1413,7 @@ export function DaybreakGame({
           const localX = ((h >>> 10) % 45) / 100;
           // Bigger overall, with noticeable size variety between blooms.
           const sizeRoll = ((h >>> 20) % 100) / 100;
-          const scale = 0.88 + sizeRoll * 0.45; // ~0.88–1.33×
+          const scale = 0.88 + sizeRoll * 0.45; // ~0.88-1.33×
           const drawH = hangH * scale;
           const drawW = (img.naturalWidth / img.naturalHeight) * drawH;
           const sx = i * tile - frac + localX * (tile * 0.25);

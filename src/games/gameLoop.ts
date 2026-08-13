@@ -1,4 +1,4 @@
-/** Target 60fps — game logic constants are expressed per frame at this rate. */
+/** Target 60fps: game logic constants are expressed per frame at this rate. */
 export const TARGET_FRAME_MS = 1000 / 60;
 export const MAX_PHYSICS_STEPS = 5;
 

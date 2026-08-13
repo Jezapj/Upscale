@@ -10,7 +10,7 @@ dev-dist
 # TypeScript incremental build
 *.tsbuildinfo
 
-# Secrets — never commit Firebase keys or Google client secret
+# Secrets: never commit Firebase keys or Google client secret
 .env
 .env.*
 !.env.example
@@ -31,5 +31,5 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 
-# Cursor (local agent state — not for the repo)
+# Cursor (local agent state: not for the repo)
 .cursor/

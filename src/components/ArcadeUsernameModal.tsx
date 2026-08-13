@@ -14,7 +14,7 @@ export function ArcadeUsernameModal({ initialUsername = "", onSave }: Props) {
   const submitName = () => {
     const name = validateArcadeUsername(value);
     if (!name) {
-      setError("Use 3–16 letters, numbers, or spaces.");
+      setError("Use 3-16 letters, numbers, or spaces.");
       return;
     }
     onSave({ username: name, optedOut: false });

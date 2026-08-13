@@ -4,7 +4,7 @@ A reminder / self‑improvement / goal tracker and **progress mapper**, styled a
 **Nintendo 3DS eShop** (and the IISU launcher reference). Build routines, group them under
 big goals, do a daily check‑in, and watch your progress level up.
 
-Built with **TypeScript + React + Vite**, and installable on your phone as a **PWA** —
+Built with **TypeScript + React + Vite**, and installable on your phone as a **PWA** -
 add it to your home screen and it runs full‑screen and offline like a native app.
 
 ---
@@ -14,12 +14,12 @@ add it to your home screen and it runs full‑screen and offline like a native a
 - **Routines & Goals.** Freely add routines for the things you do. Optionally group
   routines under an overarching **goal** (e.g. _Learn piano_, _Make a PCB_, _Build a
   website_) so their daily ratings roll up into goal progress.
-- **Categories.** Exercise, Instrument, Project, Chores, Health, Learning, Other — each
+- **Categories.** Exercise, Instrument, Project, Chores, Health, Learning, Other - each
   with its own glossy gradient icon and example tasks.
 - **Frequency & end conditions.** Daily, specific weekdays, or every _N_ days. Each
   routine can be **ongoing forever** or **time‑boxed** with an end date.
 - **Daily check‑in flow.** You're prompted goal‑by‑goal (then by routine/category). For
-  each, you rate — worst → best — how it went today:
+  each, you rate - worst → best - how it went today:
 
   | Rating         | What happens                                                        |
   | -------------- | ------------------------------------------------------------------- |
@@ -125,7 +125,7 @@ If routines never appear in Firestore, sync is off: usually missing `VITE_FIREBA
 
 1. Open the deployed site (or your dev URL) in mobile Chrome / Safari.
 2. Use the browser menu → **Add to Home Screen**.
-3. Launch it from your home screen — it runs standalone, full‑screen, and offline.
+3. Launch it from your home screen - it runs standalone, full‑screen, and offline.
 
 ---
 

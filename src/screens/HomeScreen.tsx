@@ -80,6 +80,7 @@ export function HomeScreen() {
           <div className="home-panel space-y-3">
             {/* Jump back in */}
             <button
+              data-tour="checkin"
               onClick={() => nav("/checkin")}
               className="relative w-full overflow-hidden rounded-tile text-left shadow-panel active:scale-[0.99] transition-transform"
             >
@@ -193,7 +194,7 @@ export function HomeScreen() {
 
             {/* Goal progress strips */}
             {activeGoals.length > 0 && (
-              <div className="space-y-2">
+              <div data-tour="goals" className="space-y-2">
                 <div className="flex items-center justify-between">
                   <h2 className="content-title font-display text-lg font-800">Goals</h2>
                   <button
@@ -227,7 +228,7 @@ export function HomeScreen() {
             )}
 
             {activeGoals.length === 0 && (
-              <div className="card p-4 text-center">
+              <div data-tour="goals" className="card p-4 text-center">
                 <p className="text-sm font-700 text-ink-soft">
                   Group routines under goals like “Learn piano”.
                 </p>
@@ -237,7 +238,7 @@ export function HomeScreen() {
               </div>
             )}
 
-            <div className="space-y-2">
+            <div data-tour="notes" className="space-y-2">
               <h2 className="content-title font-display text-lg font-800">Notes</h2>
               <NotesStrip
                 note={latestNote}
@@ -257,7 +258,7 @@ export function HomeScreen() {
               </h1>
             </div>
 
-            <div>
+            <div data-tour="routines">
               <div className="mb-2 flex items-center justify-between">
                 <h2 className="font-display text-lg font-800 text-ink">
                   Routines
@@ -313,7 +314,7 @@ export function HomeScreen() {
               )}
             </div>
 
-            <div>
+            <div data-tour="categories">
               <h2 className="content-title mb-2 font-display text-lg font-800">
                 Categories
               </h2>

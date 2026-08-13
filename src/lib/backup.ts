@@ -12,7 +12,8 @@ function hasCoreContent(data: AppData): boolean {
   return (
     data.goals.length > 0 ||
     data.routines.length > 0 ||
-    Object.keys(data.logs).length > 0
+    Object.keys(data.logs).length > 0 ||
+    (data.notes?.length ?? 0) > 0
   );
 }
 

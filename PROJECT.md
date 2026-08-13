@@ -1,6 +1,6 @@
-# Upscale — Project Documentation
+# Upscale: Project Documentation
 
-A **habit, routine, and goal tracker** styled after the **Nintendo 3DS eShop** (and the IISU launcher). Build routines, group them under goals, do a daily check-in, map your progress, and unwind in a built-in arcade — all as an installable **PWA**.
+A **habit, routine, and goal tracker** styled after the **Nintendo 3DS eShop** (and the IISU launcher). Build routines, group them under goals, do a daily check-in, map your progress, and unwind in a built-in arcade - all as an installable **PWA**.
 
 ---
 
@@ -60,9 +60,9 @@ The app is **offline-first**: all reads and writes hit local storage immediately
 
 ### Routines & goals
 
-- **Routines** — recurring tasks with category, icon, color, frequency, optional end date, optional goal link, and optional daily reminder time.
-- **Goals** — overarching targets (e.g. “Learn piano”, “Build a website”). Routines can be tagged to a goal so their ratings roll up into goal progress.
-- **Categories** — Exercise, Instrument, Project, Chores, Health, Learning, Relax, Other — each with a glossy gradient icon and example tasks.
+- **Routines**: recurring tasks with category, icon, color, frequency, optional end date, optional goal link, and optional daily reminder time.
+- **Goals**: overarching targets (e.g. “Learn piano”, “Build a website”). Routines can be tagged to a goal so their ratings roll up into goal progress.
+- **Categories**: Exercise, Instrument, Project, Chores, Health, Learning, Relax, Other - each with a glossy gradient icon and example tasks.
 
 ### Frequency & scheduling
 
@@ -99,9 +99,9 @@ Ratings reset each calendar day and accumulate into per-routine completion stats
 
 Free-form notes with an optional one-off reminder.
 
-- **Dashboard strip** — a thin row under Goals: ~70% shows the most recent note (or “Create a note” when empty), ~30% is a plus button that opens the composer.
-- **Notes screen** (`/notes`) — list, create, edit and delete notes; each has a title, body, accent colour and optional reminder date/time.
-- **Entry points** — the dashboard strip (both halves) and a Notes card on the check-in screen, under the progress bar.
+- **Dashboard strip**: a thin row under Goals: ~70% shows the most recent note (or “Create a note” when empty), ~30% is a plus button that opens the composer.
+- **Notes screen** (`/notes`): list, create, edit and delete notes; each has a title, body, accent colour and optional reminder date/time.
+- **Entry points**: the dashboard strip (both halves) and a Notes card on the check-in screen, under the progress bar.
 
 ### Reminders
 
@@ -114,13 +114,13 @@ Four mini-games with **daily challenges** (one seeded run per game per calendar 
 | Game | ID | Description |
 | ---- | -- | ----------- |
 | **TipTop** | `tiptop` | Flappy-style side-scroller into pits |
-| **Octane** | `octane` | Drag race / free ride — rev to redline |
+| **Octane** | `octane` | Drag race / free ride: rev to redline |
 | **Dissiada** | `dissiada` | Rhythm tiles on a beat line |
-| **Daybreak** | `daybreak` | Platformer — jump on the beat for bonus points |
+| **Daybreak** | `daybreak` | Platformer: jump on the beat for bonus points |
 
-- **Personal high scores** — stored in `AppData.gameScores` (top 10 per board key).
-- **Global daily leaderboard** — Firestore `dailyBoards/{gameId}_{day}/entries/{uid}`; one create-once entry per user per game per day.
-- **Arcade profile** — optional public display name for leaderboards (or anonymous opt-out).
+- **Personal high scores**: stored in `AppData.gameScores` (top 10 per board key).
+- **Global daily leaderboard**: Firestore `dailyBoards/{gameId}_{day}/entries/{uid}`; one create-once entry per user per game per day.
+- **Arcade profile**: optional public display name for leaderboards (or anonymous opt-out).
 
 ### Settings & backup
 
@@ -136,9 +136,9 @@ Four mini-games with **daily challenges** (one seeded run per game per calendar 
 ┌─────────────────────────────────────────────────────────────┐
 │  React UI (screens, components)                             │
 ├─────────────────────────────────────────────────────────────┤
-│  Zustand store (useStore) — debounced persist (150 ms)      │
+│  Zustand store (useStore): debounced persist (150 ms)      │
 ├─────────────────────────────────────────────────────────────┤
-│  storage.ts — localStorage read/write + cloud orchestration │
+│  storage.ts: localStorage read/write + cloud orchestration │
 ├──────────────────────┬──────────────────────────────────────┤
 │  localStorage        │  cloudSync.ts → Firestore userdata   │
 │  upscale:user        │  dailyLeaderboard.ts → dailyBoards   │
@@ -272,7 +272,7 @@ interface AppData {
   lastActiveDate?: string;
   gamePlays?: GamePlaysState;
   gamePremium?: boolean;
-  syncedAt?: string;              // ISO — last save timestamp for conflict resolution
+  syncedAt?: string;              // ISO: last save timestamp for conflict resolution
   gameScores?: Record<string, GameScoreEntry[]>;
   arcadeDaily?: ArcadeDailyState;
   arcadeProfile?: ArcadeProfile;
@@ -447,10 +447,10 @@ firebase deploy --only firestore:rules
 
 ### Shared infrastructure
 
-- **`GameShell`** — canvas container, pause menu, daily vs practice mode, score submission, personal and global leaderboards.
-- **`gameLoop.ts`** — requestAnimationFrame loop with delta time.
-- **`dailySeed(gameId, day)`** — deterministic uint32 seed from `{day}:{gameId}` so all players get the same daily course.
-- **`GamePaletteContext`** — per-game color theming.
+- **`GameShell`**: canvas container, pause menu, daily vs practice mode, score submission, personal and global leaderboards.
+- **`gameLoop.ts`**: requestAnimationFrame loop with delta time.
+- **`dailySeed(gameId, day)`**: deterministic uint32 seed from `{day}:{gameId}` so all players get the same daily course.
+- **`GamePaletteContext`**: per-game color theming.
 
 ### Play modes
 
@@ -461,9 +461,9 @@ firebase deploy --only firestore:rules
 
 ### Game-specific notes
 
-- **Octane** — daily is always a ¼-mile (402 m) drag; practice supports distance picker and separate board keys (`octane:402`, etc.).
-- **Daybreak** — daily mode grants a fixed pool of 10 attempts (`DAILY_DAYBREAK_ATTEMPTS`).
-- **TipTop / Dissiada** — seeded obstacle/tile patterns from daily seed.
+- **Octane**: daily is always a ¼-mile (402 m) drag; practice supports distance picker and separate board keys (`octane:402`, etc.).
+- **Daybreak**: daily mode grants a fixed pool of 10 attempts (`DAILY_DAYBREAK_ATTEMPTS`).
+- **TipTop / Dissiada**: seeded obstacle/tile patterns from daily seed.
 
 ---
 
@@ -471,9 +471,9 @@ firebase deploy --only firestore:rules
 
 Configured in `vite.config.ts` via `vite-plugin-pwa`:
 
-- **Manifest** — standalone display, theme/background colors, 192/512 icons.
-- **Service worker** — auto-update, precaches JS/CSS/HTML/assets, `navigateFallback` to `index.html` for SPA routing.
-- **Notifications** — `sw-notifications.js` imported into the service worker for reminder support.
+- **Manifest**: standalone display, theme/background colors, 192/512 icons.
+- **Service worker**: auto-update, precaches JS/CSS/HTML/assets, `navigateFallback` to `index.html` for SPA routing.
+- **Notifications**: `sw-notifications.js` imported into the service worker for reminder support.
 
 Install on mobile: browser menu → **Add to Home Screen**. Runs full-screen and works offline for guest/local data; cloud features need network.
 
@@ -583,7 +583,7 @@ firebase deploy --only firestore:rules
 
 | Path | Screen |
 | ---- | ------ |
-| `/` | Home — today’s overview, featured routine, quick add |
+| `/` | Home: today’s overview, featured routine, quick add |
 | `/checkin` | Daily check-in flow (full-screen, no dock) |
 | `/goals` | Goals list and detail |
 | `/library` | Routine library by category |

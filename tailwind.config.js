@@ -4,7 +4,7 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        // Rounded, friendly faces — the IISU / eShop launcher look.
+        // Rounded, friendly faces: the IISU / eShop launcher look.
         sans: [
           "Nunito",
           "Quicksand",

@@ -57,7 +57,7 @@ const NIGHT_RUN_CHANCE = 0.34;
 /** Car height as a fraction of road band height. */
 const CAR_HEIGHT_RATIO = 0.72;
 
-/** Perfect-shift speed-boost lunge — quick snap right, slow settle back with bounce. */
+/** Perfect-shift speed-boost lunge: quick snap right, slow settle back with bounce. */
 const BOOST_LUNGE_TUNING = {
   /** Animation length (60fps frames, scaled by dt). */
   duration: 52,
@@ -71,7 +71,7 @@ const BOOST_LUNGE_TUNING = {
   speedFadeStart: 35,
   /** MPH where the lunge reaches minimum intensity. */
   speedFadeEnd: 190,
-  /** Floor intensity at very high speed (0–1). */
+  /** Floor intensity at very high speed (0-1). */
   minIntensity: 0.28,
   /** Gas-pedal animation length (60fps frames, scaled by dt). */
   launchDuration: 64,
@@ -138,12 +138,12 @@ function boostLungeIntensity(mph: number): number {
   return 1 - t * (1 - minIntensity);
 }
 
-/** Gas wheelie — full at low speed, fades out as speed rises. */
+/** Gas wheelie: full at low speed, fades out as speed rises. */
 function gasWheelieIntensity(mph: number): number {
   return boostLungeIntensity(mph);
 }
 
-/** Brake stoppie — weak at low speed, full at high speed. */
+/** Brake stoppie: weak at low speed, full at high speed. */
 function brakeStoppieIntensity(mph: number): number {
   const { speedFadeStart, speedFadeEnd, minIntensity } = BOOST_LUNGE_TUNING;
   if (mph <= speedFadeStart) return minIntensity;
@@ -427,11 +427,11 @@ const HEADLIGHT_TUNING = {
  * Tweak spacing, origin, spread, and color until pools look right on the asphalt.
  */
 const ROAD_LIGHT_TUNING = {
-  /** Horizontal repeat distance (px) — lower = more lights on screen. */
+  /** Horizontal repeat distance (px): lower = more lights on screen. */
   tileSpacing: 1200,
   /** Scroll speed relative to the car (higher = faster across the screen). */
   parallax: 1.38,
-  /** 0–1 chance a light spawns in each tile. */
+  /** 0-1 chance a light spawns in each tile. */
   spawnChance: 0.37,
   /** Random horizontal offset within each tile (px). */
   spawnXMin: 80,
@@ -474,7 +474,7 @@ const CAR_GLINT_TUNING = {
 } as const;
 
 interface CarGlintPass {
-  /** 0 = rear (left), 1 = front (right) — band center along the body */
+  /** 0 = rear (left), 1 = front (right): band center along the body */
   sweepPos: number;
   strength: number;
 }
@@ -487,7 +487,7 @@ const LENS_FLARE_TUNING = {
   /** Seconds between flare spawn attempts (randomized in this range). */
   minInterval: 100,
   maxInterval: 240,
-  /** 0–1 chance to spawn when an attempt fires. */
+  /** 0-1 chance to spawn when an attempt fires. */
   triggerChance: 0.68,
   /** Seconds for one flare to cross the screen. */
   duration: 230.6,
@@ -520,7 +520,7 @@ const LENS_FLARE_TUNING = {
 } as const;
 
 /**
- * Wheel spin axis on the car sprite (normalized 0–1).
+ * Wheel spin axis on the car sprite (normalized 0-1).
  * Tweak x/y until each wheel rotates around its own center.
  */
 const WHEEL_TUNING = {
@@ -873,7 +873,7 @@ function drawHeadlightCone(
   ctx.fill();
 }
 
-/** Screen-fixed cones on the road — scroll with the car, not parallax scenery. */
+/** Screen-fixed cones on the road: scroll with the car, not parallax scenery. */
 function drawCarHeadlights(
   ctx: CanvasRenderingContext2D,
   width: number,

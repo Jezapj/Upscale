@@ -1,5 +1,5 @@
 /**
- * Daybreak audio: everything is synthesized live through the Web Audio API —
+ * Daybreak audio: everything is synthesized live through the Web Audio API -
  * no sample files. Provides the backing rhythm track (kick / hat / bass in the
  * chosen key), elevation-pitched jump & landing notes, death and victory SFX,
  * and a pause system that suspends the AudioContext.
@@ -282,7 +282,7 @@ export function createDaybreakAudio(
   };
 
   const padBoost = (elevation: number, volumeScale = 1) => {
-    // Ascending arpeggio around the pad elevation (root–3rd–5th–octave).
+    // Ascending arpeggio around the pad elevation (root-3rd-5th-octave).
     playArpeggio(elevation, [0, 2, 4, 7], 0.048, 0.12 * volumeScale, "triangle");
   };
 

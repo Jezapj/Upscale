@@ -24,7 +24,7 @@ export function DailyBoardList({
   gameId,
   highlightUid,
   compact,
-  emptyHint = "No scores yet today — be the first.",
+  emptyHint = "No scores yet today - be the first.",
 }: Props) {
   if (entries.length === 0) {
     return <p className="text-xs font-700 text-ink-faint">{emptyHint}</p>;

@@ -60,7 +60,7 @@ export function GamesScreen() {
       <div className="scroll-area px-4 pb-4">
         <PageHeader
           title="Arcade"
-          subtitle={`${prettyDay(today)} — one shared daily challenge each.`}
+          subtitle={`${prettyDay(today)}: one shared daily challenge each.`}
         />
 
         <div className={`mb-4 grid gap-3 ${isPro ? "grid-cols-1" : "grid-cols-2"}`}>

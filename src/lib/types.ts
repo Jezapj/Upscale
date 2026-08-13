@@ -93,7 +93,7 @@ export interface AppData {
   lastActiveDate?: string;
   /** Daily arcade play counts (resets each calendar day). */
   gamePlays?: GamePlaysState;
-  /** Pro subscription — unlimited endless plays (synced from RevenueCat / Stripe). */
+  /** Pro subscription: unlimited endless plays (synced from RevenueCat / Stripe). */
   gamePremium?: boolean;
   /** ISO timestamp of last local/cloud save (for sync). */
   syncedAt?: string;

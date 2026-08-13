@@ -48,6 +48,7 @@ function HintButton({ hint }: { hint: Hint }) {
 export function HintBar({ left = [], right = [], insetSafe = true }: Props) {
   return (
     <div
+      data-tour="hints"
       className={`flex items-center justify-between px-5 pt-1 no-select ${
         insetSafe ? "pb-[max(0.75rem,env(safe-area-inset-bottom))]" : "pb-0.5"
       }`}

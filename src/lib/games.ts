@@ -2,7 +2,7 @@
 
 export type GameId = "tiptop" | "octane" | "dissiada" | "daybreak";
 
-/** Bypass endless play limits (dev only — set VITE_UNLIMITED_PLAYS=true). */
+/** Bypass endless play limits (dev only: set VITE_UNLIMITED_PLAYS=true). */
 export const UNLIMITED_PLAYS =
   import.meta.env.VITE_UNLIMITED_PLAYS === "true";
 

@@ -1,4 +1,4 @@
-/** Handles notification taps — loaded by the Workbox service worker. */
+/** Handles notification taps: loaded by the Workbox service worker. */
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const path = event.notification.data?.url || "/checkin";

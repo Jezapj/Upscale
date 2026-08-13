@@ -28,7 +28,7 @@ const MINOR_STEPS = [0, 2, 3, 5, 7, 8, 10];
  * playfield stays in a comfortable ~110-830 Hz register.
  */
 export const KEYS: MusicalKey[] = [
-  // Majors — sharps
+  // Majors: sharps
   { name: "C Major", tonicMidi: 60, mode: "major", accidentals: 0 },
   { name: "G Major", tonicMidi: 67, mode: "major", accidentals: 1 },
   { name: "D Major", tonicMidi: 62, mode: "major", accidentals: 2 },
@@ -36,13 +36,13 @@ export const KEYS: MusicalKey[] = [
   { name: "E Major", tonicMidi: 64, mode: "major", accidentals: 4 },
   { name: "B Major", tonicMidi: 59, mode: "major", accidentals: 5 },
   { name: "F# Major", tonicMidi: 66, mode: "major", accidentals: 6 },
-  // Majors — flats
+  // Majors: flats
   { name: "F Major", tonicMidi: 65, mode: "major", accidentals: 1 },
   { name: "Bb Major", tonicMidi: 58, mode: "major", accidentals: 2 },
   { name: "Eb Major", tonicMidi: 63, mode: "major", accidentals: 3 },
   { name: "Ab Major", tonicMidi: 68, mode: "major", accidentals: 4 },
   { name: "Db Major", tonicMidi: 61, mode: "major", accidentals: 5 },
-  // Minors — sharps
+  // Minors: sharps
   { name: "A Minor", tonicMidi: 57, mode: "minor", accidentals: 0 },
   { name: "E Minor", tonicMidi: 64, mode: "minor", accidentals: 1 },
   { name: "B Minor", tonicMidi: 59, mode: "minor", accidentals: 2 },
@@ -50,7 +50,7 @@ export const KEYS: MusicalKey[] = [
   { name: "C# Minor", tonicMidi: 61, mode: "minor", accidentals: 4 },
   { name: "G# Minor", tonicMidi: 68, mode: "minor", accidentals: 5 },
   { name: "D# Minor", tonicMidi: 63, mode: "minor", accidentals: 6 },
-  // Minors — flats
+  // Minors: flats
   { name: "D Minor", tonicMidi: 62, mode: "minor", accidentals: 1 },
   { name: "G Minor", tonicMidi: 67, mode: "minor", accidentals: 2 },
   { name: "C Minor", tonicMidi: 60, mode: "minor", accidentals: 3 },

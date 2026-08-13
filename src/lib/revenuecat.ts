@@ -5,7 +5,7 @@ import {
   type Package,
 } from "@revenuecat/purchases-js";
 
-/** Entitlement identifier — must match RevenueCat dashboard. */
+/** Entitlement identifier: must match RevenueCat dashboard. */
 export const PRO_ENTITLEMENT = "pro";
 
 export function revenueCatConfigured(): boolean {
