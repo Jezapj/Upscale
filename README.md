@@ -96,7 +96,7 @@ The GCP **OAuth Web client** and Firebase must belong to the **same Google Cloud
 2. Under Google provider, ensure the **Web client ID** matches `VITE_GOOGLE_CLIENT_ID` (Firebase often creates one automatically; you can copy it from **Project settings → Your apps**).
 3. **Build → Firestore** → create database (production mode is fine once rules are deployed).
 4. **Project settings → Your apps → Web** → copy the `firebaseConfig` values into all `VITE_FIREBASE_*` vars (local `.env` and Vercel).
-5. **Authentication → Settings → Authorized domains** → add `localhost` and your production domain (e.g. `your-app.vercel.app`).
+5. **Authentication → Settings → Authorized domains** → add `localhost` and your production domain (e.g. `getupscale.app`).
 6. In [GCP Credentials](https://console.cloud.google.com/apis/credentials), the same Web client must list **Authorized JavaScript origins** for those URLs.
 
 **Deploy Firestore rules** (allows `userdata/{uid}` sync + `dailyBoards/...`):
