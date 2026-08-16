@@ -17,6 +17,11 @@ import {
 
 let sharedCtx: AudioContext | null = null;
 
+/** Shared context used by game SFX and app background music. Does not resume. */
+export function getGameAudioContext(): AudioContext | null {
+  return sharedCtx;
+}
+
 export function unlockGameAudio(): AudioContext | null {
   try {
     if (!sharedCtx) sharedCtx = new AudioContext();

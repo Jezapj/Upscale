@@ -9,15 +9,18 @@ import {
   REMINDER_PREFS_EVENT,
 } from "@/lib/reminders";
 import { showNoteReminder, showRoutineReminder } from "@/lib/notifications";
+import { isRemotePushActive, syncRemotePush } from "@/lib/push";
 import { todayKey } from "@/lib/dates";
 
 const CHECK_INTERVAL_MS = 10_000;
 
-/** Poll for due routine reminders and show device notifications. */
+/** Poll for due reminders locally, and keep FCM registration in sync. */
 export function useRoutineReminders() {
   const data = useStore((s) => s.data);
   const today = useStore((s) => s.today);
+  const user = useStore((s) => s.user);
   const [prefsTick, setPrefsTick] = useState(0);
+  const [pushTick, setPushTick] = useState(0);
 
   useEffect(() => {
     const onPrefs = () => setPrefsTick((n) => n + 1);
@@ -25,8 +28,15 @@ export function useRoutineReminders() {
     return () => window.removeEventListener(REMINDER_PREFS_EVENT, onPrefs);
   }, []);
 
+  useEffect(() => {
+    if (!getReminderPrefs().enabled) return;
+    void syncRemotePush().finally(() => setPushTick((n) => n + 1));
+  }, [user?.id, prefsTick]);
+
   const checkReminders = useCallback(() => {
     if (!getReminderPrefs().enabled) return;
+    // Signed-in Google users with FCM: the scheduled function fires while closed.
+    if (isRemotePushActive()) return;
 
     const freshData = useStore.getState().data;
     const dateKey = todayKey();
@@ -49,6 +59,7 @@ export function useRoutineReminders() {
 
   useEffect(() => {
     if (!getReminderPrefs().enabled) return;
+    if (isRemotePushActive()) return;
 
     checkReminders();
 
@@ -65,5 +76,5 @@ export function useRoutineReminders() {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", checkReminders);
     };
-  }, [checkReminders, today, prefsTick, data]);
+  }, [checkReminders, today, prefsTick, data, pushTick]);
 }

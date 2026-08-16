@@ -6,9 +6,10 @@
   "description": "Upscale is a habit, routine and goal tracker PWA",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "deploy:firebase": "npm --prefix functions run build && firebase deploy --only functions,firestore:rules"
   },
   "dependencies": {
     "@revenuecat/purchases-js": "^1.51.2",

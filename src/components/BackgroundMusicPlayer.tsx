@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { getBackgroundTrack } from "@/lib/backgroundMusic";
+import { setWebAudioMusic } from "@/lib/webAudioMusic";
 import { useBackgroundMusic } from "@/store/useBackgroundMusic";
 
 /** Mute on rhythm games; duck on the others so game SFX stay clear. */
@@ -13,9 +14,8 @@ function gameMusicDuck(pathname: string): number {
   return 1;
 }
 
-/** Looped app background music from /public MP4 audio tracks. */
+/** Looped app background music via Web Audio (no OS media-player notification). */
 export function BackgroundMusicPlayer() {
-  const audioRef = useRef<HTMLAudioElement>(null);
   const location = useLocation();
   const volume = useBackgroundMusic((s) => s.volume);
   const muted = useBackgroundMusic((s) => s.muted);
@@ -25,39 +25,19 @@ export function BackgroundMusicPlayer() {
   const effectiveVolume = muted ? 0 : volume * gameMusicDuck(location.pathname);
 
   useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.volume = effectiveVolume;
-    if (effectiveVolume <= 0) {
-      audio.pause();
-      return;
-    }
-    if (unlockedRef.current) void audio.play().catch(() => {});
-  }, [effectiveVolume]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const shouldPlay = effectiveVolume > 0 && unlockedRef.current;
-    audio.src = track.src;
-    audio.load();
-    if (shouldPlay) void audio.play().catch(() => {});
-  }, [track.src, effectiveVolume]);
-
-  useEffect(() => {
-    const tryPlay = () => {
-      const audio = audioRef.current;
-      if (!audio || effectiveVolume <= 0) return;
-      unlockedRef.current = true;
-      void audio.play().catch(() => {});
+    const apply = () => {
+      void setWebAudioMusic({
+        src: track.src,
+        volume: effectiveVolume,
+        play: unlockedRef.current && effectiveVolume > 0,
+      });
     };
 
-    tryPlay();
+    apply();
 
     const unlock = () => {
       unlockedRef.current = true;
-      tryPlay();
+      apply();
     };
     window.addEventListener("pointerdown", unlock);
     window.addEventListener("keydown", unlock);
@@ -65,16 +45,7 @@ export function BackgroundMusicPlayer() {
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);
     };
-  }, [effectiveVolume]);
+  }, [track.src, effectiveVolume]);
 
-  return (
-    <audio
-      ref={audioRef}
-      loop
-      preload="auto"
-      playsInline
-      aria-hidden
-      className="pointer-events-none fixed h-0 w-0 opacity-0"
-    />
-  );
+  return null;
 }

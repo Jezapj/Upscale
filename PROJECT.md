@@ -105,7 +105,10 @@ Free-form notes with an optional one-off reminder.
 
 ### Reminders
 
-Optional browser notifications for routines with a `reminderTime` (24h `HH:mm`, device local timezone) and for notes with a `reminderAt` (local `YYYY-MM-DDTHH:mm`). Polled via `useRoutineReminders`; fired state is tracked per day in `localStorage` (note ids are namespaced as `note:{id}`).
+Optional browser notifications for routines with a `reminderTime` (24h `HH:mm`, device local timezone) and for notes with a `reminderAt` (local `YYYY-MM-DDTHH:mm`).
+
+- **Guest / no FCM:** polled in the open tab via `useRoutineReminders`; fired state is tracked per day in `localStorage` (note ids are namespaced as `note:{id}`).
+- **Google + VAPID key:** the client registers an FCM token in Firestore `pushSubscriptions/{uid}` (tokens, IANA `timeZone`, enabled flag). A scheduled Cloud Function (`sendReminders`, every minute) reads due routines/notes from `userdata` and sends **data-only** web pushes. The service worker shows the notification while the app is closed. Local polling is skipped when remote push is active so reminders are not doubled.
 
 ### Arcade
 
@@ -142,7 +145,7 @@ Four mini-games with **daily challenges** (one seeded run per game per calendar 
 ├──────────────────────┬──────────────────────────────────────┤
 │  localStorage        │  cloudSync.ts → Firestore userdata   │
 │  upscale:user        │  dailyLeaderboard.ts → dailyBoards   │
-│  upscale:data:{id}   │                                      │
+│  upscale:data:{id}   │  push.ts → pushSubscriptions         │
 └──────────────────────┴──────────────────────────────────────┘
 ```
 
@@ -169,7 +172,8 @@ Four mini-games with **daily challenges** (one seeded run per game per calendar 
 Upscale/
 ├── public/                  # Static assets (icons, audio, game sprites, SW helpers)
 │   ├── icons/               # PWA icons (regenerate via scripts/make_icons.py)
-│   └── sw-notifications.js  # Service worker notification helpers
+│   ├── seo.html             # Indexable copy served to crawlers
+│   └── sw-notifications.js  # Notification taps + FCM background messages
 ├── scripts/
 │   └── make_icons.py        # Generate PWA icon set
 ├── src/
@@ -213,7 +217,7 @@ Upscale/
 │   ├── hooks/
 │   │   ├── useKeyboardControls.ts
 │   │   └── useRoutineReminders.ts
-│   └── lib/                 # Domain logic (no UI)
+│   ├── lib/                 # Domain logic (no UI)
 │       ├── types.ts         # Core TypeScript types
 │       ├── storage.ts       # Local + cloud persistence layer
 │       ├── cloudSync.ts     # Firestore userdata read/write
@@ -221,6 +225,7 @@ Upscale/
 │       ├── auth.ts          # Google GIS + Firebase credential exchange
 │       ├── firebase.ts      # Firebase app init
 │       ├── firebaseAuth.ts  # Auth session helpers
+│       ├── push.ts          # FCM token registration
 │       ├── dailyLeaderboard.ts
 │       ├── dailyChallenge.ts
 │       ├── gameLeaderboard.ts
@@ -234,7 +239,9 @@ Upscale/
 │       ├── calendar.ts
 │       ├── reminders.ts
 │       └── notifications.ts
-├── firestore.rules          # Security rules (userdata + dailyBoards)
+├── functions/               # Cloud Function: sendReminders (FCM)
+├── middleware.js            # Crawler rewrite → seo.html (Vercel)
+├── firestore.rules          # Security rules (userdata, push, dailyBoards)
 ├── firebase.json
 ├── vite.config.ts           # Vite + PWA manifest
 ├── tailwind.config.js
@@ -416,6 +423,20 @@ Owned by the authenticated user (`request.auth.uid == userId`).
 }
 ```
 
+### `pushSubscriptions/{userId}`
+
+Owned by the authenticated user. Used by Cloud Functions to send FCM reminders.
+
+```json
+{
+  "enabled": true,
+  "tokens": ["fcm-device-token"],
+  "timeZone": "Australia/Sydney",
+  "updatedAt": "2026-08-16T01:00:00.000Z",
+  "fired": { "2026-08-16": ["routineId", "note:noteId"] }
+}
+```
+
 ### `dailyBoards/{gameId}_{day}/entries/{uid}`
 
 Global daily arcade scores. **Create-once** per user per game per day (no updates or deletes).
@@ -473,7 +494,7 @@ Configured in `vite.config.ts` via `vite-plugin-pwa`:
 
 - **Manifest**: standalone display, theme/background colors, 192/512 icons.
 - **Service worker**: auto-update, precaches JS/CSS/HTML/assets, `navigateFallback` to `index.html` for SPA routing.
-- **Notifications**: `sw-notifications.js` imported into the service worker for reminder support.
+- **Notifications**: `sw-notifications.js` imported into the service worker handles notification taps and FCM background messages. Closed-app routine/note reminders for Google accounts are sent by the `sendReminders` Cloud Function.
 
 Install on mobile: browser menu → **Add to Home Screen**. Runs full-screen and works offline for guest/local data; cloud features need network.
 
@@ -539,6 +560,8 @@ npm run lint     # tsc --noEmit
 | `VITE_FIREBASE_STORAGE_BUCKET` | For cloud sync | |
 | `VITE_FIREBASE_MESSAGING_SENDER_ID` | For cloud sync | |
 | `VITE_FIREBASE_APP_ID` | For cloud sync | |
+| `VITE_FIREBASE_VAPID_KEY` | For closed-app push | Web Push certificate (public key) |
+| `VITE_PUBLIC_SITE_URL` | For SEO | Canonical origin, no trailing slash |
 
 Leave all blank to run in **guest-only** mode with local storage.
 
@@ -558,15 +581,18 @@ Leave all blank to run in **guest-only** mode with local storage.
 }
 ```
 
-Add all `VITE_*` environment variables in **Project → Settings → Environment Variables**, then deploy.
+Add all `VITE_*` environment variables in **Project → Settings → Environment Variables**, then deploy. Include `VITE_FIREBASE_VAPID_KEY` and `VITE_PUBLIC_SITE_URL` for push and search.
 
-### Firebase rules
+`middleware.js` rewrites crawler user-agents to `/seo.html` so the in-app experience is unchanged.
 
-Deploy separately after any `firestore.rules` changes:
+### Firebase rules and functions
 
 ```bash
-firebase deploy --only firestore:rules
+cd functions && npm install && cd ..
+firebase deploy --only functions,firestore:rules
 ```
+
+Or `npm run deploy:firebase`. First functions deploy enables Cloud Scheduler on Blaze.
 
 ---
 
@@ -577,7 +603,7 @@ firebase deploy --only firestore:rules
 | `npm run dev` | Start Vite dev server with HMR |
 | `npm run build` | Type-check and production build |
 | `npm run preview` | Serve the production build locally |
-| `npm run lint` | TypeScript check (`tsc --noEmit`) |
+| `npm run deploy:firebase` | Build Cloud Functions and deploy functions + Firestore rules |
 
 ### Routes
 

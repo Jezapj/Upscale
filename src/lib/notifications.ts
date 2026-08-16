@@ -20,7 +20,7 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   return Notification.requestPermission();
 }
 
-async function getRegistration(): Promise<ServiceWorkerRegistration | null> {
+export async function getRegistration(): Promise<ServiceWorkerRegistration | null> {
   if (!("serviceWorker" in navigator)) return null;
   try {
     const ready = navigator.serviceWorker.ready;

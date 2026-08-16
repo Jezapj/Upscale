@@ -14,6 +14,7 @@ import {
   requestNotificationPermission,
 } from "@/lib/notifications";
 import { getReminderPrefs, setReminderPrefs } from "@/lib/reminders";
+import { setRemotePushEnabled } from "@/lib/push";
 
 interface Props {
   open: boolean;
@@ -39,11 +40,13 @@ export function SettingsSheet({ open, onClose }: Props) {
       if (next !== "granted") return;
       setRemindersOn(true);
       setReminderPrefs({ enabled: true });
+      void setRemotePushEnabled(true);
       return;
     }
 
     setRemindersOn(false);
     setReminderPrefs({ enabled: false });
+    void setRemotePushEnabled(false);
   };
 
   const hasTimedRoutines = data.routines.some((r) => r.reminderTime && !r.archived);
@@ -167,8 +170,11 @@ export function SettingsSheet({ open, onClose }: Props) {
               <div className="min-w-0 flex-1">
                 <p className="font-800 text-ink">Routine reminders</p>
                 <p className="mt-1 text-sm font-600 text-ink-soft">
-                  Notify you at the time set on each routine (when it is due today).
-                  Works best with the app installed on your home screen.
+                  Notify you at the time set on each routine or note.
+                  {user?.provider === "google"
+                    ? " Signed-in accounts get reminders even when Upscale is closed."
+                    : " Guest reminders fire while the app is open; sign in with Google for closed-app push."}{" "}
+                  On iPhone, install to the home screen first.
                 </p>
               </div>
               <button

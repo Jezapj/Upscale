@@ -108,7 +108,18 @@ firebase use YOUR_FIREBASE_PROJECT_ID   # once per machine
 firebase deploy --only firestore:rules
 ```
 
-(`firebase.json` in this repo points at `firestore.rules`.)
+(`firebase.json` in this repo points at `firestore.rules` and `functions/`.)
+
+**Closed-app reminders:** Firebase Console → Cloud Messaging → Web Push certificates → paste the public key as `VITE_FIREBASE_VAPID_KEY`. Then:
+
+```bash
+cd functions && npm install && cd ..
+firebase deploy --only functions,firestore:rules
+```
+
+Turn on Routine reminders in Settings while signed in with Google. Guest mode still notifies only while the app is open.
+
+**Search:** set `VITE_PUBLIC_SITE_URL` to your production origin. Crawlers receive `public/seo.html`; people still get the same app.
 
 **Verify in the browser**
 
