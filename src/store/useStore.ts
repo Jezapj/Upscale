@@ -36,6 +36,7 @@ interface StoreState {
   user: User | null;
   data: AppData;
   ready: boolean;
+  signingIn: boolean;
   today: string;
 
   init: () => Promise<void>;
@@ -105,6 +106,7 @@ export const useStore = create<StoreState>((set, get) => {
     user: null,
     data: emptyAppData(),
     ready: false,
+    signingIn: false,
     today: todayKey(),
 
     async init() {
@@ -134,22 +136,27 @@ export const useStore = create<StoreState>((set, get) => {
     },
 
     async signIn(user) {
-      if (isCloudUser(user.id) && cloudConfigured()) {
-        await waitForFirebaseAuth(8000);
-        user = alignGoogleUserWithFirebase(user);
-      }
-      storage.setUser(user);
-      get().refreshToday();
-      if (isCloudUser(user.id) && cloudConfigured()) {
-        try {
-          const synced = await syncUserData(user.id);
-          set({ user, data: synced, today: todayKey() });
-        } catch (err) {
-          console.warn("Cloud sync failed", err);
+      set({ signingIn: true });
+      try {
+        if (isCloudUser(user.id) && cloudConfigured()) {
+          await waitForFirebaseAuth(8000);
+          user = alignGoogleUserWithFirebase(user);
+        }
+        storage.setUser(user);
+        get().refreshToday();
+        if (isCloudUser(user.id) && cloudConfigured()) {
+          try {
+            const synced = await syncUserData(user.id);
+            set({ user, data: synced, today: todayKey() });
+          } catch (err) {
+            console.warn("Cloud sync failed", err);
+            set({ user, data: storage.loadLocalData(user.id), today: todayKey() });
+          }
+        } else {
           set({ user, data: storage.loadLocalData(user.id), today: todayKey() });
         }
-      } else {
-        set({ user, data: storage.loadLocalData(user.id), today: todayKey() });
+      } finally {
+        set({ signingIn: false });
       }
     },
 

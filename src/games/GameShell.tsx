@@ -11,6 +11,9 @@ import { GameLeaderboardList } from "@/components/GameLeaderboardList";
 import { DailyBoardList } from "@/components/DailyBoardList";
 import { MedalStars } from "@/components/GameStatDetail";
 import { ArcadeUsernameModal } from "@/components/ArcadeUsernameModal";
+import { OrientationHint } from "@/components/OrientationHint";
+import { useScreenOrientation } from "@/hooks/useScreenOrientation";
+import { gamePlayOrientation } from "@/lib/gameOrientation";
 import {
   arcadeDisplayName,
   dailySeed,
@@ -356,6 +359,14 @@ export function GameShell({
 
   const inMainLobby = !started && result === null && !showPracticePicker;
   const resultMode = playMode;
+  const playOrientation = gamePlayOrientation(gameId);
+  const orientationLock =
+    started && playOrientation === "landscape"
+      ? "landscape"
+      : started && playOrientation === "any"
+        ? "none"
+        : "portrait-primary";
+  useScreenOrientation(orientationLock);
 
   return (
     <GamePaletteProvider>
@@ -378,6 +389,7 @@ export function GameShell({
                 {meta.name}
               </p>
               <p className="text-sm font-700 text-ink-soft">{meta.tagline}</p>
+              <OrientationHint gameId={gameId} />
               <p className="rounded-full bg-black/25 px-3 py-1 text-[11px] font-800 uppercase tracking-wide text-ink-faint">
                 {prettyDay(today)} · one attempt
                 {gameId === "daybreak" ? ` · ${DAILY_DAYBREAK_ATTEMPTS} lives` : ""}

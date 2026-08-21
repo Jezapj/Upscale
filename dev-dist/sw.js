@@ -69,7 +69,7 @@ if (!self.define) {
 }
 define(['./workbox-7e5eb42b'], (function (workbox) { 'use strict';
 
-  importScripts("sw-notifications.js");
+  importScripts("sw-firebase-config.js", "sw-notifications.js");
   self.skipWaiting();
   workbox.clientsClaim();
   /**
@@ -82,11 +82,12 @@ define(['./workbox-7e5eb42b'], (function (workbox) { 'use strict';
     "revision": "3ca0b8505b4bec776b69afdba2768812"
   }, {
     "url": "index.html",
-    "revision": "0.dkk6nhklu38"
+    "revision": "0.9ae02o2sosg"
   }], {});
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("index.html"), {
-    allowlist: [/^\/$/]
+    allowlist: [/^\/$/],
+    denylist: [/^\/seo\.html$/, /^\/robots\.txt$/, /^\/sitemap\.xml$/]
   }));
 
 }));
