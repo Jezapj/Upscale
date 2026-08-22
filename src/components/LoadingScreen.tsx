@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { BackgroundDecor } from "@/components/BackgroundDecor";
 
 const LOADING_LETTERS = "Upscale".split("");
