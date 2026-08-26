@@ -9,6 +9,7 @@ import {
   createBackupEnvelope,
   resolveBackupConflict,
 } from "./backup";
+import { ensureStarterBalance, mergeArcadeUnlocks, mergeWallets } from "./economy";
 
 interface CloudPayload {
   formatVersion: number;
@@ -171,13 +172,13 @@ export async function saveCloudData(userId: string, data: AppData): Promise<void
   }
 }
 
-/** Login / sync: apply cloud export when newer (same rules as manual import). */
+/** Login / sync: merge entities, then union arcade/wallet fields. */
 export function mergeLocalAndCloud(
   local: AppData,
   cloud: CloudPayload | null,
   day: string = todayKey(),
 ): AppData {
-  if (!cloud) return local;
+  if (!cloud) return ensureStarterBalance(local);
 
   const { data: winner, source } = resolveBackupConflict(
     local,
@@ -186,7 +187,7 @@ export function mergeLocalAndCloud(
   );
   const loser = source === "local" ? cloud.data : local;
 
-  return {
+  const merged: AppData = {
     ...winner,
     notes: mergeNotes(winner.notes, loser.notes),
     arcadeDaily: mergeArcadeDailyStates(winner.arcadeDaily, loser.arcadeDaily, day),
@@ -194,5 +195,19 @@ export function mergeLocalAndCloud(
     gameScores: mergeGameScores(winner.gameScores, loser.gameScores),
     gamePlays: winner.gamePlays ?? loser.gamePlays,
     gamePremium: winner.gamePremium || loser.gamePremium || undefined,
+    wallet: mergeWallets(winner.wallet, loser.wallet),
+    arcadeUnlocks: mergeArcadeUnlocks(winner.arcadeUnlocks, loser.arcadeUnlocks),
+    lastGhosts: {
+      ...(loser.lastGhosts ?? {}),
+      ...(winner.lastGhosts ?? {}),
+    },
+    lastRecapWeek:
+      (winner.lastRecapWeek ?? "") >= (loser.lastRecapWeek ?? "")
+        ? winner.lastRecapWeek ?? loser.lastRecapWeek
+        : loser.lastRecapWeek ?? winner.lastRecapWeek,
   };
+  if (!merged.lastGhosts || Object.keys(merged.lastGhosts).length === 0) {
+    delete merged.lastGhosts;
+  }
+  return ensureStarterBalance(merged);
 }

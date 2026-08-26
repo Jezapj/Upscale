@@ -9,6 +9,11 @@ export interface GameResult {
   title?: string;
   /** Storage key override (e.g. `octane:402` for drag distances). */
   leaderboardKey?: string;
+  /**
+   * TipTop ghost: signed flap times in ms from run start.
+   * Positive = right flap, negative = left flap (absolute value is time).
+   */
+  ghostTrace?: number[];
 }
 
 export function formatRaceTime(ms: number): string {

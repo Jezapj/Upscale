@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Flame, Trophy, CheckCircle2, Target } from "lucide-react";
+import { Flame, Trophy, CheckCircle2, Target, Sparkles } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { StatusBar } from "@/components/StatusBar";
 import { PageHeader } from "@/components/PageHeader";
@@ -8,23 +8,28 @@ import { SegBar } from "@/components/SegBar";
 import { Tile } from "@/components/Tile";
 import { Heatmap } from "@/components/Heatmap";
 import { ProgressRing } from "@/components/ProgressRing";
+import { WeeklyRecapSheet } from "@/components/WeeklyRecapSheet";
 import {
   computeGoalProgress,
   computeRoutineStats,
+  consumeGraceForAll,
   dailyCompletionSeries,
 } from "@/lib/stats";
+import { computeInsights } from "@/lib/insights";
+import { buildWeeklyRecap } from "@/lib/weeklyRecap";
 import { parseDay, weekdayShort } from "@/lib/dates";
 import { useRegisterControls } from "@/store/useControls";
+import { storage } from "@/lib/storage";
 
 /** Bar tint by local weekday (Sun=0 … Sat=6). */
 const WEEKDAY_CHART_COLORS = [
-  "#f472b6", // Sun
-  "#fb923c", // Mon
-  "#facc15", // Tue
-  "#4ade80", // Wed
-  "#38bdf8", // Thu
-  "#a78bfa", // Fri
-  "#2dd4bf", // Sat
+  "#f472b6",
+  "#fb923c",
+  "#facc15",
+  "#4ade80",
+  "#38bdf8",
+  "#a78bfa",
+  "#2dd4bf",
 ] as const;
 
 function weekdayColor(key: string): string {
@@ -34,14 +39,27 @@ function weekdayColor(key: string): string {
 export function ProgressScreen() {
   const nav = useNavigate();
   const data = useStore((s) => s.data);
+  const user = useStore((s) => s.user);
+  const setLastRecapWeek = useStore((s) => s.setLastRecapWeek);
   const [scope, setScope] = useState<"routines" | "goals">("goals");
+  const [recapOpen, setRecapOpen] = useState(false);
+
+  useEffect(() => {
+    const current = useStore.getState().data;
+    const next = consumeGraceForAll(current);
+    if (next.wallet?.txns.length !== (current.wallet?.txns.length ?? 0)) {
+      useStore.setState({ data: next });
+      if (user) void storage.saveData(user.id, next);
+    }
+  }, [user]);
 
   const routines = data.routines.filter((r) => !r.archived);
   const goals = data.goals.filter((g) => !g.archived);
 
   const series = useMemo(() => dailyCompletionSeries(data, 30), [data]);
+  const insights = useMemo(() => computeInsights(data), [data]);
+  const recap = useMemo(() => buildWeeklyRecap(data), [data]);
 
-  // Headline stats.
   const totals = useMemo(() => {
     let completions = 0;
     let best = 0;
@@ -71,7 +89,51 @@ export function ProgressScreen() {
       <StatusBar />
       <div className="scroll-area px-4 pb-4">
         <PageHeader title="Progress" subtitle="Your streaks and history, mapped." />
-        {/* Headline stat tiles */}
+
+        <button
+          type="button"
+          onClick={() => setRecapOpen(true)}
+          className="card mb-3 flex w-full items-center gap-3 p-4 text-left active:scale-[0.99]"
+        >
+          <span
+            className="flex h-12 w-12 items-center justify-center rounded-[30%] text-xl shadow-tile"
+            style={{
+              background:
+                "linear-gradient(145deg, #5cd0a8 0%, #4aa3ff 50%, #a06bff 100%)",
+            }}
+          >
+            🎮
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-800 text-ink">Weekly recap</p>
+            <p className="text-xs font-700 text-ink-faint">
+              {recap.title} · {recap.completionPct}% last week
+            </p>
+          </div>
+        </button>
+
+        {insights.length > 0 && (
+          <div className="mb-4">
+            <p className="mb-2 flex items-center gap-1.5 font-display text-lg font-800 text-ink">
+              <Sparkles size={18} className="text-cat-project" /> Insights
+            </p>
+            <div className="hscroll flex gap-3 pb-1">
+              {insights.map((card) => (
+                <div
+                  key={card.id}
+                  className="card min-w-[260px] max-w-[280px] shrink-0 p-4"
+                  style={{ borderTop: `3px solid ${card.accent}` }}
+                >
+                  <p className="text-sm font-800 text-ink">{card.title}</p>
+                  <p className="mt-1 text-xs font-700 leading-snug text-ink-soft">
+                    {card.body}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="mt-1 grid grid-cols-3 gap-3">
           <StatTile
             icon={<CheckCircle2 size={18} />}
@@ -93,7 +155,6 @@ export function ProgressScreen() {
           />
         </div>
 
-        {/* 30-day completion chart */}
         <div className="card mt-4 p-4">
           <p className="mb-3 font-display text-lg font-800 text-ink">
             Last 30 days
@@ -143,7 +204,6 @@ export function ProgressScreen() {
           </div>
         </div>
 
-        {/* Scope toggle */}
         <div className="mt-5">
           <SegBar
             value={scope}
@@ -170,6 +230,7 @@ export function ProgressScreen() {
                         <p className="content-title truncate font-800">{r.title}</p>
                         <p className="text-xs font-700 text-ink-faint">
                           {s.completions}/{s.scheduled} done · {Math.round(s.rate * 100)}%
+                          {s.graceUsed ? ` · ${s.graceUsed} shielded` : ""}
                         </p>
                       </div>
                       <div className="flex items-center gap-1 rounded-pill bg-cat-exercise/10 px-2.5 py-1 text-sm font-800 text-cat-exercise">
@@ -217,6 +278,15 @@ export function ProgressScreen() {
           </div>
         )}
       </div>
+
+      <WeeklyRecapSheet
+        open={recapOpen}
+        onClose={() => {
+          setLastRecapWeek(recap.weekKey);
+          setRecapOpen(false);
+        }}
+        recap={recap}
+      />
     </>
   );
 }

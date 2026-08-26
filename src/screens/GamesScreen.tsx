@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Gamepad2, Crown } from "lucide-react";
+import { Gamepad2, Crown, Store, Users } from "lucide-react";
 import { StatusBar } from "@/components/StatusBar";
 import { PageHeader } from "@/components/PageHeader";
 import { Tile } from "@/components/Tile";
 import { ProSubscriptionSheet } from "@/components/ProSubscriptionSheet";
-import { GAMES, gamePath, DAILY_FREE_PLAYS, PRO_PRICE_LABEL } from "@/lib/games";
+import { ArcadeShopSheet } from "@/components/ArcadeShopSheet";
+import { TokenBalanceCapsule } from "@/components/TokenBalanceCapsule";
+import { GAMES, gamePath, PRO_PRICE_LABEL } from "@/lib/games";
+import { TOKEN_COST_ENDLESS } from "@/lib/economy";
 import { useRegisterControls } from "@/store/useControls";
 import { useStore } from "@/store/useStore";
 import { getDailyCompletion, hasPlayedDaily } from "@/lib/dailyChallenge";
@@ -29,6 +32,7 @@ export function GamesScreen() {
   const setGamePremium = useStore((s) => s.setGamePremium);
   const isPro = data.gamePremium === true;
   const [proOpen, setProOpen] = useState(false);
+  const [shopOpen, setShopOpen] = useState(false);
 
   useRegisterControls(
     {
@@ -63,15 +67,36 @@ export function GamesScreen() {
           subtitle={`${prettyDay(today)}: one shared daily challenge each.`}
         />
 
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <TokenBalanceCapsule onClick={() => setShopOpen(true)} />
+          <button
+            type="button"
+            onClick={() => setShopOpen(true)}
+            className="capsule inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-800 text-ink active:scale-95"
+          >
+            <Store size={16} />
+            Shop
+          </button>
+          <button
+            type="button"
+            onClick={() => nav("/friends")}
+            className="capsule inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-800 text-ink active:scale-95"
+          >
+            <Users size={16} />
+            Friends
+          </button>
+        </div>
+
         <div className={`mb-4 grid gap-3 ${isPro ? "grid-cols-1" : "grid-cols-2"}`}>
           <div className="card flex flex-col gap-2 p-4">
             <Gamepad2 size={22} className="shrink-0 text-cat-project" />
             <div className="min-w-0">
               <p className="font-800 text-ink">Daily challenge</p>
               <p className="text-xs font-700 text-ink-faint">
-                Free once per game. Endless gives{" "}
-                {isPro ? "unlimited" : `${DAILY_FREE_PLAYS} free`} plays a day
-                {isPro ? "" : ` · ${endlessLeft} left today`}
+                Free once per game. Endless costs {TOKEN_COST_ENDLESS} token
+                {isPro
+                  ? " (Pro: unlimited)"
+                  : ` · ${endlessLeft} play${endlessLeft === 1 ? "" : "s"} available`}
               </p>
             </div>
           </div>
@@ -130,6 +155,7 @@ export function GamesScreen() {
       </div>
 
       <ProSubscriptionSheet open={proOpen} onClose={() => setProOpen(false)} />
+      <ArcadeShopSheet open={shopOpen} onClose={() => setShopOpen(false)} />
     </>
   );
 }

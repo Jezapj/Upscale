@@ -19,6 +19,11 @@ interface Props {
   paused?: boolean;
   /** When set, stages are generated from this seed (daily challenge). */
   seed?: number;
+  /**
+   * Optional ghost to race: signed flap times (ms from start).
+   * Positive = right, negative = left.
+   */
+  ghostTrace?: number[];
 }
 
 type StageTheme = "forest" | "beach" | "mountain" | "space";
@@ -2693,7 +2698,14 @@ function drawStageElements(
 }
 
 /** Flappy Golf 2 style: flap left/right, 3 random stages with one hole each. */
-export function TipTopGame({ width, height, onGameOver, paused = false, seed }: Props) {
+export function TipTopGame({
+  width,
+  height,
+  onGameOver,
+  paused = false,
+  seed,
+  ghostTrace,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const palette = useGamePalette();
   const btnRef = useRef({ left: false, right: false });
@@ -2702,7 +2714,9 @@ export function TipTopGame({ width, height, onGameOver, paused = false, seed }: 
   const paletteRef = useRef(palette);
   const pausedRef = useRef(paused);
   const seedRef = useRef(seed);
+  const ghostTraceRef = useRef(ghostTrace);
   seedRef.current = seed;
+  ghostTraceRef.current = ghostTrace;
 
   sizeRef.current = { width, height };
   onGameOverRef.current = onGameOver;
@@ -2788,6 +2802,18 @@ export function TipTopGame({ width, height, onGameOver, paused = false, seed }: 
     let physicsAccum = 0;
     let prevPx = px;
     let prevPy = py;
+    /** Signed flap times recorded this run for ghost races. */
+    const recordedTrace: number[] = [];
+    // Ghost ball (visual; flaps + gravity only, no collisions).
+    const ghostEvents = (ghostTraceRef.current ?? [])
+      .map((v) => ({ t: Math.abs(v), dir: (v < 0 ? -1 : 1) as -1 | 1 }))
+      .sort((a, b) => a.t - b.t);
+    let ghostIdx = 0;
+    let gPx = 120;
+    let gPy = initPlayH * 0.35;
+    let gVx = 0;
+    let gVy = 0;
+    const hasGhost = ghostEvents.length > 0;
 
     const currentStage = () => stages[stageIndex];
     const currentPit = () => currentStage().pit;
@@ -2825,6 +2851,7 @@ export function TipTopGame({ width, height, onGameOver, paused = false, seed }: 
           { label: "Flaps", value: String(flaps) },
           { label: "Time", value: formatRaceTime(totalTimeMs) },
         ],
+        ghostTrace: recordedTrace.slice(0, 400),
       });
     };
 
@@ -2848,6 +2875,8 @@ export function TipTopGame({ width, height, onGameOver, paused = false, seed }: 
       unlockGameAudio();
       preloadSamples(SAMPLE_SRC.tipTopComplete);
       stageFlaps++;
+      const elapsed = Math.round(performance.now() - gameStartTime);
+      recordedTrace.push(dir < 0 ? -elapsed : elapsed);
       if (stuck) stickyImmune = STICKY_ESCAPE_FRAMES;
       stuck = null;
       const angle = dir < 0 ? Math.PI - FLAP_ANGLE : FLAP_ANGLE;
@@ -3256,6 +3285,33 @@ export function TipTopGame({ width, height, onGameOver, paused = false, seed }: 
           camX = renderCamX;
         }
 
+        // Ghost: apply scheduled flaps + gravity (no collisions).
+        if (hasGhost) {
+          const elapsed = performance.now() - gameStartTime;
+          while (
+            ghostIdx < ghostEvents.length &&
+            ghostEvents[ghostIdx].t <= elapsed
+          ) {
+            const dir = ghostEvents[ghostIdx].dir;
+            const angle = dir < 0 ? Math.PI - FLAP_ANGLE : FLAP_ANGLE;
+            gVx += Math.cos(angle) * FLAP_POWER;
+            gVy += -Math.sin(angle) * FLAP_POWER;
+            const sp = Math.hypot(gVx, gVy);
+            if (sp > 14) {
+              gVx = (gVx / sp) * 14;
+              gVy = (gVy / sp) * 14;
+            }
+            ghostIdx++;
+          }
+          const gSteps = Math.max(1, Math.round(dt));
+          for (let i = 0; i < gSteps; i++) {
+            gVy += stage.gravity;
+            gPx += gVx;
+            gPy += gVy;
+            gVx *= 0.999;
+          }
+        }
+
         updateBallTrail(ballTrail, renderPx, renderPy, Math.hypot(vx, vy), BALL_TRAIL_TUNING);
         ageFadingTrails(fadingTrails, deltaMs, BALL_TRAIL_TUNING);
       } else {
@@ -3318,6 +3374,18 @@ export function TipTopGame({ width, height, onGameOver, paused = false, seed }: 
       drawBallTrail(ctx, ballTrail, camX, ballR, BALL_TRAIL_TUNING);
       for (const fading of fadingTrails) {
         drawBallTrail(ctx, fading.points, camX, ballR, BALL_TRAIL_TUNING, fading.fade);
+      }
+      if (hasGhost) {
+        const gsx = gPx - camX;
+        ctx.globalAlpha = 0.35;
+        ctx.fillStyle = p.ball;
+        ctx.beginPath();
+        ctx.arc(gsx, gPy, ballR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
       }
       ctx.fillStyle = "rgba(0,0,0,0.18)";
       ctx.beginPath();

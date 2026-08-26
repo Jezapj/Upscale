@@ -184,3 +184,140 @@ const PALETTES: Record<Theme, GamePalette> = {
 export function getGamePalette(theme: Theme): GamePalette {
   return PALETTES[theme];
 }
+
+/** Named unlockable palette overlays keyed by shop id. */
+const UNLOCK_OVERLAYS: Record<
+  string,
+  (base: GamePalette) => GamePalette
+> = {
+  sunset: (base) => ({
+    ...base,
+    tiptop: {
+      ...base.tiptop,
+      skyTop: "#ff9e64",
+      skyBot: "#ffe0b8",
+      fairway: "#ff7a59",
+      ball: "#fff8e8",
+    },
+    octane: { ...base.octane, car: "#ff9e64", skyTop: "#ffb08a" },
+    dissiada: {
+      ...base.dissiada,
+      laneColors: ["#ff9e64", "#ff5c5c", "#ffd76e", "#ff77b0"],
+      hitLine: "rgba(255, 158, 100, 0.7)",
+    },
+    daybreak: {
+      ...base.daybreak,
+      accent: "#ff9e64",
+      terrainTop: "#ffb08a",
+    },
+  }),
+  midnight: (base) => ({
+    ...base,
+    isDark: true,
+    tiptop: {
+      ...base.tiptop,
+      skyTop: "#1a2840",
+      skyBot: "#0e1520",
+      fairway: "#6a5a9a",
+      ball: "#c084fc",
+    },
+    octane: {
+      ...base.octane,
+      skyTop: "#1a1a2e",
+      skyBot: "#2a2a40",
+      car: "#c084fc",
+    },
+    dissiada: {
+      ...base.dissiada,
+      bg: "#0e1018",
+      laneColors: ["#c084fc", "#6a5a9a", "#60a5fa", "#a78bfa"],
+    },
+    daybreak: {
+      ...base.daybreak,
+      terrain: "#241d38",
+      terrainTop: "#6a5a9a",
+      accent: "#c084fc",
+    },
+  }),
+  mint: (base) => ({
+    ...base,
+    tiptop: {
+      ...base.tiptop,
+      skyTop: "#a8efe0",
+      skyBot: "#e8f6fc",
+      fairway: "#5cd0a8",
+      ball: "#ffffff",
+    },
+    octane: { ...base.octane, car: "#2bc4a8", shiftBtnReady: "#5cd0a8" },
+    dissiada: {
+      ...base.dissiada,
+      laneColors: ["#5cd0a8", "#2bc4a8", "#4aa3ff", "#a06bff"],
+      hitLine: "rgba(92, 208, 168, 0.7)",
+    },
+    daybreak: {
+      ...base.daybreak,
+      accent: "#5cd0a8",
+      terrainTop: "#2bc4a8",
+    },
+  }),
+  candy: (base) => ({
+    ...base,
+    tiptop: {
+      ...base.tiptop,
+      skyTop: "#ffb8d9",
+      skyBot: "#ffe8f4",
+      fairway: "#ff77b0",
+      ball: "#ffffff",
+    },
+    octane: { ...base.octane, car: "#ff77b0" },
+    dissiada: {
+      ...base.dissiada,
+      laneColors: ["#ff77b0", "#a06bff", "#4aa3ff", "#ffd76e"],
+    },
+    daybreak: {
+      ...base.daybreak,
+      accent: "#ff77b0",
+      terrainTop: "#a06bff",
+    },
+  }),
+  mono: (base) => ({
+    ...base,
+    tiptop: {
+      ...base.tiptop,
+      skyTop: "#9aabb8",
+      skyBot: "#e8eef5",
+      fairway: "#5a6068",
+      fairwayStripe: "rgba(60,64,71,0.2)",
+      ball: "#f0f0f5",
+      rough: "#3c4047",
+    },
+    octane: {
+      ...base.octane,
+      car: "#3c4047",
+      road: "#5a6068",
+      building: "#9aabb8",
+    },
+    dissiada: {
+      ...base.dissiada,
+      laneColors: ["#3c4047", "#5a6068", "#9aabb8", "#c5ccd4"],
+      hitLine: "rgba(60, 64, 71, 0.55)",
+    },
+    daybreak: {
+      ...base.daybreak,
+      accent: "#3c4047",
+      terrain: "#3c4047",
+      terrainTop: "#9aabb8",
+    },
+  }),
+};
+
+export function getGamePaletteWithUnlock(
+  theme: Theme,
+  unlockId?: string | null,
+): GamePalette {
+  const base = getGamePalette(theme);
+  if (!unlockId) return base;
+  const overlay = UNLOCK_OVERLAYS[unlockId];
+  return overlay ? overlay(base) : base;
+}
+

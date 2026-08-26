@@ -1,6 +1,12 @@
 import type { AppData, Goal, Routine } from "./types";
 import { dayKey, daysBetween, lastNDays, parseDay } from "./dates";
 import { isScheduledOn } from "./frequency";
+import {
+  bankedGraceCount,
+  graceShieldedDays,
+  graceSpendTxnId,
+  makeTxn,
+} from "./economy";
 
 export interface RoutineStats {
   /** completion rate over scheduled days so far (0..1). */
@@ -13,10 +19,43 @@ export interface RoutineStats {
   completions: number;
   /** total scheduled days that have passed. */
   scheduled: number;
+  /** Missed days bridged by streak insurance (not counted as real completions). */
+  graceUsed?: number;
 }
 
 /** Per-day completion state for a routine, for heatmaps. */
-export type DayState = "none" | "missed" | "partial" | "done" | "future";
+export type DayState =
+  | "none"
+  | "missed"
+  | "partial"
+  | "done"
+  | "future"
+  | "shielded";
+
+/**
+ * Apply grace tokens to bridge single missed days for current-streak display.
+ * Only honours already-persisted grace_spend txns (see consumeGraceForRoutine).
+ */
+export function applyGraceToCompletionDays(
+  data: AppData,
+  routine: Routine,
+  completionByDay: { key: string; done: boolean }[],
+): {
+  days: { key: string; done: boolean; shielded: boolean }[];
+  graceUsed: number;
+} {
+  const shieldedExisting = graceShieldedDays(data.wallet, routine.id);
+  const days = completionByDay.map((d) => ({
+    ...d,
+    shielded: shieldedExisting.has(d.key),
+  }));
+
+  for (const d of days) {
+    if (d.shielded) d.done = true;
+  }
+
+  return { days, graceUsed: shieldedExisting.size };
+}
 
 export function routineDayState(
   data: AppData,
@@ -28,11 +67,12 @@ export function routineDayState(
   if (!isScheduledOn(routine, key)) return "none";
   const entry = data.logs[key]?.entries[routine.id];
   if (inFuture) return "future";
+  if (graceShieldedDays(data.wallet, routine.id).has(key)) return "shielded";
   if (!entry) return daysBetween(key, today) === 0 ? "none" : "missed";
   if (entry.rating === "yes") return "done";
   if (entry.rating === "kinda") return "partial";
   if (entry.rating === "not_really") return "partial";
-  return "missed"; // "no"
+  return "missed";
 }
 
 export function computeRoutineStats(
@@ -59,11 +99,12 @@ export function computeRoutineStats(
     completionByDay.push({ key, done });
   }
 
-  // Streaks across scheduled days.
+  const { days } = applyGraceToCompletionDays(data, routine, completionByDay);
+
   let streak = 0;
   let bestStreak = 0;
   let run = 0;
-  for (const day of completionByDay) {
+  for (const day of days) {
     if (day.done) {
       run++;
       bestStreak = Math.max(bestStreak, run);
@@ -71,9 +112,8 @@ export function computeRoutineStats(
       run = 0;
     }
   }
-  // current streak: walk from the end while done.
-  for (let i = completionByDay.length - 1; i >= 0; i--) {
-    if (completionByDay[i].done) streak++;
+  for (let i = days.length - 1; i >= 0; i--) {
+    if (days[i].done) streak++;
     else break;
   }
 
@@ -83,7 +123,66 @@ export function computeRoutineStats(
     bestStreak,
     completions,
     scheduled,
+    graceUsed: days.filter((d) => d.shielded).length,
   };
+}
+
+/**
+ * If the current streak tip is a single miss and grace is banked, spend one
+ * grace token to shield that day. Idempotent per routine/day.
+ */
+export function consumeGraceForRoutine(
+  data: AppData,
+  routine: Routine,
+): AppData {
+  const created = routine.createdAt.slice(0, 10);
+  const today = dayKey();
+  const total = Math.max(0, daysBetween(created, today)) + 1;
+  const completionByDay: { key: string; done: boolean }[] = [];
+  for (let i = 0; i < total; i++) {
+    const d = parseDay(created);
+    d.setDate(d.getDate() + i);
+    const key = dayKey(d);
+    if (!isScheduledOn(routine, key)) continue;
+    completionByDay.push({
+      key,
+      done: !!data.logs[key]?.entries[routine.id]?.completed,
+    });
+  }
+
+  const shielded = graceShieldedDays(data.wallet, routine.id);
+  const days = completionByDay.map((d) => ({
+    ...d,
+    done: d.done || shielded.has(d.key),
+  }));
+
+  // Find the first miss walking from the end (tip of streak).
+  let tipMiss: string | null = null;
+  for (let i = days.length - 1; i >= 0; i--) {
+    if (days[i].done) continue;
+    tipMiss = days[i].key;
+    break;
+  }
+  if (!tipMiss) return data;
+  if (bankedGraceCount(data.wallet, routine.id) <= 0) return data;
+
+  const id = graceSpendTxnId(routine.id, tipMiss);
+  if (data.wallet?.txns.some((t) => t.id === id)) return data;
+
+  return {
+    ...data,
+    wallet: {
+      txns: [...(data.wallet?.txns ?? []), makeTxn(id, 0, "grace_spend", tipMiss)],
+    },
+  };
+}
+
+export function consumeGraceForAll(data: AppData): AppData {
+  let next = data;
+  for (const r of data.routines.filter((x) => !x.archived)) {
+    next = consumeGraceForRoutine(next, r);
+  }
+  return next;
 }
 
 export interface GoalProgress {

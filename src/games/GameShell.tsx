@@ -31,8 +31,14 @@ import { googleSubFromUserId } from "@/lib/cloudSync";
 import { cloudConfigured } from "@/lib/firebase";
 import { activeFirestoreUid } from "@/lib/firebaseAuth";
 import { ProSubscriptionSheet } from "@/components/ProSubscriptionSheet";
-import { DAILY_FREE_PLAYS, PRO_PRICE_LABEL } from "@/lib/games";
+import { PRO_PRICE_LABEL } from "@/lib/games";
 import { prettyDay, todayKey } from "@/lib/dates";
+import {
+  TOKEN_COST_CONTINUE,
+  TOKEN_COST_ENDLESS,
+  canAfford,
+  tokenBalance,
+} from "@/lib/economy";
 
 export type PlayMode = "daily" | "practice";
 
@@ -47,6 +53,8 @@ interface Props {
     playMode: PlayMode;
     /** Set for daily runs (and optional practice seeds). */
     seed?: number;
+    /** TipTop ghost flap trace to race against. */
+    ghostTrace?: number[];
   }) => React.ReactNode;
   /** Custom practice lobby (e.g. Octane mode picker). Call `start()` when ready. */
   renderPracticeLobby?: (start: () => void) => React.ReactNode;
@@ -124,8 +132,15 @@ export function GameShell({
   const markDailyPlayed = useStore((s) => s.markDailyPlayed);
   const setArcadeProfile = useStore((s) => s.setArcadeProfile);
   const consumePlay = useStore((s) => s.consumePlay);
+  const buyContinue = useStore((s) => s.buyContinue);
   const endlessLeft = useStore((s) => s.endlessPlaysLeft());
   const isPro = data.gamePremium === true;
+  const balance = tokenBalance(data.wallet);
+  const dailyContinued =
+    data.arcadeDaily?.date === today &&
+    !!data.arcadeDaily.completed[gameId]?.continued;
+  const [raceGhost, setRaceGhost] = useState(false);
+  const [ghostTrace, setGhostTrace] = useState<number[] | undefined>(undefined);
 
   const dailyDone =
     hasPlayedDaily(data, gameId, today) || remoteDailyLocked;
@@ -194,6 +209,8 @@ export function GameShell({
     setPlayMode(null);
     setShowPracticePicker(false);
     setPendingDailySubmit(null);
+    setRaceGhost(false);
+    setGhostTrace(undefined);
   }, [onSessionReset]);
 
   const beginRun = useCallback((mode: PlayMode) => {
@@ -222,11 +239,9 @@ export function GameShell({
 
   const startEndlessDirect = useCallback(() => {
     if (!isPro && endlessLeft <= 0) {
-      setProOpen(true);
       return;
     }
     if (!consumePlay(gameId)) {
-      setProOpen(true);
       return;
     }
     beginRun("practice");
@@ -235,7 +250,6 @@ export function GameShell({
   const chooseEndless = useCallback(() => {
     if (renderPracticeLobby) {
       if (!isPro && endlessLeft <= 0) {
-        setProOpen(true);
         return;
       }
       setPlayMode("practice");
@@ -246,16 +260,35 @@ export function GameShell({
     startEndlessDirect();
   }, [endlessLeft, isPro, renderPracticeLobby, startEndlessDirect]);
 
+  const tryContinue = useCallback(() => {
+    if (dailyContinued) return;
+    if (!canAfford(data, TOKEN_COST_CONTINUE)) {
+      return;
+    }
+    if (!buyContinue(gameId)) {
+      return;
+    }
+    setResult(null);
+    beginRun("daily");
+  }, [beginRun, buyContinue, dailyContinued, data, gameId]);
+
   const postDailyScore = useCallback(
     async (normalized: GameResult) => {
       if (!user || !isGoogle) return;
       const profile = useStore.getState().data.arcadeProfile;
+      const meta: Record<string, string> = {
+        ...(resultMeta(normalized) ?? {}),
+      };
+      if (normalized.ghostTrace?.length) {
+        const encoded = normalized.ghostTrace.join(",");
+        if (encoded.length < 40_000) meta.ghostTrace = encoded;
+      }
       await submitDailyScore({
         userId: user.id,
         gameId,
         score: normalized.score,
         displayName: arcadeDisplayName(profile),
-        meta: resultMeta(normalized),
+        meta: Object.keys(meta).length ? meta : undefined,
       });
       await refreshDailyBoard();
     },
@@ -264,7 +297,9 @@ export function GameShell({
 
   const finishDaily = useCallback(
     async (normalized: GameResult) => {
-      markDailyPlayed(gameId, normalized.score, true);
+      markDailyPlayed(gameId, normalized.score, true, {
+        ghostTrace: normalized.ghostTrace,
+      });
       setResult(normalized);
       setIsNewBest(false);
       startedRef.current = false;
@@ -369,7 +404,7 @@ export function GameShell({
   useScreenOrientation(orientationLock);
 
   return (
-    <GamePaletteProvider>
+    <GamePaletteProvider gameId={gameId}>
       <div className="game-shell flex h-full min-h-0 flex-col">
         <div
           ref={containerRef}
@@ -401,6 +436,52 @@ export function GameShell({
                   Today&apos;s score: {dailyCompletion.score.toLocaleString()}
                 </p>
               ) : null}
+
+              {gameId === "tiptop" && dailyCompletion?.ghostTrace?.length ? (
+                <label className="flex items-center gap-2 text-xs font-700 text-ink-soft">
+                  <input
+                    type="checkbox"
+                    checked={raceGhost}
+                    onChange={(e) => {
+                      setRaceGhost(e.target.checked);
+                      setGhostTrace(
+                        e.target.checked ? dailyCompletion.ghostTrace : undefined,
+                      );
+                    }}
+                  />
+                  Race today&apos;s ghost (practice only after daily)
+                </label>
+              ) : null}
+
+              {gameId === "tiptop" && !dailyDone && (() => {
+                const last = data.lastGhosts?.tiptop;
+                const boardGhost = dailyEntries.find((e) => e.meta?.ghostTrace);
+                const trace = last?.trace?.length
+                  ? last.trace
+                  : boardGhost?.meta?.ghostTrace
+                    ? boardGhost.meta.ghostTrace
+                        .split(",")
+                        .map(Number)
+                        .filter((n) => Number.isFinite(n))
+                    : undefined;
+                if (!trace?.length) return null;
+                const label = last?.trace?.length
+                  ? `Race your ${last.day} ghost`
+                  : "Race a board ghost";
+                return (
+                  <label className="flex items-center gap-2 text-xs font-700 text-ink-soft">
+                    <input
+                      type="checkbox"
+                      checked={raceGhost}
+                      onChange={(e) => {
+                        setRaceGhost(e.target.checked);
+                        setGhostTrace(e.target.checked ? trace : undefined);
+                      }}
+                    />
+                    {label}
+                  </label>
+                );
+              })()}
 
               {isGoogle ? (
                 boardLoading && dailyEntries.length === 0 && !boardError ? (
@@ -447,7 +528,7 @@ export function GameShell({
                 <p className="text-xs font-700 text-accent">Pro · unlimited Endless</p>
               ) : (
                 <p className="text-xs font-700 text-ink-faint">
-                  Endless: {endlessLeft} of {DAILY_FREE_PLAYS} plays left today
+                  Endless: {TOKEN_COST_ENDLESS} token per run · {balance} tokens
                 </p>
               )}
               <button
@@ -459,13 +540,25 @@ export function GameShell({
                 Endless
               </button>
               {!isPro && endlessLeft <= 0 && (
-                <button
-                  type="button"
-                  onClick={() => setProOpen(true)}
-                  className="text-xs font-800 text-cat-project underline"
-                >
-                  Get Pro for unlimited Endless · {PRO_PRICE_LABEL}
-                </button>
+                <div className="flex flex-col items-center gap-2">
+                  <p className="max-w-xs text-xs font-700 text-ink-soft">
+                    Complete a routine to earn a token, then come back to play.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => nav("/checkin")}
+                    className="btn px-6"
+                  >
+                    Go to check-in
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProOpen(true)}
+                    className="text-xs font-800 text-cat-project underline"
+                  >
+                    Or get Pro for unlimited Endless · {PRO_PRICE_LABEL}
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -549,7 +642,26 @@ export function GameShell({
 
               {resultMode === "daily" ? (
                 <>
-                  <button type="button" onClick={chooseEndless} className="btn">
+                  {!dailyContinued && (
+                    <button
+                      type="button"
+                      onClick={tryContinue}
+                      disabled={!canAfford(data, TOKEN_COST_CONTINUE)}
+                      className="btn disabled:opacity-40"
+                    >
+                      Continue · {TOKEN_COST_CONTINUE} tokens
+                    </button>
+                  )}
+                  {!canAfford(data, TOKEN_COST_CONTINUE) && !dailyContinued && (
+                    <button
+                      type="button"
+                      onClick={() => nav("/checkin")}
+                      className="text-xs font-800 text-ink-soft underline"
+                    >
+                      Earn tokens at check-in
+                    </button>
+                  )}
+                  <button type="button" onClick={chooseEndless} className="btn-ghost">
                     Endless
                   </button>
                   <button type="button" onClick={resetToLobby} className="btn-ghost">
@@ -562,11 +674,9 @@ export function GameShell({
                     type="button"
                     onClick={() => {
                       if (!isPro && endlessLeft <= 0) {
-                        setProOpen(true);
                         return;
                       }
                       if (!consumePlay(gameId)) {
-                        setProOpen(true);
                         return;
                       }
                       onSessionReset?.();
@@ -585,6 +695,15 @@ export function GameShell({
                   >
                     Play again
                   </button>
+                  {!isPro && endlessLeft <= 0 && (
+                    <button
+                      type="button"
+                      onClick={() => nav("/checkin")}
+                      className="text-xs font-800 text-ink-soft underline"
+                    >
+                      Complete a routine to earn a token
+                    </button>
+                  )}
                   <button type="button" onClick={resetToLobby} className="btn-ghost">
                     Back to lobby
                   </button>
@@ -604,6 +723,8 @@ export function GameShell({
                 paused,
                 playMode,
                 seed: playMode === "daily" ? daySeed : undefined,
+                ghostTrace:
+                  gameId === "tiptop" && raceGhost ? ghostTrace : undefined,
               })}
 
               {!paused && (

@@ -85,15 +85,29 @@ A guided flow (`/checkin`) walks you through due routines goal-by-goal. Four rat
 | **Kinda** | Counts as **done** for stats, stays in queue |
 | **Yes!** | **Cleared** until the next scheduled date |
 
-Ratings reset each calendar day and accumulate into per-routine completion stats.
+Ratings reset each calendar day and accumulate into per-routine completion stats. Completing a routine (**Kinda** or **Yes!**) mints **Play Tokens** that fund the arcade.
+
+### Play Token economy
+
+Habits fund the arcade (Play Coins / StreetPass vibe):
+
+| Earn | Spend |
+| ---- | ----- |
+| 1 token per routine completed today (idempotent) | 1 token per Endless run (non-Pro) |
+| Clear-day bonus when every scheduled routine is done | 3 tokens for one daily continue credit |
+| Streak milestone bonuses every 7 days | Unlockable game palettes in the Arcade shop |
+| Starter grant of 5 tokens on first load after update | Arcade Pro still bypasses Endless costs |
+
+Daily challenge entry stays free. Wallet is a transaction ledger (`AppData.wallet.txns`) so cloud merge is a safe union by id.
 
 ### Progress mapper
 
-- Per-routine GitHub-style **contribution heatmaps**
-- Current and best **streaks**
-- Completion **percentage**
-- 30-day completion chart
+- Per-routine GitHub-style **contribution heatmaps** (including purple **shielded** days from streak insurance)
+- Current and best **streaks**, with optional **grace** tokens earned through consistency
+- Completion **percentage** and 30-day completion chart
 - Goal-level **progress rings** (by routine / by goal views)
+- **Insight cards**: local correlations over DayLog data (e.g. linked habits, favourite weekdays)
+- **Weekly recap**: eShop-style featured cartridge cover for the previous Monday–Sunday
 
 ### Notes
 
@@ -109,10 +123,11 @@ Optional browser notifications for routines with a `reminderTime` (24h `HH:mm`, 
 
 - **Guest / no FCM:** polled in the open tab via `useRoutineReminders`; fired state is tracked per day in `localStorage` (note ids are namespaced as `note:{id}`).
 - **Google + VAPID key:** the client registers an FCM token in Firestore `pushSubscriptions/{uid}` (tokens, IANA `timeZone`, enabled flag). A scheduled Cloud Function (`sendReminders`, every minute) reads due routines/notes from `userdata` and sends **data-only** web pushes. The service worker shows the notification while the app is closed. Local polling is skipped when remote push is active so reminders are not doubled.
+- **App badge:** where supported, `navigator.setAppBadge` shows the count of due routines.
 
 ### Arcade
 
-Four mini-games with **daily challenges** (one seeded run per game per calendar day) and unlimited **practice** mode:
+Four mini-games with **daily challenges** (one seeded run per game per calendar day) and **Endless** mode funded by Play Tokens:
 
 | Game | ID | Description |
 | ---- | -- | ----------- |
@@ -124,6 +139,8 @@ Four mini-games with **daily challenges** (one seeded run per game per calendar 
 - **Personal high scores**: stored in `AppData.gameScores` (top 10 per board key).
 - **Global daily leaderboard**: Firestore `dailyBoards/{gameId}_{day}/entries/{uid}`; one create-once entry per user per game per day.
 - **Arcade profile**: optional public display name for leaderboards (or anonymous opt-out).
+- **TipTop ghosts**: daily runs record flap traces; race your last ghost or a board entry that uploaded `meta.ghostTrace`.
+- **Friends** (`/friends`): 3DS-style friend codes, shared streak summaries (no routine details), and daily kudos.
 
 ### Settings & backup
 
@@ -146,6 +163,8 @@ Four mini-games with **daily challenges** (one seeded run per game per calendar 
 │  localStorage        │  cloudSync.ts → Firestore userdata   │
 │  upscale:user        │  dailyLeaderboard.ts → dailyBoards   │
 │  upscale:data:{id}   │  push.ts → pushSubscriptions         │
+│                      │  social.ts → friendCodes / social /  │
+│                      │              publicStats / kudos     │
 └──────────────────────┴──────────────────────────────────────┘
 ```
 
@@ -161,8 +180,8 @@ Four mini-games with **daily challenges** (one seeded run per game per calendar 
 2. Debounced `storage.saveData` → local write + optional cloud upload.
 
 **Conflict resolution** (`resolveBackupConflict` in `backup.ts`):
-- Compares `syncedAt` / cloud `updatedAt` timestamps.
-- Newer full backup wins (not field-level merge), except arcade daily/profile/scores which are merged explicitly in `mergeLocalAndCloud`.
+- Per-entity merge: goals and routines by `updatedAt` (fallback `createdAt`); day log entries by `ratedAt`.
+- Notes, wallet transactions, arcade daily/profile/scores, unlocks are union-merged in `mergeLocalAndCloud`.
 
 ---
 
@@ -283,6 +302,10 @@ interface AppData {
   gameScores?: Record<string, GameScoreEntry[]>;
   arcadeDaily?: ArcadeDailyState;
   arcadeProfile?: ArcadeProfile;
+  wallet?: TokenWallet;           // Play Token ledger
+  arcadeUnlocks?: ArcadeUnlocks;  // palette unlocks
+  lastGhosts?: Partial<Record<GameId, { day: string; trace: number[]; score: number }>>;
+  lastRecapWeek?: string;
   version: number;
 }
 ```
@@ -297,6 +320,7 @@ interface Goal {
   icon: string;       // emoji
   color: string;      // hex accent
   createdAt: string;  // ISO
+  updatedAt?: string; // ISO, for per-entity merge
   targetDate?: string;
   archived?: boolean;
 }
@@ -318,6 +342,7 @@ interface Routine {
   goalId?: string | null;
   reminderTime?: string;  // HH:mm
   createdAt: string;
+  updatedAt?: string;
   archived?: boolean;
 }
 ```
@@ -390,7 +415,7 @@ Upscale uses **two** Google integrations when fully configured:
 ### Cloud load (`loadCloudData`)
 
 - Reads `userdata/{uid}`; falls back to legacy `google:{googleSub}` doc if present.
-- On login/sync, `mergeLocalAndCloud` picks the newer full backup and merges arcade-specific fields.
+- On login/sync, `mergeLocalAndCloud` per-entity-merges habits and union-merges arcade/wallet fields.
 
 ### Guest mode
 
@@ -415,6 +440,8 @@ Owned by the authenticated user (`request.auth.uid == userId`).
     "routines": [ /* … */ ],
     "logs": { /* … */ },
     "syncedAt": "2026-08-01T12:00:00.000Z",
+    "wallet": { "txns": [ /* TokenTxn */ ] },
+    "arcadeUnlocks": { "palettes": [], "equipped": {} },
     "gameScores": { "tiptop": [ /* … */ ] },
     "arcadeDaily": { "date": "2026-08-01", "completed": { /* … */ } },
     "arcadeProfile": { "username": "Player", "optedOut": false, "prompted": true },
@@ -439,19 +466,23 @@ Owned by the authenticated user. Used by Cloud Functions to send FCM reminders.
 
 ### `dailyBoards/{gameId}_{day}/entries/{uid}`
 
-Global daily arcade scores. **Create-once** per user per game per day (no updates or deletes).
+Global daily arcade scores. **Create-once** per user per game per day (no updates or deletes). Optional `meta.ghostTrace` for TipTop.
 
-```json
-{
-  "uid": "firebaseUid",
-  "score": 12345,
-  "displayName": "Player",
-  "playedAt": "2026-08-01T12:00:00.000Z",
-  "gameId": "tiptop",
-  "day": "2026-08-01",
-  "meta": { "optional": "context" }
-}
-```
+### `friendCodes/{code}`
+
+Create-once map from `1234-5678-9012` style codes to `uid`.
+
+### `social/{uid}`
+
+Friend code, friend uid list, pending incoming/outgoing requests, display name.
+
+### `publicStats/{uid}`
+
+Tiny public summary only: display name, best streak, days active this week, completed-today flag. No routine titles or logs.
+
+### `kudos/{recipientUid}/days/{day}/from/{senderUid}`
+
+Create-once daily kudos from one friend to another.
 
 Deploy rules:
 
@@ -477,8 +508,8 @@ firebase deploy --only firestore:rules
 
 | Mode | Seeding | Leaderboard | Attempts |
 | ---- | ------- | ----------- | -------- |
-| **Daily** | `dailySeed()` | Global `dailyBoards` + local `arcadeDaily` | One official run per day |
-| **Practice** | Random or game-specific | Personal `gameScores` only | Unlimited (3/day cap planned) |
+| **Daily** | `dailySeed()` | Global `dailyBoards` + local `arcadeDaily` | One official run per day (continue credit optional) |
+| **Endless** | Random or game-specific | Personal `gameScores` only | Costs 1 Play Token (Pro: unlimited) |
 
 ### Game-specific notes
 
@@ -615,7 +646,8 @@ Or `npm run deploy:firebase`. First functions deploy enables Cloud Scheduler on 
 | `/library` | Routine library by category |
 | `/notes` | Notes list, editor and reminders |
 | `/progress` | Heatmaps, streaks, charts |
-| `/games` | Arcade hub |
+| `/games` | Arcade hub (tokens, shop, friends entry) |
+| `/friends` | Friend codes, shared streaks, kudos |
 | `/games/tiptop` | TipTop |
 | `/games/octane` | Octane |
 | `/games/dissiada` | Dissiada |

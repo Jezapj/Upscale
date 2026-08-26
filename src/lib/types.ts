@@ -30,6 +30,8 @@ export interface Goal {
   icon: string; // emoji
   color: string; // hex accent
   createdAt: string; // ISO
+  /** ISO timestamp of last edit (for per-entity cloud merge). */
+  updatedAt?: string;
   targetDate?: string; // optional ISO deadline
   archived?: boolean;
 }
@@ -50,6 +52,8 @@ export interface Routine {
   /** Optional daily reminder time in 24h HH:mm (device local timezone). */
   reminderTime?: string;
   createdAt: string; // ISO
+  /** ISO timestamp of last edit (for per-entity cloud merge). */
+  updatedAt?: string;
   archived?: boolean;
 }
 
@@ -103,17 +107,62 @@ export interface AppData {
   arcadeDaily?: ArcadeDailyState;
   /** Global board display name preference. */
   arcadeProfile?: ArcadeProfile;
+  /** Play Token ledger (habits fund the arcade). */
+  wallet?: TokenWallet;
+  /** Cosmetic unlocks bought with tokens. */
+  arcadeUnlocks?: ArcadeUnlocks;
+  /** Last TipTop (etc.) ghost traces kept across daily rollover. */
+  lastGhosts?: Partial<
+    Record<GameId, { day: string; trace: number[]; score: number }>
+  >;
+  /** ISO week key (e.g. 2026-W12) of the last weekly recap the user saw. */
+  lastRecapWeek?: string;
   version: number;
 }
 
 export interface ArcadeDailyCompletion {
   score: number;
   playedAt: string;
+  /** Compact TipTop flap-time trace for ghost races (ms from run start). */
+  ghostTrace?: number[];
+  /** True when a continue-credit was already used on this daily run. */
+  continued?: boolean;
 }
 
 export interface ArcadeDailyState {
   date: string;
   completed: Partial<Record<GameId, ArcadeDailyCompletion>>;
+}
+
+export type TokenReason =
+  | "starter"
+  | "checkin"
+  | "clear_day"
+  | "streak_milestone"
+  | "endless"
+  | "continue"
+  | "palette"
+  | "grace_earn"
+  | "grace_spend";
+
+export interface TokenTxn {
+  id: string;
+  amount: number;
+  reason: TokenReason;
+  /** Local calendar day YYYY-MM-DD. */
+  date: string;
+  createdAt: string;
+}
+
+export interface TokenWallet {
+  txns: TokenTxn[];
+}
+
+export interface ArcadeUnlocks {
+  /** Unlocked palette ids. */
+  palettes: string[];
+  /** Equipped palette id per game (falls back to theme default). */
+  equipped: Partial<Record<GameId, string>>;
 }
 
 export interface ArcadeProfile {

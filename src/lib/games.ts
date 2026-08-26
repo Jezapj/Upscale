@@ -6,11 +6,14 @@ export type GameId = "tiptop" | "octane" | "dissiada" | "daybreak";
 export const UNLIMITED_PLAYS =
   import.meta.env.VITE_UNLIMITED_PLAYS === "true";
 
-/** Free endless plays per calendar day (Pro subscribers get unlimited). */
-export const DAILY_FREE_PLAYS = 3;
+/** Free endless plays are retired: habits mint Play Tokens instead. */
+export const DAILY_FREE_PLAYS = 0;
 
 /** Pro subscription price label shown in the UI. */
 export const PRO_PRICE_LABEL = "$10/month";
+
+/** Cost of one Endless run in Play Tokens (non-Pro). */
+export const ENDLESS_TOKEN_COST = 1;
 
 export interface GameMeta {
   id: GameId;

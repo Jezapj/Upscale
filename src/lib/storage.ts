@@ -9,6 +9,7 @@ import {
 } from "./cloudSync";
 import { getFirebaseAuth } from "./firebase";
 import { activeFirestoreUid, waitForFirebaseAuth } from "./firebaseAuth";
+import { ensureStarterBalance } from "./economy";
 
 const USER_KEY = "upscale:user";
 const dataKey = (userId: string) => `upscale:data:${userId}`;
@@ -87,11 +88,11 @@ export const storage = {
   },
 
   loadLocalData(userId: string): AppData {
-    return readLocalData(userId);
+    return ensureStarterBalance(readLocalData(userId));
   },
 
   async loadData(userId: string): Promise<AppData> {
-    const local = loadLocal(userId);
+    const local = ensureStarterBalance(loadLocal(userId));
 
     if (!isCloudUser(userId) || !cloudConfigured()) {
       return local;

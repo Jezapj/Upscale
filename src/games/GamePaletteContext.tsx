@@ -1,13 +1,27 @@
 import { createContext, useContext, type ReactNode } from "react";
-import { getGamePalette, type GamePalette } from "@/lib/gameTheme";
+import { getGamePalette, getGamePaletteWithUnlock, type GamePalette } from "@/lib/gameTheme";
 import { useTheme } from "@/store/useTheme";
+import { useStore } from "@/store/useStore";
+import type { GameId } from "@/lib/types";
+import { ensureUnlocks } from "@/lib/economy";
 
 const GamePaletteContext = createContext<GamePalette | null>(null);
 
-export function GamePaletteProvider({ children }: { children: ReactNode }) {
+export function GamePaletteProvider({
+  children,
+  gameId,
+}: {
+  children: ReactNode;
+  gameId?: GameId;
+}) {
   const theme = useTheme((s) => s.theme);
+  const data = useStore((s) => s.data);
+  const equipped = gameId
+    ? ensureUnlocks(data).equipped[gameId]
+    : undefined;
+  const palette = getGamePaletteWithUnlock(theme, equipped);
   return (
-    <GamePaletteContext.Provider value={getGamePalette(theme)}>
+    <GamePaletteContext.Provider value={palette}>
       {children}
     </GamePaletteContext.Provider>
   );

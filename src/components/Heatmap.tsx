@@ -15,6 +15,8 @@ const stateStyle = (state: DayState, accent: string): string => {
       return accent;
     case "partial":
       return `${accent}80`;
+    case "shielded":
+      return "#a78bfa";
     case "missed":
       return "#ffd4d4";
     case "future":

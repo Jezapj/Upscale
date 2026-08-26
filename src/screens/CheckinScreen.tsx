@@ -1,17 +1,20 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Check, Home, Flame, StickyNote } from "lucide-react";
+import { ArrowLeft, Check, Home, Flame, StickyNote, Gamepad2 } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Tile } from "@/components/Tile";
 import { RatingButtons } from "@/components/RatingButtons";
 import { BackgroundDecor } from "@/components/BackgroundDecor";
 import { CheckinHints } from "@/components/ScreenHints";
+import { TokenBalanceCapsule } from "@/components/TokenBalanceCapsule";
+import { TokenEarnToast } from "@/components/TokenEarnToast";
 import { isDueToday } from "@/lib/frequency";
 import { todayKey } from "@/lib/dates";
 import { describeFrequency } from "@/lib/frequency";
 import { getCategory } from "@/lib/categories";
 import { computeRoutineStats } from "@/lib/stats";
 import { RATING_BY_KEY } from "@/lib/rating";
+import { tokensEarnedOnDate } from "@/lib/economy";
 import type { Rating, Routine } from "@/lib/types";
 import { useRegisterControls } from "@/store/useControls";
 
@@ -80,6 +83,7 @@ export function CheckinScreen() {
   return (
     <div className="relative flex h-full flex-col">
       <BackgroundDecor />
+      <TokenEarnToast />
       <div className="relative z-10 flex items-center justify-between px-4 pt-4">
         <button
           onClick={() => (index === 0 ? nav("/") : setIndex((i) => i - 1))}
@@ -236,10 +240,12 @@ function Summary({
   const cleared = rated.filter((x) => x.entry?.cleared).length;
   const priority = rated.filter((x) => x.entry?.rating === "no");
   const done = rated.filter((x) => x.entry?.completed).length;
+  const earnedToday = tokensEarnedOnDate(data.wallet, key);
 
   return (
     <div className="relative flex h-full flex-col">
       <BackgroundDecor />
+      <TokenEarnToast />
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 text-center">
         <div className="animate-pop-in">
           <Tile
@@ -256,6 +262,15 @@ function Summary({
           {done} completed · {cleared} cleared
           {priority.length > 0 && ` · ${priority.length} priority`}
         </p>
+
+        <div className="mt-4 flex flex-col items-center gap-2">
+          <TokenBalanceCapsule />
+          {earnedToday > 0 && (
+            <p className="text-xs font-800 text-cat-project">
+              +{earnedToday} Play Token{earnedToday === 1 ? "" : "s"} today
+            </p>
+          )}
+        </div>
 
         {priority.length > 0 && (
           <div className="card mt-5 w-full p-4 text-left">
@@ -276,7 +291,10 @@ function Summary({
           </div>
         )}
 
-        <button onClick={() => nav("/")} className="btn mt-6 w-full">
+        <button onClick={() => nav("/games")} className="btn mt-6 w-full">
+          <Gamepad2 size={18} /> Spend tokens in the arcade
+        </button>
+        <button onClick={() => nav("/")} className="btn-ghost mt-2 w-full">
           <Check size={18} /> Done
         </button>
       </div>

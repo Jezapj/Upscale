@@ -29,8 +29,24 @@ import { isCloudUser } from "@/lib/cloudSync";
 import { clearFiredReminder, noteReminderId } from "@/lib/reminders";
 import { markDailyPlayed as applyDailyPlayed } from "@/lib/dailyChallenge";
 import { alignGoogleUserWithFirebase } from "@/lib/storage";
+import {
+  applyCheckinEarnings,
+  equipPalette as applyEquipPalette,
+  spendContinueTxnId,
+  spendTokens,
+  TOKEN_COST_CONTINUE,
+  tokenBalance as getTokenBalance,
+  unlockPalette as applyUnlockPalette,
+  type UnlockablePaletteId,
+} from "@/lib/economy";
 
 const uid = () => crypto.randomUUID();
+
+export interface TokenEarnEvent {
+  id: string;
+  amount: number;
+  at: number;
+}
 
 interface StoreState {
   user: User | null;
@@ -38,16 +54,18 @@ interface StoreState {
   ready: boolean;
   signingIn: boolean;
   today: string;
+  /** Latest token earn pulse for toast UI. */
+  lastTokenEarn: TokenEarnEvent | null;
 
   init: () => Promise<void>;
   signIn: (user: User) => Promise<void>;
   signOut: () => void;
 
-  addGoal: (g: Omit<Goal, "id" | "createdAt">) => Goal;
+  addGoal: (g: Omit<Goal, "id" | "createdAt" | "updatedAt">) => Goal;
   updateGoal: (id: string, patch: Partial<Goal>) => void;
   deleteGoal: (id: string) => void;
 
-  addRoutine: (r: Omit<Routine, "id" | "createdAt">) => Routine;
+  addRoutine: (r: Omit<Routine, "id" | "createdAt" | "updatedAt">) => Routine;
   updateRoutine: (id: string, patch: Partial<Routine>) => void;
   deleteRoutine: (id: string) => void;
 
@@ -71,10 +89,21 @@ interface StoreState {
   ) => boolean;
   getLeaderboard: (key: string) => GameScoreEntry[];
 
-  markDailyPlayed: (gameId: GameId, score: number, overwrite?: boolean) => void;
+  markDailyPlayed: (
+    gameId: GameId,
+    score: number,
+    overwrite?: boolean,
+    extras?: { ghostTrace?: number[]; continued?: boolean },
+  ) => void;
   setArcadeProfile: (profile: ArcadeProfile) => void;
   setGamePremium: (premium: boolean) => void;
   endlessPlaysLeft: () => number;
+  tokenBalance: () => number;
+  buyContinue: (gameId: GameId) => boolean;
+  unlockPalette: (paletteId: UnlockablePaletteId) => boolean;
+  equipPalette: (gameId: GameId, paletteId: UnlockablePaletteId | null) => void;
+  setLastRecapWeek: (weekKey: string) => void;
+  clearTokenEarn: () => void;
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -87,7 +116,6 @@ async function syncUserData(userId: string): Promise<AppData> {
 }
 
 export const useStore = create<StoreState>((set, get) => {
-  // Debounced persistence whenever data changes.
   const persist = () => {
     const { user, data } = get();
     if (!user) return;
@@ -108,6 +136,7 @@ export const useStore = create<StoreState>((set, get) => {
     ready: false,
     signingIn: false,
     today: todayKey(),
+    lastTokenEarn: null,
 
     async init() {
       let user = storage.getUser();
@@ -167,45 +196,54 @@ export const useStore = create<StoreState>((set, get) => {
         if (auth) void firebaseSignOut(auth);
       }
       storage.setUser(null);
-      set({ user: null, data: emptyAppData() });
+      set({ user: null, data: emptyAppData(), lastTokenEarn: null });
     },
 
     addGoal(g) {
-      const goal: Goal = { ...g, id: uid(), createdAt: new Date().toISOString() };
+      const now = new Date().toISOString();
+      const goal: Goal = { ...g, id: uid(), createdAt: now, updatedAt: now };
       mutate((d) => ({ ...d, goals: [...d.goals, goal] }));
       return goal;
     },
     updateGoal(id, patch) {
+      const now = new Date().toISOString();
       mutate((d) => ({
         ...d,
-        goals: d.goals.map((g) => (g.id === id ? { ...g, ...patch } : g)),
+        goals: d.goals.map((g) =>
+          g.id === id ? { ...g, ...patch, updatedAt: now } : g,
+        ),
       }));
     },
     deleteGoal(id) {
+      const now = new Date().toISOString();
       mutate((d) => ({
         ...d,
         goals: d.goals.filter((g) => g.id !== id),
-        // Detach routines from the removed goal rather than deleting them.
         routines: d.routines.map((r) =>
-          r.goalId === id ? { ...r, goalId: null } : r,
+          r.goalId === id ? { ...r, goalId: null, updatedAt: now } : r,
         ),
       }));
     },
 
     addRoutine(r) {
+      const now = new Date().toISOString();
       const routine: Routine = {
         ...r,
         id: uid(),
-        createdAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
       };
       mutate((d) => ({ ...d, routines: [...d.routines, routine] }));
       return routine;
     },
     updateRoutine(id, patch) {
       if ("reminderTime" in patch) clearFiredReminder(id);
+      const now = new Date().toISOString();
       mutate((d) => ({
         ...d,
-        routines: d.routines.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+        routines: d.routines.map((r) =>
+          r.id === id ? { ...r, ...patch, updatedAt: now } : r,
+        ),
       }));
     },
     deleteRoutine(id) {
@@ -244,9 +282,10 @@ export const useStore = create<StoreState>((set, get) => {
 
     rate(routineId, rating) {
       const key = todayKey();
+      let earned = 0;
       mutate((d) => {
         const log = d.logs[key] ?? { date: key, entries: {} };
-        return {
+        const withLog: AppData = {
           ...d,
           logs: {
             ...d.logs,
@@ -256,7 +295,20 @@ export const useStore = create<StoreState>((set, get) => {
             },
           },
         };
+        if (rating !== "kinda" && rating !== "yes") return withLog;
+        const result = applyCheckinEarnings(withLog, routineId, key);
+        earned = result.earned;
+        return result.data;
       });
+      if (earned > 0) {
+        set({
+          lastTokenEarn: {
+            id: crypto.randomUUID(),
+            amount: earned,
+            at: Date.now(),
+          },
+        });
+      }
     },
 
     clearRating(routineId) {
@@ -296,8 +348,14 @@ export const useStore = create<StoreState>((set, get) => {
     consumePlay(gameId) {
       const { data, today } = get();
       if (!canPlayGame(data, gameId, today)) return false;
-      mutate((d) => recordGamePlay(d, gameId, today));
-      return true;
+      let ok = false;
+      mutate((d) => {
+        const next = recordGamePlay(d, gameId, today);
+        if (!next) return d;
+        ok = true;
+        return next;
+      });
+      return ok;
     },
 
     recordGameScore(key, score, meta) {
@@ -314,8 +372,18 @@ export const useStore = create<StoreState>((set, get) => {
       return getGameScores(get().data, key);
     },
 
-    markDailyPlayed(gameId, score, overwrite = false) {
-      mutate((d) => applyDailyPlayed(d, gameId, score, todayKey(), new Date().toISOString(), overwrite));
+    markDailyPlayed(gameId, score, overwrite = false, extras) {
+      mutate((d) =>
+        applyDailyPlayed(
+          d,
+          gameId,
+          score,
+          todayKey(),
+          new Date().toISOString(),
+          overwrite,
+          extras,
+        ),
+      );
     },
 
     setArcadeProfile(profile) {
@@ -326,6 +394,73 @@ export const useStore = create<StoreState>((set, get) => {
       const { data } = get();
       if (data.gamePremium === premium) return;
       mutate((d) => ({ ...d, gamePremium: premium }));
+    },
+
+    tokenBalance() {
+      return getTokenBalance(get().data.wallet);
+    },
+
+    buyContinue(gameId) {
+      const today = todayKey();
+      let ok = false;
+      mutate((d) => {
+        const daily = d.arcadeDaily;
+        if (daily?.date === today && daily.completed[gameId]?.continued) {
+          return d;
+        }
+        const spent = spendTokens(
+          d,
+          TOKEN_COST_CONTINUE,
+          "continue",
+          spendContinueTxnId(today, gameId),
+          today,
+        );
+        if (!spent) return d;
+        ok = true;
+        const base = spent.arcadeDaily ?? { date: today, completed: {} };
+        const prev = base.completed[gameId];
+        return {
+          ...spent,
+          arcadeDaily: {
+            date: today,
+            completed: {
+              ...base.completed,
+              [gameId]: {
+                score: prev?.score ?? 0,
+                playedAt: prev?.playedAt ?? new Date().toISOString(),
+                ghostTrace: prev?.ghostTrace,
+                continued: true,
+              },
+            },
+          },
+        };
+      });
+      return ok;
+    },
+
+    unlockPalette(paletteId) {
+      let ok = false;
+      mutate((d) => {
+        const next = applyUnlockPalette(d, paletteId);
+        if (!next) return d;
+        ok = true;
+        return next;
+      });
+      return ok;
+    },
+
+    equipPalette(gameId, paletteId) {
+      mutate((d) => applyEquipPalette(d, gameId, paletteId));
+    },
+
+    setLastRecapWeek(weekKey) {
+      mutate((d) =>
+        d.lastRecapWeek === weekKey ? d : { ...d, lastRecapWeek: weekKey },
+      );
+    },
+
+    clearTokenEarn() {
+      set({ lastTokenEarn: null });
     },
   };
 });
