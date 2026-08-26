@@ -2,6 +2,7 @@ import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "node:path";
+import fs from "node:fs";
 
 function firebaseSwConfigPlugin(env: Record<string, string>): Plugin {
   const source = () =>
@@ -81,6 +82,30 @@ function seoPublicFilesPlugin(env: Record<string, string>): Plugin {
 const APP_DESCRIPTION =
   "Upscale is a Nintendo 3DS eShop styled habit, routine and goal tracker PWA. Build routines, group them under goals, check in daily, map streaks, and unwind in a built-in arcade.";
 
+const APP_TITLE = "Upscale: Game Your Goals";
+
+function absolutizeSeoHtml(html: string, site: string): string {
+  if (!site) return html;
+  return html
+    .replace(/content="\/icons\/icon-512\.png"/g, `content="${site}/icons/icon-512.png"`)
+    .replace(
+      /"image": "\/icons\/icon-512\.png"/g,
+      `"image": "${site}/icons/icon-512.png"`,
+    )
+    .replace(
+      /href="\/favicon\.png"/g,
+      `href="${site}/favicon.png"`,
+    )
+    .replace(
+      /href="\/icons\/icon-192\.png"/g,
+      `href="${site}/icons/icon-192.png"`,
+    )
+    .replace(
+      /href="\/apple-touch-icon\.png"/g,
+      `href="${site}/apple-touch-icon.png"`,
+    );
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
@@ -103,16 +128,20 @@ export default defineConfig(({ mode }) => {
           const ogUrl = site
             ? `<meta property="og:url" content="${site}/" />`
             : "";
-          const ogImage = site
-            ? `<meta property="og:image" content="${site}/icons/icon-512.png" />`
-            : `<meta property="og:image" content="/icons/icon-512.png" />`;
+          const imagePath = site
+            ? `${site}/icons/icon-512.png`
+            : "/icons/icon-512.png";
+          const ogImage = `<meta property="og:image" content="${imagePath}" />`;
+          const twitterImage = `<meta name="twitter:image" content="${imagePath}" />`;
           const jsonLd = JSON.stringify({
             "@context": "https://schema.org",
             "@type": "SoftwareApplication",
             name: "Upscale",
+            alternateName: APP_TITLE,
             applicationCategory: "LifestyleApplication",
             operatingSystem: "Web",
             description: APP_DESCRIPTION,
+            image: imagePath,
             offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
             ...(site ? { url: `${site}/` } : {}),
           });
@@ -121,16 +150,30 @@ export default defineConfig(({ mode }) => {
             `    <meta name="robots" content="index,follow" />
     ${canonical}
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Upscale — Goals, routines & arcade" />
+    <meta property="og:title" content="${APP_TITLE}" />
     <meta property="og:description" content="${APP_DESCRIPTION}" />
     ${ogUrl}
     ${ogImage}
     <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="Upscale — Goals, routines & arcade" />
+    <meta name="twitter:title" content="${APP_TITLE}" />
     <meta name="twitter:description" content="${APP_DESCRIPTION}" />
+    ${twitterImage}
     <script type="application/ld+json">${jsonLd}</script>
   </head>`,
           );
+        },
+      },
+      {
+        name: "seo-html-absolute-urls",
+        generateBundle() {
+          const seoPath = path.resolve(__dirname, "public/seo.html");
+          if (!fs.existsSync(seoPath)) return;
+          const raw = fs.readFileSync(seoPath, "utf8");
+          this.emitFile({
+            type: "asset",
+            fileName: "seo.html",
+            source: absolutizeSeoHtml(raw, site),
+          });
         },
       },
       VitePWA({
@@ -142,7 +185,7 @@ export default defineConfig(({ mode }) => {
           "seo.html",
         ],
         manifest: {
-          name: "Upscale: Goals & Routines",
+          name: APP_TITLE,
           short_name: "Upscale",
           description:
             "A 3DS eShop styled reminder, self-improvement and goal tracker. Build routines, group them under goals, and map your progress.",
@@ -157,11 +200,13 @@ export default defineConfig(({ mode }) => {
               src: "icons/icon-192.png",
               sizes: "192x192",
               type: "image/png",
+              purpose: "any",
             },
             {
               src: "icons/icon-512.png",
               sizes: "512x512",
               type: "image/png",
+              purpose: "any",
             },
             {
               src: "icons/icon-512-maskable.png",

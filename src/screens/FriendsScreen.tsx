@@ -126,7 +126,7 @@ export function FriendsScreen() {
                 Your friend code
               </p>
               <p className="mt-1 font-display text-2xl font-800 tracking-wider text-ink">
-                {profile?.friendCode ?? "————"}
+                {profile?.friendCode ?? "----"}
               </p>
               <button
                 type="button"

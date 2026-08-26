@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
   BACKGROUND_TRACKS,
+  DEFAULT_BACKGROUND_TRACK_ID,
   getBackgroundTrack,
   nextBackgroundTrackId,
   type BackgroundTrackId,
@@ -37,7 +38,7 @@ function readTrack(): BackgroundTrackId {
   } catch {
     /* noop */
   }
-  return BACKGROUND_TRACKS[0].id;
+  return DEFAULT_BACKGROUND_TRACK_ID;
 }
 
 interface BackgroundMusicState {

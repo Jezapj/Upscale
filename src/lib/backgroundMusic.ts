@@ -1,6 +1,13 @@
 /** Background theme tunes (audio from MP4 files in /public). */
 export const BACKGROUND_TRACKS = [
   {
+    id: "palmtree",
+    label: "Palmtree Panic",
+    src: encodeURI(
+      "/Sonic CD v0.02 Proto - Palmtree Panic_Salad Plain (Past) Music.mp4",
+    ),
+  },
+  {
     id: "mii-plaza",
     label: "Mii Plaza",
     src: encodeURI("/Mii Channel - Plaza Theme (HQ).mp4"),
@@ -10,19 +17,19 @@ export const BACKGROUND_TRACKS = [
     label: "StreetPass Medley",
     src: encodeURI("/Streetpass Mii Plaza Theme Full Medley.mp4"),
   },
-  {
-    id: "palmtree",
-    label: "Palmtree Panic",
-    src: encodeURI(
-      "/Sonic CD v0.02 Proto - Palmtree Panic_Salad Plain (Past) Music.mp4",
-    ),
-  },
 ] as const;
 
 export type BackgroundTrackId = (typeof BACKGROUND_TRACKS)[number]["id"];
 
+/** Default landing track for new sessions (no stored preference). */
+export const DEFAULT_BACKGROUND_TRACK_ID: BackgroundTrackId = "palmtree";
+
 export function getBackgroundTrack(id: BackgroundTrackId) {
-  return BACKGROUND_TRACKS.find((t) => t.id === id) ?? BACKGROUND_TRACKS[0];
+  return (
+    BACKGROUND_TRACKS.find((t) => t.id === id) ??
+    BACKGROUND_TRACKS.find((t) => t.id === DEFAULT_BACKGROUND_TRACK_ID) ??
+    BACKGROUND_TRACKS[0]
+  );
 }
 
 export function nextBackgroundTrackId(id: BackgroundTrackId): BackgroundTrackId {
