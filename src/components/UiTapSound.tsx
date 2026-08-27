@@ -10,7 +10,19 @@ import {
 const TAPPABLE =
   "button, a, [role='button'], input[type='checkbox'], input[type='radio'], select, summary, [data-sfx]";
 
+const SKIP = "[data-sfx-skip], input[type='range'], textarea, canvas, button:disabled, a[aria-disabled='true']";
+
+const MOVE_CANCEL_PX = 10;
+
 const lastScrollPos = new WeakMap<EventTarget, { top: number; left: number }>();
+
+type Gesture = {
+  pointerId: number;
+  x: number;
+  y: number;
+  el: Element;
+  cancelled: boolean;
+};
 
 function scrollPosOf(
   target: EventTarget | null,
@@ -26,21 +38,65 @@ function scrollPosOf(
   return null;
 }
 
+function tappableOf(target: EventTarget | null): Element | null {
+  if (!(target instanceof Element)) return null;
+  if (target.closest(SKIP)) return null;
+  return target.closest(TAPPABLE);
+}
+
 /** UI chimes for taps, sheets, and scroll. */
 export function UiTapSound() {
   useEffect(() => {
     preloadUiChimes();
     warmupScrollClip();
 
+    let gesture: Gesture | null = null;
+
     const onPointerDown = (e: PointerEvent) => {
-      const target = e.target;
-      if (!(target instanceof Element)) return;
-      if (target.closest("[data-sfx-skip], input[type='range'], textarea, canvas")) return;
-      if (!target.closest(TAPPABLE)) return;
-      playUiTapKind(pickTapChime(target));
+      const el = tappableOf(e.target);
+      if (!el) {
+        gesture = null;
+        return;
+      }
+      gesture = {
+        pointerId: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        el,
+        cancelled: false,
+      };
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!gesture || e.pointerId !== gesture.pointerId || gesture.cancelled) return;
+      const dx = e.clientX - gesture.x;
+      const dy = e.clientY - gesture.y;
+      if (dx * dx + dy * dy > MOVE_CANCEL_PX * MOVE_CANCEL_PX) {
+        gesture.cancelled = true;
+      }
+    };
+
+    const onPointerCancel = (e: PointerEvent) => {
+      if (gesture && e.pointerId === gesture.pointerId) gesture.cancelled = true;
+    };
+
+    const onClick = (e: MouseEvent) => {
+      const el = tappableOf(e.target);
+      if (!el) {
+        gesture = null;
+        return;
+      }
+      if (gesture) {
+        const dragged = gesture.cancelled;
+        const sameControl = gesture.el === el || gesture.el.contains(el) || el.contains(gesture.el);
+        gesture = null;
+        if (dragged || !sameControl) return;
+      }
+      playUiTapKind(pickTapChime(el));
     };
 
     const onScroll = (e: Event) => {
+      if (gesture) gesture.cancelled = true;
       const pos = scrollPosOf(e.target);
       if (!pos) return;
       const prev = lastScrollPos.get(pos.key);
@@ -53,9 +109,15 @@ export function UiTapSound() {
     };
 
     document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("pointermove", onPointerMove, true);
+    document.addEventListener("pointercancel", onPointerCancel, true);
+    document.addEventListener("click", onClick, true);
     document.addEventListener("scroll", onScroll, { capture: true, passive: true });
     return () => {
       document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("pointermove", onPointerMove, true);
+      document.removeEventListener("pointercancel", onPointerCancel, true);
+      document.removeEventListener("click", onClick, true);
       document.removeEventListener("scroll", onScroll, true);
     };
   }, []);
