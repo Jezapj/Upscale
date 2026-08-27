@@ -68,6 +68,7 @@ export function ArcadeShopSheet({ open, onClose, focusGameId }: Props) {
                   <button
                     type="button"
                     className="btn px-3 py-1.5 text-sm disabled:opacity-40"
+                    data-sfx="success"
                     disabled={balance < p.cost}
                     onClick={() => unlock(p.id as UnlockablePaletteId)}
                   >

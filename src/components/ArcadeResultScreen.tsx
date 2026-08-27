@@ -135,6 +135,7 @@ export function ArcadeResultScreen({
           type="button"
           onClick={copyScore}
           className="flex flex-col items-center gap-1 text-[11px] font-800 text-ink-soft active:scale-95"
+          data-sfx="success"
         >
           <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-ink shadow-sm">
             {copied ? <Check size={18} /> : <Copy size={18} />}
@@ -145,6 +146,7 @@ export function ArcadeResultScreen({
           type="button"
           onClick={shareVia}
           className="flex flex-col items-center gap-1 text-[11px] font-800 text-ink-soft active:scale-95"
+          data-sfx="tapHigh"
         >
           <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-ink shadow-sm">
             <Share2 size={18} />

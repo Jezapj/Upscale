@@ -20,6 +20,15 @@ export function RatingButtons({ value, onPick, size = "lg" }: Props) {
           <button
             key={r.key}
             onClick={() => onPick(r.key)}
+            data-sfx={
+              r.key === "yes"
+                ? "success"
+                : r.key === "no"
+                  ? "alert"
+                  : r.key === "kinda"
+                    ? "tapHigh"
+                    : "tapMedium"
+            }
             className="flex flex-col items-center gap-1 active:scale-95 transition-transform"
           >
             <div

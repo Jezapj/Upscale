@@ -101,6 +101,7 @@ export function NoteForm({ initial, onSave, onDelete }: Props) {
             type="button"
             onClick={onDelete}
             className="flex h-12 w-12 items-center justify-center rounded-pill bg-white/80 text-cat-exercise shadow-soft active:scale-95"
+            data-sfx="alert"
           >
             <Trash2 size={20} />
           </button>

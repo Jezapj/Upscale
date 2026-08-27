@@ -3,7 +3,7 @@ import { getGameAudioContext, unlockGameAudio } from "@/games/gameAudio";
 const bufferCache = new Map<string, Promise<AudioBuffer>>();
 let masterGain: GainNode | null = null;
 let sourceNode: AudioBufferSourceNode | null = null;
-let playingSrc: string | null = null;
+let playingKey: string | null = null;
 let loadGeneration = 0;
 let hideHandlerBound = false;
 
@@ -28,7 +28,7 @@ function stopSource(): void {
     /* already disconnected */
   }
   sourceNode = null;
-  playingSrc = null;
+  playingKey = null;
 }
 
 async function decodeTrack(audioCtx: AudioContext, src: string): Promise<AudioBuffer> {
@@ -73,6 +73,8 @@ export async function setWebAudioMusic(opts: {
   src: string;
   volume: number;
   play: boolean;
+  /** If set, loop only this many seconds from the start (clips a long tail). */
+  loopEnd?: number;
 }): Promise<void> {
   const audioCtx = unlockGameAudio();
   if (!audioCtx) return;
@@ -93,7 +95,12 @@ export async function setWebAudioMusic(opts: {
     await audioCtx.resume();
   }
 
-  if (playingSrc === opts.src && sourceNode) return;
+  const loopEnd =
+    opts.loopEnd && opts.loopEnd > 0.2
+      ? Math.min(opts.loopEnd, 10_000)
+      : undefined;
+  const key = `${opts.src}|${loopEnd ?? "full"}`;
+  if (playingKey === key && sourceNode) return;
 
   const generation = ++loadGeneration;
   let buffer: AudioBuffer;
@@ -109,8 +116,13 @@ export async function setWebAudioMusic(opts: {
   const next = audioCtx.createBufferSource();
   next.buffer = buffer;
   next.loop = true;
+  next.loopStart = 0;
+  const end = loopEnd ? Math.min(loopEnd, buffer.duration) : buffer.duration;
+  if (end < buffer.duration - 0.01) {
+    next.loopEnd = end;
+  }
   next.connect(gain);
   next.start(0);
   sourceNode = next;
-  playingSrc = opts.src;
+  playingKey = key;
 }

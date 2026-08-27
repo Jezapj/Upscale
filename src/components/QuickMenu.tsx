@@ -5,6 +5,7 @@ import { useControls } from "@/store/useControls";
 import { useBackgroundMusic, useBackgroundTrack } from "@/store/useBackgroundMusic";
 import { useUiSound } from "@/store/useUiSound";
 import { useTheme } from "@/store/useTheme";
+import { playUiChime } from "@/lib/uiSound";
 
 /** Quick options menu (B) - dark mode toggle and future shortcuts. */
 export function QuickMenu() {
@@ -25,6 +26,7 @@ export function QuickMenu() {
 
   useEffect(() => {
     if (!open) return;
+    playUiChime("popup");
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();

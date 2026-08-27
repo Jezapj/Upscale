@@ -33,6 +33,7 @@ export function Dock() {
           onClick={goPrev}
           title="Previous tab (hold L + B)"
           className="dock-shoulder absolute -top-1 left-2 transition-all active:scale-95"
+          data-sfx="tapLow"
         >
           LB
         </button>
@@ -41,6 +42,7 @@ export function Dock() {
           onClick={goNext}
           title="Next tab (hold R + B)"
           className="dock-shoulder absolute -top-1 right-2 transition-all active:scale-95"
+          data-sfx="tapLow"
         >
           RB
         </button>
@@ -55,6 +57,7 @@ export function Dock() {
               to={item.to}
               end={item.to === "/"}
               className="relative flex flex-1 items-center justify-center py-1"
+              data-sfx="tapLow"
             >
               {({ isActive }) => (
                 <span

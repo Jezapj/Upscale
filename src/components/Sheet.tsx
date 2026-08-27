@@ -1,6 +1,7 @@
 import { type ReactNode, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import { playUiChime } from "@/lib/uiSound";
 
 interface Props {
   open: boolean;
@@ -20,6 +21,7 @@ export function Sheet({ open, onClose, title, children }: Props) {
 
   useEffect(() => {
     if (!open) return;
+    playUiChime("popup");
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

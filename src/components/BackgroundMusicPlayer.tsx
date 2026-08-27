@@ -23,6 +23,7 @@ export function BackgroundMusicPlayer() {
   const track = getBackgroundTrack(trackId);
   const unlockedRef = useRef(false);
   const effectiveVolume = muted ? 0 : volume * gameMusicDuck(location.pathname);
+  const loopEnd = "loopEnd" in track ? track.loopEnd : undefined;
 
   useEffect(() => {
     const apply = () => {
@@ -30,6 +31,7 @@ export function BackgroundMusicPlayer() {
         src: track.src,
         volume: effectiveVolume,
         play: unlockedRef.current && effectiveVolume > 0,
+        loopEnd,
       });
     };
 
@@ -45,7 +47,7 @@ export function BackgroundMusicPlayer() {
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);
     };
-  }, [track.src, effectiveVolume]);
+  }, [track.src, effectiveVolume, loopEnd]);
 
   return null;
 }

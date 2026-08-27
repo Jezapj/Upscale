@@ -45,6 +45,7 @@ import {
 import { listKudosForDay, publishPublicStats } from "@/lib/social";
 import { isCloudUser } from "@/lib/cloudSync";
 import { cloudConfigured } from "@/lib/firebase";
+import { playUiChime } from "@/lib/uiSound";
 
 function AppShell() {
   const location = useLocation();
@@ -110,6 +111,7 @@ function AppShell() {
           ? `${names} sent kudos!`
           : `${names} sent kudos!`,
       );
+      playUiChime("info");
     });
   }, [user, data.syncedAt]);
 

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { validateArcadeUsername } from "@/lib/dailyChallenge";
+import { playUiChime } from "@/lib/uiSound";
 
 interface Props {
   initialUsername?: string;
@@ -11,10 +12,15 @@ export function ArcadeUsernameModal({ initialUsername = "", onSave }: Props) {
   const [value, setValue] = useState(initialUsername);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    playUiChime("popup");
+  }, []);
+
   const submitName = () => {
     const name = validateArcadeUsername(value);
     if (!name) {
       setError("Use 3-16 letters, numbers, or spaces.");
+      playUiChime("alert");
       return;
     }
     onSave({ username: name, optedOut: false });

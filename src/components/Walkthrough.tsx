@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useLocation } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useWalkthrough } from "@/store/useWalkthrough";
+import { playUiChime } from "@/lib/uiSound";
 
 interface TourStep {
   id: string;
@@ -126,6 +127,11 @@ export function Walkthrough() {
       area?.removeEventListener("scroll", onResize);
     };
   }, [active, measure, step]);
+
+  useEffect(() => {
+    if (!active) return;
+    playUiChime("info");
+  }, [active, step]);
 
   useEffect(() => {
     if (!active) return;
