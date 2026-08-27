@@ -210,7 +210,7 @@ export function QuickMenu() {
         </div>
 
         <p className="mt-3 px-1 text-center text-[11px] font-700 text-ink-faint">
-          Hold L + T for settings · L + B / R + B to switch tabs
+          Hold L + T for settings · R + T to mute · L + B / R + B to switch tabs
         </p>
       </div>
     </div>,

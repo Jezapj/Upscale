@@ -9,7 +9,7 @@
  * the level scroll perfectly in sync with the scheduled music.
  */
 
-import { unlockGameAudio } from "../gameAudio";
+import { getAppAudioOutput, unlockGameAudio } from "../gameAudio";
 import {
   elevationHz,
   midiToHz,
@@ -92,7 +92,7 @@ export function createDaybreakAudio(
 
   const master = ctx.createGain();
   master.gain.value = 0.9;
-  master.connect(ctx.destination);
+  master.connect(getAppAudioOutput(ctx));
 
   const musicBus = ctx.createGain();
   musicBus.gain.value = 0.5;

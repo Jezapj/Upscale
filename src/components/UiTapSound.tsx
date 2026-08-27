@@ -35,7 +35,7 @@ export function UiTapSound() {
     const onPointerDown = (e: PointerEvent) => {
       const target = e.target;
       if (!(target instanceof Element)) return;
-      if (target.closest("input[type='range'], textarea, canvas")) return;
+      if (target.closest("[data-sfx-skip], input[type='range'], textarea, canvas")) return;
       if (!target.closest(TAPPABLE)) return;
       playUiTapKind(pickTapChime(target));
     };

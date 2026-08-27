@@ -58,7 +58,7 @@ const STEPS: TourStep[] = [
   {
     id: "hints",
     title: "Control hints",
-    body: "Menu opens Settings. Mute the music or change the songs and volume in Options and toggle between light and dark themes. A starts check-in. + adds a routine. They mirror the keyboard shortcuts.",
+    body: "Menu opens Settings. RT at the top mutes everything. Options still has music and tap volumes. A starts check-in. + adds a routine. They mirror the keyboard shortcuts.",
     target: "hints",
   },
   {

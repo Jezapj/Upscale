@@ -46,6 +46,8 @@ import { listKudosForDay, publishPublicStats } from "@/lib/social";
 import { isCloudUser } from "@/lib/cloudSync";
 import { cloudConfigured } from "@/lib/firebase";
 import { playUiChime } from "@/lib/uiSound";
+import { setAppAudioMuted } from "@/games/gameAudio";
+import { useMasterMute } from "@/store/useMasterMute";
 
 function AppShell() {
   const location = useLocation();
@@ -121,6 +123,11 @@ function AppShell() {
 
   useKeyboardControls();
   useRoutineReminders();
+
+  const masterMuted = useMasterMute((s) => s.muted);
+  useEffect(() => {
+    setAppAudioMuted(masterMuted);
+  }, [masterMuted]);
 
   useEffect(() => {
     if (location.pathname !== "/") return;

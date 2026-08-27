@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { BatteryFull, Clock3 } from "lucide-react";
+import { BatteryFull, Clock3, Volume2, VolumeX } from "lucide-react";
 import { prettyTime } from "@/lib/dates";
 import { useStore } from "@/store/useStore";
 import { useControls } from "@/store/useControls";
+import { useMasterMute } from "@/store/useMasterMute";
 import { SettingsSheet } from "./SettingsSheet";
 
 /** Top IISU console chrome: avatar cluster + LT/RT shoulder pills and a
@@ -11,6 +12,8 @@ export function StatusBar() {
   const user = useStore((s) => s.user);
   const settingsOpen = useControls((s) => s.settingsOpen);
   const setSettingsOpen = useControls((s) => s.setSettingsOpen);
+  const muted = useMasterMute((s) => s.muted);
+  const toggleMuted = useMasterMute((s) => s.toggleMuted);
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -21,11 +24,11 @@ export function StatusBar() {
   const initial = (user?.name ?? "U").charAt(0).toUpperCase();
 
   return (
-    <div className="flex items-center justify-between px-4 pb-1 pt-3 no-select">
+    <div className="flex items-center justify-between gap-2 px-4 pb-1 pt-3 no-select">
       <button
         data-tour="settings"
         onClick={() => setSettingsOpen(true)}
-        className="relative flex items-center active:scale-95"
+        className="relative flex shrink-0 items-center active:scale-95"
         title="Settings (hold L + T)"
       >
         <span className="capsule absolute -left-1 -top-2 z-20 px-1.5 py-0 text-[9px] font-900 text-ink-faint">
@@ -52,15 +55,25 @@ export function StatusBar() {
 
       <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-      <div className="flex items-center gap-2">
-        <span className="capsule px-1.5 py-0 text-[9px] font-900 text-ink-faint">
-          RT
-        </span>
-        <div className="capsule flex items-center gap-1.5 px-3 py-1 text-xs font-800 text-ink-soft">
-          <Clock3 size={13} className="text-ink-faint" />
-          <span>{prettyTime(now)}</span>
+      <div className="flex min-w-0 items-center gap-1.5">
+        <button
+          type="button"
+          data-sfx-skip
+          data-tour="mute"
+          onClick={toggleMuted}
+          className="capsule flex h-8 shrink-0 items-center gap-1 px-2 text-ink-soft transition-all active:scale-95"
+          aria-pressed={muted}
+          aria-label={muted ? "Unmute all sound" : "Mute all sound"}
+          title={muted ? "Unmute (hold R + T)" : "Mute (hold R + T)"}
+        >
+          <span className="text-[9px] font-900 leading-none text-ink-faint">RT</span>
+          {muted ? <VolumeX size={13} strokeWidth={2.4} /> : <Volume2 size={13} strokeWidth={2.4} />}
+        </button>
+        <div className="capsule flex min-w-0 items-center gap-1 px-2.5 py-1 text-[11px] font-800 text-ink-soft sm:gap-1.5 sm:px-3 sm:text-xs">
+          <Clock3 size={13} className="shrink-0 text-ink-faint" />
+          <span className="tabular-nums">{prettyTime(now)}</span>
           <span className="text-ink-faint">·</span>
-          <BatteryFull size={16} className="text-mint-deep" />
+          <BatteryFull size={16} className="shrink-0 text-mint-deep" />
           <span>100%</span>
         </div>
       </div>

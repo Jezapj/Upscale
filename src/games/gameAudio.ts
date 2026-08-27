@@ -32,6 +32,40 @@ export function unlockGameAudio(): AudioContext | null {
   }
 }
 
+let appMuted = (() => {
+  try {
+    return localStorage.getItem("upscale:master-muted") === "1";
+  } catch {
+    return false;
+  }
+})();
+let outputGain: GainNode | null = null;
+
+/** Shared destination so master mute can silence games, music, and UI without suspending the clock. */
+export function getAppAudioOutput(audioCtx: AudioContext): GainNode {
+  if (!outputGain || outputGain.context !== audioCtx) {
+    outputGain = audioCtx.createGain();
+    outputGain.connect(audioCtx.destination);
+    outputGain.gain.value = appMuted ? 0 : 1;
+  }
+  return outputGain;
+}
+
+export function setAppAudioMuted(muted: boolean): void {
+  appMuted = muted;
+  const audioCtx = sharedCtx;
+  if (!audioCtx || !outputGain || outputGain.context !== audioCtx) return;
+  const t = audioCtx.currentTime;
+  const next = muted ? 0 : 1;
+  outputGain.gain.cancelScheduledValues(t);
+  outputGain.gain.setValueAtTime(outputGain.gain.value, t);
+  outputGain.gain.linearRampToValueAtTime(next, t + 0.04);
+}
+
+export function isAppAudioMuted(): boolean {
+  return appMuted;
+}
+
 function ctx(): AudioContext | null {
   return unlockGameAudio();
 }
@@ -107,7 +141,7 @@ function getDissiadaBus(audioCtx: AudioContext): DissiadaBus {
   out.gain.value = 0.96;
 
   dry.connect(out);
-  out.connect(audioCtx.destination);
+  out.connect(getAppAudioOutput(audioCtx));
 
   dissiadaBus = { dry, audioCtx };
   return dissiadaBus;
@@ -374,7 +408,7 @@ export function startDissiadaHold(lane: number, durationMs = 900) {
 
     osc.connect(filter);
     filter.connect(gain);
-    gain.connect(audioCtx.destination);
+    gain.connect(getAppAudioOutput(audioCtx));
     osc.start(at);
     osc.stop(at + noteLen + 0.05);
     voices.push({ osc, gain });
@@ -434,7 +468,7 @@ function scheduleTipTopFlapHarmonic(
   osc.frequency.setValueAtTime(hz, t0);
   osc.frequency.exponentialRampToValueAtTime(hz * 0.9, toneEnd);
   osc.connect(gain);
-  gain.connect(audioCtx.destination);
+  gain.connect(getAppAudioOutput(audioCtx));
 
   const stopAt = scheduleFadedGainEnvelope(
     audioCtx,
@@ -465,7 +499,7 @@ export function playTipTopFlap() {
   noiseGain.gain.value = 0;
   noise.connect(noiseFilter);
   noiseFilter.connect(noiseGain);
-  noiseGain.connect(audioCtx.destination);
+  noiseGain.connect(getAppAudioOutput(audioCtx));
   const noiseStop = scheduleFadedGainEnvelope(audioCtx, noiseGain, {
     ...config,
     volume: config.volume * 0.85,
@@ -478,7 +512,7 @@ export function playTipTopFlap() {
   thump.frequency.setValueAtTime(baseHz, t0);
   thump.frequency.exponentialRampToValueAtTime(baseHz * 0.38, t0 + config.endTime);
   thump.connect(thumpGain);
-  thumpGain.connect(audioCtx.destination);
+  thumpGain.connect(getAppAudioOutput(audioCtx));
   const thumpStop = scheduleFadedGainEnvelope(audioCtx, thumpGain, {
     ...config,
     volume: config.volume * 0.55,
@@ -519,7 +553,7 @@ export function playTipTopHoleIn() {
   const rollGain = audioCtx.createGain();
   roll.connect(rollFilter);
   rollFilter.connect(rollGain);
-  rollGain.connect(audioCtx.destination);
+  rollGain.connect(getAppAudioOutput(audioCtx));
   scheduleGainEnvelope(audioCtx, rollGain, {
     ...config,
     volume: config.volume * 0.45,
@@ -533,7 +567,7 @@ export function playTipTopHoleIn() {
   clink.frequency.setValueAtTime(880, clinkAt);
   clink.frequency.exponentialRampToValueAtTime(520, clinkAt + 0.08);
   clink.connect(clinkGain);
-  clinkGain.connect(audioCtx.destination);
+  clinkGain.connect(getAppAudioOutput(audioCtx));
   const clinkCfg: SoundTiming = {
     volume: config.volume * 0.7,
     startTime: config.endTime * 0.72,
@@ -562,7 +596,7 @@ export function playTipTopLaserZap() {
   buzz.frequency.setValueAtTime(1400, t0);
   buzz.frequency.exponentialRampToValueAtTime(180, t0 + config.endTime);
   buzz.connect(buzzGain);
-  buzzGain.connect(audioCtx.destination);
+  buzzGain.connect(getAppAudioOutput(audioCtx));
   const buzzStop = scheduleFadedGainEnvelope(audioCtx, buzzGain, {
     ...config,
     volume: config.volume * 0.7,
@@ -579,7 +613,7 @@ export function playTipTopLaserZap() {
   sparkGain.gain.value = 0;
   spark.connect(sparkFilter);
   sparkFilter.connect(sparkGain);
-  sparkGain.connect(audioCtx.destination);
+  sparkGain.connect(getAppAudioOutput(audioCtx));
   const sparkStop = scheduleFadedGainEnvelope(audioCtx, sparkGain, {
     ...config,
     volume: config.volume * 0.55,
@@ -609,7 +643,7 @@ export function playTipTopSawSlice() {
   sliceGain.gain.value = 0;
   slice.connect(sliceFilter);
   sliceFilter.connect(sliceGain);
-  sliceGain.connect(audioCtx.destination);
+  sliceGain.connect(getAppAudioOutput(audioCtx));
   const sliceStop = scheduleFadedGainEnvelope(audioCtx, sliceGain, {
     ...config,
     volume: config.volume * 0.75,
@@ -622,7 +656,7 @@ export function playTipTopSawSlice() {
   ring.frequency.setValueAtTime(680, t0);
   ring.frequency.exponentialRampToValueAtTime(320, t0 + config.endTime * 0.7);
   ring.connect(ringGain);
-  ringGain.connect(audioCtx.destination);
+  ringGain.connect(getAppAudioOutput(audioCtx));
   const ringStop = scheduleFadedGainEnvelope(audioCtx, ringGain, {
     ...config,
     volume: config.volume * 0.35,
@@ -676,7 +710,7 @@ export function playSampleOneShot(src: string, volume = 0.8, playbackRate = 1) {
     source.playbackRate.value = playbackRate;
     gain.gain.value = volume;
     source.connect(gain);
-    gain.connect(audioCtx.destination);
+    gain.connect(getAppAudioOutput(audioCtx));
     source.start();
   });
 }
@@ -745,7 +779,7 @@ function playClip(audioCtx: AudioContext, config: SampleClip, playbackRate = 1) 
   source.buffer = buffer;
   source.playbackRate.value = playbackRate;
   source.connect(gain);
-  gain.connect(audioCtx.destination);
+  gain.connect(getAppAudioOutput(audioCtx));
 
   const t0 = audioCtx.currentTime;
   const peak = Math.max(0.0001, config.volume);
@@ -776,7 +810,7 @@ function startSampleLoop(
   source.loopEnd = end;
   gain.gain.value = 0;
   source.connect(gain);
-  gain.connect(audioCtx.destination);
+  gain.connect(getAppAudioOutput(audioCtx));
   source.start(0, start);
   return { source, gain };
 }
@@ -803,7 +837,7 @@ export function playOctaneRevShift(gear: number) {
   filter.frequency.exponentialRampToValueAtTime(500, t0 + config.endTime);
   osc.connect(filter);
   filter.connect(gain);
-  gain.connect(audioCtx.destination);
+  gain.connect(getAppAudioOutput(audioCtx));
   scheduleGainEnvelope(audioCtx, gain, config);
   osc.start(t0);
   osc.stop(t0 + config.duration);
@@ -829,7 +863,7 @@ export function playOctaneNitroPerfect() {
   burstFilter.frequency.exponentialRampToValueAtTime(2800, t0 + nitroCfg.endTime * 0.4);
   burst.connect(burstFilter);
   burstFilter.connect(burstGain);
-  burstGain.connect(audioCtx.destination);
+  burstGain.connect(getAppAudioOutput(audioCtx));
   scheduleGainEnvelope(audioCtx, burstGain, nitroCfg);
   burst.start(t0);
   burst.stop(t0 + nitroCfg.duration);
@@ -845,7 +879,7 @@ export function playOctaneNitroPerfect() {
   const whooshGain = audioCtx.createGain();
   whoosh.connect(whooshFilter);
   whooshFilter.connect(whooshGain);
-  whooshGain.connect(audioCtx.destination);
+  whooshGain.connect(getAppAudioOutput(audioCtx));
   scheduleGainEnvelope(audioCtx, whooshGain, sweepCfg);
 
   const sweep = audioCtx.createOscillator();
@@ -854,7 +888,7 @@ export function playOctaneNitroPerfect() {
   sweep.frequency.setValueAtTime(120, whooshT0);
   sweep.frequency.exponentialRampToValueAtTime(520, whooshT0 + sweepCfg.endTime * 0.45);
   sweep.connect(sweepGain);
-  sweepGain.connect(audioCtx.destination);
+  sweepGain.connect(getAppAudioOutput(audioCtx));
   scheduleGainEnvelope(audioCtx, sweepGain, sweepCfg);
 
   whoosh.start(whooshT0);
@@ -875,7 +909,7 @@ export function playOctaneBadShift() {
   osc.frequency.setValueAtTime(140, t0);
   osc.frequency.exponentialRampToValueAtTime(60, t0 + config.endTime);
   osc.connect(gain);
-  gain.connect(audioCtx.destination);
+  gain.connect(getAppAudioOutput(audioCtx));
   scheduleGainEnvelope(audioCtx, gain, config);
   osc.start(t0);
   osc.stop(t0 + config.duration);
@@ -909,7 +943,7 @@ export function createOctaneBrakeSound(): OctaneBrakeHandle | null {
   noise.connect(highpass);
   highpass.connect(bandpass);
   bandpass.connect(noiseGain);
-  noiseGain.connect(audioCtx.destination);
+  noiseGain.connect(getAppAudioOutput(audioCtx));
   noise.start();
 
   return {
@@ -954,7 +988,7 @@ export function playOctaneBrakeChirp(mph: number) {
   filter.Q.value = 2.8;
   noise.connect(filter);
   filter.connect(gain);
-  gain.connect(audioCtx.destination);
+  gain.connect(getAppAudioOutput(audioCtx));
   scheduleGainEnvelope(audioCtx, gain, {
     ...config,
     volume: config.volume * (0.35 + speedFactor * 0.65),
@@ -1002,10 +1036,10 @@ export function createOctaneEngineSound(): OctaneEngineHandle | null {
   noiseGain.gain.value = 0;
 
   rumble.connect(rumbleGain);
-  rumbleGain.connect(audioCtx.destination);
+  rumbleGain.connect(getAppAudioOutput(audioCtx));
   noise.connect(noiseFilter);
   noiseFilter.connect(noiseGain);
-  noiseGain.connect(audioCtx.destination);
+  noiseGain.connect(getAppAudioOutput(audioCtx));
 
   rumble.start();
   noise.start();

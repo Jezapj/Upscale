@@ -1,7 +1,7 @@
 /**
  * eShop-style UI chimes from /public. Volume comes from Options → Sound effects.
  */
-import { unlockGameAudio } from "@/games/gameAudio";
+import { getAppAudioOutput, isAppAudioMuted, unlockGameAudio } from "@/games/gameAudio";
 import { useUiSound } from "@/store/useUiSound";
 
 export const UI_CHIMES = {
@@ -23,6 +23,7 @@ const lastEndAt: Partial<Record<UiChimeId, number>> = {};
 let lastAnyTapAt = 0;
 
 function uiVolume(): number {
+  if (isAppAudioMuted()) return 0;
   const { volume, muted } = useUiSound.getState();
   if (muted) return 0;
   return Math.min(1, Math.max(0, volume));
@@ -93,7 +94,7 @@ export function playUiChime(
       gain.gain.exponentialRampToValueAtTime(0.0001, t0 + playDur);
     }
     source.connect(gain);
-    gain.connect(audioCtx.destination);
+    gain.connect(getAppAudioOutput(audioCtx));
     source.start(t0, 0, playDur);
     lastEndAt[id] = playAt + playDur * 1000;
   });
@@ -217,7 +218,7 @@ async function ensureScrollLoop(): Promise<void> {
     const gain = audioCtx.createGain();
     gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
     gain.gain.linearRampToValueAtTime(volume, audioCtx.currentTime + SCROLL_ATTACK_SEC);
-    gain.connect(audioCtx.destination);
+    gain.connect(getAppAudioOutput(audioCtx));
 
     const source = audioCtx.createBufferSource();
     source.buffer = buffer;

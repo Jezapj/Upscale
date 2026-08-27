@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useControls } from "@/store/useControls";
+import { useMasterMute } from "@/store/useMasterMute";
 import { dockNext, dockPrev } from "@/lib/dock";
 
 function isTypingTarget(el: EventTarget | null): boolean {
@@ -34,13 +35,19 @@ export function useKeyboardControls() {
         return;
       }
 
-      // LT + T → settings (what B/menu used to open on home).
+      // LT + T → settings; RT + T → master mute.
       if (key === "t" && lHeld) {
         e.preventDefault();
         keysRef.current.add(key);
         const { setQuickMenuOpen, setSettingsOpen } = useControls.getState();
         setQuickMenuOpen(false);
         setSettingsOpen(true);
+        return;
+      }
+      if (key === "t" && rHeld) {
+        e.preventDefault();
+        keysRef.current.add(key);
+        useMasterMute.getState().toggleMuted();
         return;
       }
 

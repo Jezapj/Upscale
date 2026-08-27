@@ -1,4 +1,4 @@
-import { getGameAudioContext, unlockGameAudio } from "@/games/gameAudio";
+import { getAppAudioOutput, getGameAudioContext, unlockGameAudio } from "@/games/gameAudio";
 
 const bufferCache = new Map<string, Promise<AudioBuffer>>();
 let masterGain: GainNode | null = null;
@@ -10,7 +10,7 @@ let hideHandlerBound = false;
 function ensureGain(audioCtx: AudioContext): GainNode {
   if (!masterGain || masterGain.context !== audioCtx) {
     masterGain = audioCtx.createGain();
-    masterGain.connect(audioCtx.destination);
+    masterGain.connect(getAppAudioOutput(audioCtx));
   }
   return masterGain;
 }
