@@ -36,6 +36,14 @@ export function dailyBoardDocId(gameId: GameId, day: string = todayKey()): strin
   return `${gameId}_${day}`;
 }
 
+/** Sequential puzzle number for a day key (e.g. "TipTop #123"). */
+export function dailyChallengeNumber(day: string = todayKey()): number {
+  const [y, m, d] = day.split("-").map(Number);
+  const epoch = Date.UTC(2025, 0, 1);
+  const t = Date.UTC(y, (m ?? 1) - 1, d ?? 1);
+  return Math.max(1, Math.floor((t - epoch) / 86_400_000) + 1);
+}
+
 export function normalizeArcadeDaily(
   state: AppData["arcadeDaily"] | undefined,
   day: string,

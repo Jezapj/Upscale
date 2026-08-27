@@ -1369,6 +1369,18 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       const dashH = h - sceneH;
       const roadY = sceneH * 0.72;
       const roadH = sceneH - roadY;
+      // Thumb-friendly control clusters: shift/brake + lane arrows under the
+      // left thumb, one large gas pedal under the right thumb. Scales with
+      // screen width so buttons stay big on phones.
+      const cs = Math.max(1, Math.min(1.6, w / 560));
+      const pad = 14;
+      const gap = Math.round(10 * cs);
+      const bw = Math.round(58 * cs);
+      const bh = Math.round(54 * cs);
+      const laneH = Math.round(44 * cs);
+      const gasW = Math.round(88 * cs);
+      const gasH = Math.round(112 * cs);
+      const bottom = h - 18;
       return {
         width: w,
         height: h,
@@ -1378,11 +1390,16 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         roadY,
         roadH,
         carX: w * 0.06,
-        clutchBtn: { x: 14, y: h - 62, w: 40, h: 40 },
-        brakeBtn: { x: 60, y: h - 62, w: 40, h: 40 },
-        gasBtn: { x: w - 62, y: h - 98, w: 48, h: 76 },
-        laneUpBtn: { x: 14, y: h - 148, w: 40, h: 36 },
-        laneDownBtn: { x: 60, y: h - 148, w: 40, h: 36 },
+        clutchBtn: { x: pad, y: bottom - bh, w: bw, h: bh },
+        brakeBtn: { x: pad + bw + gap, y: bottom - bh, w: bw, h: bh },
+        gasBtn: { x: w - pad - gasW, y: bottom - gasH, w: gasW, h: gasH },
+        laneUpBtn: { x: pad, y: bottom - bh - gap - laneH, w: bw, h: laneH },
+        laneDownBtn: {
+          x: pad + bw + gap,
+          y: bottom - bh - gap - laneH,
+          w: bw,
+          h: laneH,
+        },
       };
     };
 
@@ -2243,17 +2260,18 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       );
 
       ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 9px Nunito, sans-serif";
+      ctx.font = "bold 11px Nunito, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("CLUTCH", clutchBtn.x + clutchBtn.w / 2, height - 6);
-      ctx.fillText("BRAKE", brakeBtn.x + brakeBtn.w / 2, height - 6);
-      ctx.fillText("GAS", gasBtn.x + gasBtn.w / 2, height - 6);
+      ctx.fillText("SHIFT", clutchBtn.x + clutchBtn.w / 2, clutchBtn.y + clutchBtn.h / 2 + 4);
+      ctx.fillText("BRAKE", brakeBtn.x + brakeBtn.w / 2, brakeBtn.y + brakeBtn.h / 2 + 4);
+      ctx.font = "bold 13px Nunito, sans-serif";
+      ctx.fillText("GAS", gasBtn.x + gasBtn.w / 2, gasBtn.y + gasBtn.h / 2 + 5);
       ctx.globalAlpha = laneSwitchable ? 1 : 0.4;
-      ctx.font = "bold 15px Nunito, sans-serif";
-      ctx.fillText("▲", laneUpBtn.x + laneUpBtn.w / 2, laneUpBtn.y + laneUpBtn.h / 2 + 6);
-      ctx.fillText("▼", laneDownBtn.x + laneDownBtn.w / 2, laneDownBtn.y + laneDownBtn.h / 2 + 6);
+      ctx.font = "bold 18px Nunito, sans-serif";
+      ctx.fillText("▲", laneUpBtn.x + laneUpBtn.w / 2, laneUpBtn.y + laneUpBtn.h / 2 + 7);
+      ctx.fillText("▼", laneDownBtn.x + laneDownBtn.w / 2, laneDownBtn.y + laneDownBtn.h / 2 + 7);
       ctx.globalAlpha = 1;
-      ctx.font = "bold 8px Nunito, sans-serif";
+      ctx.font = "bold 9px Nunito, sans-serif";
       ctx.fillStyle = "rgba(255,255,255,0.75)";
       ctx.fillText("LANE", (laneUpBtn.x + laneDownBtn.x + laneDownBtn.w) / 2, laneUpBtn.y - 6);
       ctx.textAlign = "left";

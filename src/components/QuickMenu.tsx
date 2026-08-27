@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronRight, Moon, Music, Sun, Volume2, VolumeX, X } from "lucide-react";
+import { Bell, ChevronRight, Moon, Music, Sun, Volume2, VolumeX, X } from "lucide-react";
 import { useControls } from "@/store/useControls";
 import { useBackgroundMusic, useBackgroundTrack } from "@/store/useBackgroundMusic";
+import { useUiSound } from "@/store/useUiSound";
 import { useTheme } from "@/store/useTheme";
 
 /** Quick options menu (B) - dark mode toggle and future shortcuts. */
@@ -11,6 +12,10 @@ export function QuickMenu() {
   const setOpen = useControls((s) => s.setQuickMenuOpen);
   const { theme, toggleTheme } = useTheme();
   const { volume, muted, setVolume, toggleMuted, cycleTrack } = useBackgroundMusic();
+  const sfxVolume = useUiSound((s) => s.volume);
+  const sfxMuted = useUiSound((s) => s.muted);
+  const setSfxVolume = useUiSound((s) => s.setVolume);
+  const toggleSfxMuted = useUiSound((s) => s.toggleMuted);
   const track = useBackgroundTrack();
   const [shell, setShell] = useState<HTMLElement | null>(null);
 
@@ -149,6 +154,55 @@ export function QuickMenu() {
               onChange={(e) => setVolume(Number(e.target.value) / 100)}
               aria-label="Music volume"
               className="h-2 flex-1 cursor-pointer accent-[#c084fc]"
+            />
+          </div>
+        </div>
+
+        <div className="quick-menu-row mt-2 rounded-tile px-4 py-3.5">
+          <div className="flex items-center gap-3">
+            <span
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl"
+              style={{
+                background: isDark
+                  ? "linear-gradient(135deg, #5cd0a8 0%, #60a5fa 100%)"
+                  : "linear-gradient(180deg, #d1fae5, #dbeafe)",
+                boxShadow: isDark
+                  ? "0 8px 20px -6px rgba(92,208,168,0.45)"
+                  : "inset 0 1px 0 rgba(255,255,255,0.9)",
+              }}
+            >
+              <Bell size={20} className={isDark ? "text-white" : "text-ink-soft"} strokeWidth={2.4} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-800 text-ink">Sound effects</p>
+              <p className="mt-0.5 text-xs font-700 text-ink-faint">
+                Soft taps on buttons
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={toggleSfxMuted}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 text-ink-soft transition-all active:scale-95"
+              aria-label={sfxMuted ? "Unmute sound effects" : "Mute sound effects"}
+              title={sfxMuted ? "Unmute" : "Mute"}
+            >
+              {sfxMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+            </button>
+          </div>
+
+          <div className="mt-3 flex items-center gap-3">
+            <span className="w-7 text-right text-[11px] font-800 tabular-nums text-ink-faint">
+              {Math.round(sfxVolume * 100)}
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={Math.round(sfxVolume * 100)}
+              onChange={(e) => setSfxVolume(Number(e.target.value) / 100)}
+              aria-label="Sound effects volume"
+              className="h-2 flex-1 cursor-pointer accent-[#5cd0a8]"
             />
           </div>
         </div>

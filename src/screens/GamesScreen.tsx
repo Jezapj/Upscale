@@ -7,20 +7,13 @@ import { Tile } from "@/components/Tile";
 import { ProSubscriptionSheet } from "@/components/ProSubscriptionSheet";
 import { ArcadeShopSheet } from "@/components/ArcadeShopSheet";
 import { TokenBalanceCapsule } from "@/components/TokenBalanceCapsule";
-import { GAMES, gamePath, PRO_PRICE_LABEL } from "@/lib/games";
+import { GAMES, GAME_GLYPH, gamePath, PRO_PRICE_LABEL } from "@/lib/games";
 import { TOKEN_COST_ENDLESS } from "@/lib/economy";
 import { useRegisterControls } from "@/store/useControls";
 import { useStore } from "@/store/useStore";
 import { getDailyCompletion, hasPlayedDaily } from "@/lib/dailyChallenge";
 import { prettyDay } from "@/lib/dates";
 import { verifyCheckoutSession } from "@/lib/subscription";
-
-const GAME_GLYPH: Record<string, string> = {
-  tiptop: "⛳",
-  octane: "🏎️",
-  dissiada: "🎹",
-  daybreak: "🌅",
-};
 
 export function GamesScreen() {
   const nav = useNavigate();

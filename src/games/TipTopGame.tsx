@@ -182,7 +182,7 @@ const FLAP_POWER = 5.9;
 const FLAP_ANGLE = (75 * Math.PI) / 180;
 const GROUND_Y = 0.78;
 const STAGE_CLEAR_FRAMES = 50;
-const GRAVITY_ZONE_FORCE = 0.32;
+const GRAVITY_ZONE_FORCE = 0.2;
 const PORTAL_COOLDOWN_FRAMES = 18;
 /** Physics steps (~60/s) sticky stays off after a flap escape. */
 const STICKY_ESCAPE_FRAMES = 12;
@@ -3387,10 +3387,33 @@ export function TipTopGame({
         ctx.stroke();
         ctx.globalAlpha = 1;
       }
-      ctx.fillStyle = "rgba(0,0,0,0.18)";
-      ctx.beginPath();
-      ctx.ellipse(bsx + 2, groundHeight(renderPx, playH, stage) + 3, ballR, ballR * 0.35, 0, 0, Math.PI * 2);
-      ctx.fill();
+      // Ball shadow: cast on the terrain directly below, shrinking and
+      // fading with height. Skipped when a ground block sits under the ball
+      // so the shadow never paints over obstacles.
+      {
+        const pitY = pitSurfaceY(stage.pit, renderPx, playH, stage);
+        const surfaceY = pitY ?? groundHeight(renderPx, playH, stage);
+        let blocked = false;
+        for (const obs of stage.obstacles) {
+          if (obs.anchor !== "ground") continue;
+          if (renderPx < obs.x || renderPx > obs.x + obs.w) continue;
+          if (obstacleY(obs, playH, stage) > renderPy) {
+            blocked = true;
+            break;
+          }
+        }
+        if (!blocked) {
+          const heightAbove = Math.max(0, surfaceY - renderPy);
+          const closeness = Math.max(0, 1 - heightAbove / (playH * 0.55));
+          if (closeness > 0.05) {
+            const shadowR = ballR * (0.45 + 0.55 * closeness);
+            ctx.fillStyle = `rgba(0,0,0,${(0.22 * closeness).toFixed(3)})`;
+            ctx.beginPath();
+            ctx.ellipse(bsx + 2, surfaceY + 3, shadowR, shadowR * 0.35, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
       ctx.fillStyle = p.ball;
       ctx.beginPath();
       ctx.arc(bsx, bsy, ballR, 0, Math.PI * 2);

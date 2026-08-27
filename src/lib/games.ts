@@ -36,7 +36,7 @@ export const GAMES: GameMeta[] = [
     name: "Octane",
     tagline: "Drag race or free ride - rev to redline",
     color: "#ff7a59",
-    controls: "Space gas · W/S or ▲▼ change lane · L-Shift / clutch to shift",
+    controls: "Hold GAS, tap SHIFT at redline, ▲▼ to change lane (Space · W/S · L-Shift on keyboard)",
   },
   {
     id: "dissiada",
@@ -53,6 +53,14 @@ export const GAMES: GameMeta[] = [
     controls: "Tap / Space / Click to jump on the beat for bonus points",
   },
 ];
+
+/** Emoji tile glyph per game (arcade hub, result screens). */
+export const GAME_GLYPH: Record<GameId, string> = {
+  tiptop: "⛳",
+  octane: "🏎️",
+  dissiada: "🎹",
+  daybreak: "🌅",
+};
 
 export const GAME_BY_ID = Object.fromEntries(
   GAMES.map((g) => [g.id, g]),

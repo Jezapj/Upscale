@@ -133,6 +133,11 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
     let canvasH = 0;
     let lastLayoutHitY = 0;
 
+    // D/F/J/K hints only make sense with a physical keyboard (desktop).
+    const showKeyLabels =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
     const resizeCanvas = (w: number, h: number) => {
       if (w === canvasW && h === canvasH) return;
       canvasW = w;
@@ -515,11 +520,13 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
       ctx.stroke();
       ctx.setLineDash([]);
 
-      ctx.font = "bold 11px Nunito, sans-serif";
-      ctx.textAlign = "center";
-      for (let i = 0; i < LANES; i++) {
-        ctx.fillStyle = p.label;
-        ctx.fillText(LANE_KEYS[i], i * laneW + laneW / 2, hitY + okH + 22);
+      if (showKeyLabels) {
+        ctx.font = "bold 11px Nunito, sans-serif";
+        ctx.textAlign = "center";
+        for (let i = 0; i < LANES; i++) {
+          ctx.fillStyle = p.label;
+          ctx.fillText(LANE_KEYS[i], i * laneW + laneW / 2, hitY + okH + 22);
+        }
       }
 
       // Double-note connectors

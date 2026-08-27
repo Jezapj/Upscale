@@ -12,6 +12,7 @@ import { Dock } from "@/components/Dock";
 import { ScreenHints } from "@/components/ScreenHints";
 import { QuickMenu } from "@/components/QuickMenu";
 import { BackgroundMusicPlayer } from "@/components/BackgroundMusicPlayer";
+import { UiTapSound } from "@/components/UiTapSound";
 import { TokenEarnToast } from "@/components/TokenEarnToast";
 import { WeeklyRecapSheet } from "@/components/WeeklyRecapSheet";
 import { useKeyboardControls } from "@/hooks/useKeyboardControls";
@@ -123,6 +124,7 @@ function AppShell() {
     <div id="app-shell" className="app-shell">
       <ThemeSyncEffect />
       <BackgroundMusicPlayer />
+      <UiTapSound />
       <BackgroundDecor />
       <TokenEarnToast />
       <div className="relative z-10 flex flex-1 flex-col overflow-hidden">

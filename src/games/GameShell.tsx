@@ -27,6 +27,8 @@ import {
   hasUserDailyBoardEntry,
   type DailyBoardEntry,
 } from "@/lib/dailyLeaderboard";
+import { withDailyBots } from "@/lib/dailyBots";
+import { ArcadeResultScreen } from "@/components/ArcadeResultScreen";
 import { googleSubFromUserId } from "@/lib/cloudSync";
 import { cloudConfigured } from "@/lib/firebase";
 import { activeFirestoreUid } from "@/lib/firebaseAuth";
@@ -154,26 +156,27 @@ export function GameShell({
   );
 
   const refreshDailyBoard = useCallback(async () => {
+    const day = todayKey();
     if (!isGoogle) {
-      setDailyEntries([]);
+      setDailyEntries(withDailyBots([], gameId, day));
       setBoardError(null);
       return;
     }
     if (!cloudConfigured()) {
-      setDailyEntries([]);
+      setDailyEntries(withDailyBots([], gameId, day));
       setBoardError("Firebase is not configured (missing VITE_FIREBASE_* in .env).");
       return;
     }
     setBoardLoading(true);
     setBoardError(null);
     try {
-      const entries = await listDailyBoard(gameId, todayKey());
-      setDailyEntries(entries);
+      const entries = await listDailyBoard(gameId, day);
+      setDailyEntries(withDailyBots(entries, gameId, day));
     } catch {
       setBoardError(
         "Could not load today's board. Deploy firestore.rules and check the browser console.",
       );
-      setDailyEntries([]);
+      setDailyEntries(withDailyBots([], gameId, day));
     } finally {
       setBoardLoading(false);
     }
@@ -411,7 +414,7 @@ export function GameShell({
           className="game-stage relative min-h-0 flex-1 overflow-hidden"
         >
           {inMainLobby && (
-            <div className="game-overlay absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 overflow-y-auto px-6 py-8 text-center">
+            <div className="game-overlay absolute inset-0 z-10 flex flex-col overflow-y-auto px-6 py-8 text-center landscape:px-16 landscape:py-3">
               <button
                 type="button"
                 onClick={goArcade}
@@ -420,146 +423,163 @@ export function GameShell({
               >
                 <ArrowLeft size={20} />
               </button>
-              <p className="game-shell-title font-display text-2xl font-800">
-                {meta.name}
-              </p>
-              <p className="text-sm font-700 text-ink-soft">{meta.tagline}</p>
-              <OrientationHint gameId={gameId} />
-              <p className="rounded-full bg-black/25 px-3 py-1 text-[11px] font-800 uppercase tracking-wide text-ink-faint">
-                {prettyDay(today)} · one attempt
-                {gameId === "daybreak" ? ` · ${DAILY_DAYBREAK_ATTEMPTS} lives` : ""}
-              </p>
-              <p className="max-w-xs text-xs font-700 text-ink-faint">{meta.controls}</p>
 
-              {dailyDone && dailyCompletion ? (
-                <p className="text-sm font-800 text-ink">
-                  Today&apos;s score: {dailyCompletion.score.toLocaleString()}
+              <div className="m-auto flex flex-col items-center gap-3 landscape:flex-row landscape:items-center landscape:gap-8">
+              {/* Left column: title, cues, play buttons. */}
+              <div className="flex flex-col items-center gap-3 landscape:max-w-xs landscape:gap-1.5">
+                <p className="game-shell-title font-display text-2xl font-800 landscape:text-xl">
+                  {meta.name}
                 </p>
-              ) : null}
+                <p className="text-sm font-700 text-ink-soft landscape:hidden">
+                  {meta.tagline}
+                </p>
+                <div className="landscape:hidden">
+                  <OrientationHint gameId={gameId} />
+                </div>
+                <p className="rounded-full bg-black/25 px-3 py-1 text-[11px] font-800 uppercase tracking-wide text-ink-faint">
+                  {prettyDay(today)} · one attempt
+                  {gameId === "daybreak" ? ` · ${DAILY_DAYBREAK_ATTEMPTS} lives` : ""}
+                </p>
+                <p className="max-w-xs text-xs font-700 text-ink-faint">{meta.controls}</p>
 
-              {gameId === "tiptop" && dailyCompletion?.ghostTrace?.length ? (
-                <label className="flex items-center gap-2 text-xs font-700 text-ink-soft">
-                  <input
-                    type="checkbox"
-                    checked={raceGhost}
-                    onChange={(e) => {
-                      setRaceGhost(e.target.checked);
-                      setGhostTrace(
-                        e.target.checked ? dailyCompletion.ghostTrace : undefined,
-                      );
-                    }}
-                  />
-                  Race today&apos;s ghost (practice only after daily)
-                </label>
-              ) : null}
+                {dailyDone && dailyCompletion ? (
+                  <p className="text-sm font-800 text-ink">
+                    Today&apos;s score: {dailyCompletion.score.toLocaleString()}
+                  </p>
+                ) : null}
 
-              {gameId === "tiptop" && !dailyDone && (() => {
-                const last = data.lastGhosts?.tiptop;
-                const boardGhost = dailyEntries.find((e) => e.meta?.ghostTrace);
-                const trace = last?.trace?.length
-                  ? last.trace
-                  : boardGhost?.meta?.ghostTrace
-                    ? boardGhost.meta.ghostTrace
-                        .split(",")
-                        .map(Number)
-                        .filter((n) => Number.isFinite(n))
-                    : undefined;
-                if (!trace?.length) return null;
-                const label = last?.trace?.length
-                  ? `Race your ${last.day} ghost`
-                  : "Race a board ghost";
-                return (
+                {gameId === "tiptop" && dailyCompletion?.ghostTrace?.length ? (
                   <label className="flex items-center gap-2 text-xs font-700 text-ink-soft">
                     <input
                       type="checkbox"
                       checked={raceGhost}
                       onChange={(e) => {
                         setRaceGhost(e.target.checked);
-                        setGhostTrace(e.target.checked ? trace : undefined);
+                        setGhostTrace(
+                          e.target.checked ? dailyCompletion.ghostTrace : undefined,
+                        );
                       }}
                     />
-                    {label}
+                    Race today&apos;s ghost (practice only after daily)
                   </label>
-                );
-              })()}
+                ) : null}
 
-              {isGoogle ? (
-                boardLoading && dailyEntries.length === 0 && !boardError ? (
-                  <p className="text-xs font-700 text-ink-faint">Loading board…</p>
-                ) : boardError ? (
-                  <p className="max-w-xs text-xs font-700 text-cat-health">{boardError}</p>
-                ) : (
-                  <DailyBoardList
-                    entries={dailyEntries}
-                    gameId={gameId}
-                    highlightUid={boardUid}
-                    compact
-                  />
-                )
-              ) : (
-                <p className="max-w-xs text-xs font-700 text-ink-faint">
-                  Sign in with Google to post and see today&apos;s global board.
-                </p>
-              )}
+                {gameId === "tiptop" && !dailyDone && (() => {
+                  const last = data.lastGhosts?.tiptop;
+                  const boardGhost = dailyEntries.find((e) => e.meta?.ghostTrace);
+                  const trace = last?.trace?.length
+                    ? last.trace
+                    : boardGhost?.meta?.ghostTrace
+                      ? boardGhost.meta.ghostTrace
+                          .split(",")
+                          .map(Number)
+                          .filter((n) => Number.isFinite(n))
+                      : undefined;
+                  if (!trace?.length) return null;
+                  const label = last?.trace?.length
+                    ? `Race your ${last.day} ghost`
+                    : "Race a board ghost";
+                  return (
+                    <label className="flex items-center gap-2 text-xs font-700 text-ink-soft">
+                      <input
+                        type="checkbox"
+                        checked={raceGhost}
+                        onChange={(e) => {
+                          setRaceGhost(e.target.checked);
+                          setGhostTrace(e.target.checked ? trace : undefined);
+                        }}
+                      />
+                      {label}
+                    </label>
+                  );
+                })()}
 
-              {isGoogle && (
                 <button
                   type="button"
-                  className="text-[11px] font-800 text-ink-faint underline"
-                  onClick={() => setProfileOpen(true)}
+                  onClick={startDaily}
+                  disabled={dailyDone}
+                  className="btn px-8 disabled:opacity-40"
                 >
-                  {data.arcadeProfile?.prompted
-                    ? data.arcadeProfile.optedOut
-                      ? "Board name: Anonymous"
-                      : `Board name: ${data.arcadeProfile.username ?? "Anonymous"}`
-                    : "Set board name"}
+                  {dailyDone ? "Daily complete" : "Play today's challenge"}
                 </button>
-              )}
-
-              <button
-                type="button"
-                onClick={startDaily}
-                disabled={dailyDone}
-                className="btn px-8 disabled:opacity-40"
-              >
-                {dailyDone ? "Daily complete" : "Play today's challenge"}
-              </button>
-              {isPro ? (
-                <p className="text-xs font-700 text-accent">Pro · unlimited Endless</p>
-              ) : (
-                <p className="text-xs font-700 text-ink-faint">
-                  Endless: {TOKEN_COST_ENDLESS} token per run · {balance} tokens
-                </p>
-              )}
-              <button
-                type="button"
-                onClick={chooseEndless}
-                disabled={!isPro && endlessLeft <= 0}
-                className="btn-ghost disabled:opacity-40"
-              >
-                Endless
-              </button>
-              {!isPro && endlessLeft <= 0 && (
-                <div className="flex flex-col items-center gap-2">
-                  <p className="max-w-xs text-xs font-700 text-ink-soft">
-                    Complete a routine to earn a token, then come back to play.
+                {isPro ? (
+                  <p className="text-xs font-700 text-accent">Pro · unlimited Endless</p>
+                ) : (
+                  <p className="text-xs font-700 text-ink-faint">
+                    Endless: {TOKEN_COST_ENDLESS} token per run · {balance} tokens
                   </p>
+                )}
+                <button
+                  type="button"
+                  onClick={chooseEndless}
+                  disabled={!isPro && endlessLeft <= 0}
+                  className="btn-ghost disabled:opacity-40"
+                >
+                  Endless
+                </button>
+                {!isPro && endlessLeft <= 0 && (
+                  <div className="flex flex-col items-center gap-2">
+                    <p className="max-w-xs text-xs font-700 text-ink-soft">
+                      Complete a routine to earn a token, then come back to play.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => nav("/checkin")}
+                      className="btn px-6"
+                    >
+                      Go to check-in
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setProOpen(true)}
+                      className="text-xs font-800 text-cat-project underline"
+                    >
+                      Or get Pro for unlimited Endless · {PRO_PRICE_LABEL}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Right column: today's board. */}
+              <div className="flex w-full max-w-sm flex-col items-center gap-3 landscape:min-h-0 landscape:gap-1.5">
+                {boardLoading && dailyEntries.length === 0 && !boardError ? (
+                  <p className="text-xs font-700 text-ink-faint">Loading board…</p>
+                ) : (
+                  <>
+                    {boardError ? (
+                      <p className="max-w-xs text-xs font-700 text-cat-health">
+                        {boardError}
+                      </p>
+                    ) : null}
+                    <DailyBoardList
+                      entries={dailyEntries}
+                      gameId={gameId}
+                      highlightUid={boardUid}
+                      compact
+                    />
+                    {!isGoogle && (
+                      <p className="max-w-xs text-xs font-700 text-ink-faint">
+                        Sign in with Google to post your score to today&apos;s board.
+                      </p>
+                    )}
+                  </>
+                )}
+
+                {isGoogle && (
                   <button
                     type="button"
-                    onClick={() => nav("/checkin")}
-                    className="btn px-6"
+                    className="text-[11px] font-800 text-ink-faint underline"
+                    onClick={() => setProfileOpen(true)}
                   >
-                    Go to check-in
+                    {data.arcadeProfile?.prompted
+                      ? data.arcadeProfile.optedOut
+                        ? "Board name: Anonymous"
+                        : `Board name: ${data.arcadeProfile.username ?? "Anonymous"}`
+                      : "Set board name"}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setProOpen(true)}
-                    className="text-xs font-800 text-cat-project underline"
-                  >
-                    Or get Pro for unlimited Endless · {PRO_PRICE_LABEL}
-                  </button>
-                </div>
-              )}
+                )}
+              </div>
+              </div>
             </div>
           )}
 
@@ -578,7 +598,7 @@ export function GameShell({
           )}
 
           {result !== null && !started && (
-            <div className="game-overlay absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 overflow-y-auto px-6 py-8">
+            <div className="game-overlay absolute inset-0 z-10 flex flex-col overflow-y-auto px-6 py-8">
               <button
                 type="button"
                 onClick={goArcade}
@@ -587,57 +607,65 @@ export function GameShell({
               >
                 <ArrowLeft size={20} />
               </button>
-              {result.title && (
-                <p className="text-sm font-700 text-ink-soft">{result.title}</p>
-              )}
+              <div className="m-auto flex w-full max-w-sm flex-col items-center gap-3">
               {resultMode === "daily" ? (
-                <p className="text-sm font-800 text-accent">Daily challenge logged</p>
-              ) : isNewBest ? (
-                <p className="text-sm font-800 text-accent">New personal best!</p>
-              ) : null}
-              <p className="game-shell-title font-display text-2xl font-800">
-                Score: {result.score.toLocaleString()}
-              </p>
-              {result.stats && result.stats.length > 0 && (
-                <div className="flex flex-col items-center gap-1 text-center">
-                  {result.stats.map((stat) =>
-                    stat.label === "Medals" ? (
-                      <span key={stat.label} className="flex items-center gap-1">
-                        <MedalStars value={stat.value} className="scale-125" />
-                      </span>
-                    ) : (
-                      <p key={stat.label} className="text-sm font-700 text-ink-soft">
-                        {stat.label}: <span className="text-ink">{stat.value}</span>
-                      </p>
-                    ),
+                <>
+                  {result.title && (
+                    <p className="text-sm font-700 text-ink-soft">{result.title}</p>
                   )}
-                </div>
-              )}
-
-              {resultMode === "daily" ? (
-                isGoogle ? (
-                  <DailyBoardList
-                    entries={dailyEntries}
+                  <ArcadeResultScreen
                     gameId={gameId}
-                    highlightUid={boardUid}
-                    compact
+                    day={today}
+                    score={result.score}
+                    entries={dailyEntries}
+                    youUid={boardUid}
+                    meta={resultMeta(result)}
                   />
-                ) : (
-                  <p className="text-xs font-700 text-ink-faint">
-                    Sign in with Google to appear on today&apos;s board.
-                  </p>
-                )
-              ) : user ? (
-                <GameLeaderboardList
-                  entries={practiceEntries}
-                  gameId={gameId}
-                  highlightScore={result.score}
-                  compact
-                />
+                  {!isGoogle && (
+                    <p className="text-xs font-700 text-ink-faint">
+                      Sign in with Google to post your score to the global board.
+                    </p>
+                  )}
+                </>
               ) : (
-                <p className="text-xs font-700 text-ink-faint">
-                  Sign in to save scores to your Endless board.
-                </p>
+                <>
+                  {result.title && (
+                    <p className="text-sm font-700 text-ink-soft">{result.title}</p>
+                  )}
+                  {isNewBest ? (
+                    <p className="text-sm font-800 text-accent">New personal best!</p>
+                  ) : null}
+                  <p className="game-shell-title font-display text-2xl font-800">
+                    Score: {result.score.toLocaleString()}
+                  </p>
+                  {result.stats && result.stats.length > 0 && (
+                    <div className="flex flex-col items-center gap-1 text-center">
+                      {result.stats.map((stat) =>
+                        stat.label === "Medals" ? (
+                          <span key={stat.label} className="flex items-center gap-1">
+                            <MedalStars value={stat.value} className="scale-125" />
+                          </span>
+                        ) : (
+                          <p key={stat.label} className="text-sm font-700 text-ink-soft">
+                            {stat.label}: <span className="text-ink">{stat.value}</span>
+                          </p>
+                        ),
+                      )}
+                    </div>
+                  )}
+                  {user ? (
+                    <GameLeaderboardList
+                      entries={practiceEntries}
+                      gameId={gameId}
+                      highlightScore={result.score}
+                      compact
+                    />
+                  ) : (
+                    <p className="text-xs font-700 text-ink-faint">
+                      Sign in to save scores to your Endless board.
+                    </p>
+                  )}
+                </>
               )}
 
               {resultMode === "daily" ? (
@@ -712,6 +740,7 @@ export function GameShell({
               <button type="button" onClick={goArcade} className="btn-ghost">
                 Back to arcade
               </button>
+              </div>
             </div>
           )}
 
