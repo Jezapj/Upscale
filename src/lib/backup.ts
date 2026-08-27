@@ -1,4 +1,15 @@
-import { emptyAppData, type AppData, type DayEntry, type DayLog, type Goal, type Routine } from "./types";
+import {
+  emptyAppData,
+  type AppData,
+  type DayEntry,
+  type DayLog,
+  type Goal,
+  type Note,
+  type Routine,
+} from "./types";
+import { mergeArcadeDailyStates } from "./dailyChallenge";
+import { mergeArcadeUnlocks, mergeWallets } from "./economy";
+import { todayKey } from "./dates";
 
 export const BACKUP_FORMAT_VERSION = 1;
 
@@ -13,7 +24,7 @@ function hasCoreContent(data: AppData): boolean {
     data.goals.length > 0 ||
     data.routines.length > 0 ||
     Object.keys(data.logs).length > 0 ||
-    (data.notes?.length ?? 0) > 0
+    (data.notes ?? []).some((n) => !n.deletedAt)
   );
 }
 
@@ -78,6 +89,24 @@ function newerEntry(a: DayEntry, b: DayEntry): DayEntry {
   return (a.ratedAt || "") >= (b.ratedAt || "") ? a : b;
 }
 
+function noteStamp(note: Note): string {
+  const updated = note.updatedAt || note.createdAt || "";
+  const deleted = note.deletedAt || "";
+  return deleted > updated ? deleted : updated;
+}
+
+/** Union notes by id; newest stamp wins, including delete tombstones. */
+export function mergeNotes(a: Note[] | undefined, b: Note[] | undefined): Note[] {
+  const map = new Map<string, Note>();
+  for (const note of [...(a ?? []), ...(b ?? [])]) {
+    const existing = map.get(note.id);
+    if (!existing || noteStamp(note) >= noteStamp(existing)) {
+      map.set(note.id, note);
+    }
+  }
+  return [...map.values()].sort((x, y) => noteStamp(y).localeCompare(noteStamp(x)));
+}
+
 function mergeDayLogs(
   a: Record<string, DayLog>,
   b: Record<string, DayLog>,
@@ -107,7 +136,8 @@ function mergeDayLogs(
 
 /**
  * Per-entity merge of two backups. Goals/routines by updatedAt; day entries by
- * ratedAt. Caller still union-merges notes, wallet, scores, arcade fields.
+ * ratedAt; notes/wallet/arcade fields are union-merged so neither device drops
+ * the other's tokens, palettes, notes, or daily completions.
  */
 export function mergeAppDataEntities(local: AppData, cloud: AppData): AppData {
   return {
@@ -116,14 +146,15 @@ export function mergeAppDataEntities(local: AppData, cloud: AppData): AppData {
     goals: mergeGoals(local.goals, cloud.goals),
     routines: mergeRoutines(local.routines, cloud.routines),
     logs: mergeDayLogs(local.logs, cloud.logs),
-    notes: local.notes,
-    wallet: local.wallet,
-    arcadeUnlocks: local.arcadeUnlocks,
-    arcadeDaily: local.arcadeDaily,
-    arcadeProfile: local.arcadeProfile,
-    gameScores: local.gameScores,
-    gamePlays: local.gamePlays,
+    notes: mergeNotes(local.notes, cloud.notes),
+    wallet: mergeWallets(local.wallet, cloud.wallet),
+    arcadeUnlocks: mergeArcadeUnlocks(local.arcadeUnlocks, cloud.arcadeUnlocks),
+    arcadeDaily: mergeArcadeDailyStates(local.arcadeDaily, cloud.arcadeDaily, todayKey()),
+    arcadeProfile: local.arcadeProfile ?? cloud.arcadeProfile,
+    gameScores: local.gameScores ?? cloud.gameScores,
+    gamePlays: local.gamePlays ?? cloud.gamePlays,
     gamePremium: local.gamePremium || cloud.gamePremium,
+    lastGhosts: { ...(cloud.lastGhosts ?? {}), ...(local.lastGhosts ?? {}) },
     lastRecapWeek: local.lastRecapWeek ?? cloud.lastRecapWeek,
     syncedAt:
       (local.syncedAt ?? "") >= (cloud.syncedAt ?? "")

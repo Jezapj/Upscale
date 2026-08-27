@@ -145,6 +145,7 @@ export function dueNoteRemindersNow(
   const fired = getFiredIds(dateKey);
 
   return (data.notes ?? []).filter((note) => {
+    if (note.deletedAt) return false;
     if (!note.reminderAt) return false;
     if (fired.has(noteReminderId(note.id))) return false;
 

@@ -12,6 +12,10 @@ import { TOKEN_COST_ENDLESS } from "@/lib/economy";
 import { useRegisterControls } from "@/store/useControls";
 import { useStore } from "@/store/useStore";
 import { getDailyCompletion, hasPlayedDaily } from "@/lib/dailyChallenge";
+import { listOwnDailyEntries } from "@/lib/dailyLeaderboard";
+import { isCloudUser } from "@/lib/cloudSync";
+import { cloudConfigured } from "@/lib/firebase";
+import type { GameId } from "@/lib/types";
 import { prettyDay } from "@/lib/dates";
 import { verifyCheckoutSession } from "@/lib/subscription";
 
@@ -23,6 +27,7 @@ export function GamesScreen() {
   const user = useStore((s) => s.user);
   const endlessLeft = useStore((s) => s.endlessPlaysLeft());
   const setGamePremium = useStore((s) => s.setGamePremium);
+  const markDailyPlayed = useStore((s) => s.markDailyPlayed);
   const isPro = data.gamePremium === true;
   const [proOpen, setProOpen] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
@@ -34,6 +39,28 @@ export function GamesScreen() {
     },
     [nav],
   );
+
+  useEffect(() => {
+    if (!user || !isCloudUser(user.id) || !cloudConfigured()) return;
+    let cancelled = false;
+    void listOwnDailyEntries(user.id, today).then((own) => {
+      if (cancelled) return;
+      for (const [gameId, entry] of Object.entries(own)) {
+        if (!entry) continue;
+        const id = gameId as GameId;
+        const local = getDailyCompletion(useStore.getState().data, id, today);
+        if (local && local.score > 0 && local.score >= entry.score) continue;
+        markDailyPlayed(id, entry.score, true, {
+          ghostTrace: entry.meta?.ghostTrace
+            ? entry.meta.ghostTrace.split(",").map(Number).filter((n) => Number.isFinite(n))
+            : undefined,
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user, today, markDailyPlayed]);
 
   useEffect(() => {
     const checkout = params.get("checkout");

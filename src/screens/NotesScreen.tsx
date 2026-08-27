@@ -9,6 +9,7 @@ import { Sheet } from "@/components/Sheet";
 import { NoteForm } from "@/components/NoteForm";
 import { formatNoteReminderLabel } from "@/lib/reminders";
 import type { Note } from "@/lib/types";
+import { activeNotes } from "@/lib/types";
 import { useRegisterControls } from "@/store/useControls";
 
 export function NotesScreen() {
@@ -17,7 +18,7 @@ export function NotesScreen() {
   const [params, setParams] = useSearchParams();
   const [addOpen, setAddOpen] = useState(false);
 
-  const notes = data.notes ?? [];
+  const notes = activeNotes(data.notes);
   const selectedId = params.get("id");
   const selected = notes.find((n) => n.id === selectedId) ?? null;
 

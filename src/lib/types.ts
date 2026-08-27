@@ -66,6 +66,12 @@ export interface Note {
   reminderAt?: string;
   createdAt: string; // ISO
   updatedAt: string; // ISO
+  /** Tombstone so deletes survive cloud union-merge across devices. */
+  deletedAt?: string;
+}
+
+export function activeNotes(notes: Note[] | undefined): Note[] {
+  return (notes ?? []).filter((n) => !n.deletedAt);
 }
 
 /** A single routine's outcome on a given day. */

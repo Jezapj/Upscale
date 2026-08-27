@@ -49,6 +49,7 @@ import { cloudConfigured } from "@/lib/firebase";
 function AppShell() {
   const location = useLocation();
   const refreshToday = useStore((s) => s.refreshToday);
+  const pullFromCloud = useStore((s) => s.pullFromCloud);
   const data = useStore((s) => s.data);
   const user = useStore((s) => s.user);
   const setLastRecapWeek = useStore((s) => s.setLastRecapWeek);
@@ -58,16 +59,22 @@ function AppShell() {
 
   const recap = useMemo(() => buildWeeklyRecap(data), [data]);
 
-  // Roll the day over when the app regains focus (e.g. opened next morning).
+  // Roll the day over when the app regains focus, and pull the latest cloud backup
+  // so tokens / notes / palettes / daily plays catch up across devices.
   useEffect(() => {
-    const onFocus = () => refreshToday();
+    const onFocus = () => {
+      refreshToday();
+      if (document.visibilityState === "hidden") return;
+      const playing = /^\/games\/[^/]+/.test(window.location.pathname);
+      if (!playing) void pullFromCloud();
+    };
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
     return () => {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
     };
-  }, [refreshToday]);
+  }, [refreshToday, pullFromCloud]);
 
   // App badge: due routine count.
   useEffect(() => {

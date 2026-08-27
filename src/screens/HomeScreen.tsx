@@ -14,6 +14,7 @@ import { RoutineForm } from "@/components/RoutineForm";
 import { GoalForm } from "@/components/GoalForm";
 import { isDueToday, isScheduledOn } from "@/lib/frequency";
 import { todayKey, prettyDay } from "@/lib/dates";
+import { activeNotes } from "@/lib/types";
 import { useRegisterControls } from "@/store/useControls";
 
 export function HomeScreen() {
@@ -43,7 +44,7 @@ export function HomeScreen() {
   ).length;
 
   const activeGoals = data.goals.filter((g) => !g.archived);
-  const notes = data.notes ?? [];
+  const notes = activeNotes(data.notes);
   const latestNote = notes[0];
   const featured =
     due.find((r) => data.logs[key]?.entries[r.id]?.rating === "no") ??

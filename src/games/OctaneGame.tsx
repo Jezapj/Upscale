@@ -97,14 +97,18 @@ const BOOST_LUNGE_TUNING = {
   brakeStoppiePeak: 0.3,
   /** Brake animation phase when the rear wheels are back on the ground. */
   brakeStoppieLand: 0.58,
+  /** Minimum MPH to start the gas wheelie. */
+  launchMinMph: 20,
   /** Minimum MPH to start / hold the brake stoppie. */
   brakeMinMph: 80,
   /** Frames to ease into the held stoppie pose. */
   brakeEngageDuration: 14,
   /** Frames to settle back after brake release or dropping below brakeMinMph. */
   brakeReleaseDuration: 38,
-  /** Below this MPH, gas uses burnout bounce instead of wheelie. */
-  burnoutMaxMph: 24.5,
+  /** Master switch for the low-speed burnout bounce. */
+  burnoutEnabled: false,
+  /** Below this MPH (when enabled), gas uses burnout bounce instead of wheelie. */
+  burnoutMaxMph: 20,
   /** Once exceeded, burnout is disabled for the rest of the run (even back at 0). */
   burnoutDisableMph: 30,
   /** Frames until burnout oscillation fades out (60fps baseline). */
@@ -138,8 +142,14 @@ function boostLungeIntensity(mph: number): number {
   return 1 - t * (1 - minIntensity);
 }
 
-/** Gas wheelie: full at low speed, fades out as speed rises. */
+function burnoutAllowed(mph: number, permanentlyDisabled: boolean): boolean {
+  const { burnoutEnabled, burnoutMaxMph } = BOOST_LUNGE_TUNING;
+  return burnoutEnabled && !permanentlyDisabled && mph < burnoutMaxMph;
+}
+
+/** Gas wheelie: full just above launchMinMph, fades out as speed rises. */
 function gasWheelieIntensity(mph: number): number {
+  if (mph < BOOST_LUNGE_TUNING.launchMinMph) return 0;
   return boostLungeIntensity(mph);
 }
 
@@ -1322,7 +1332,7 @@ function drawSceneryLayer(
   }
 }
 
-/** Pixel drag racer: hold gas, clutch to shift at redline, scrolling road, dashboard gauges. */
+/** Pixel drag racer: hold gas, shift up at redline / down to drop a gear, scrolling road, dashboard gauges. */
 export function OctaneGame({ width, height, config, onGameOver, paused = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const gasRef = useRef(false);
@@ -1380,7 +1390,11 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       const laneH = Math.round(44 * cs);
       const gasW = Math.round(88 * cs);
       const gasH = Math.round(112 * cs);
+      const brakeH = Math.round(48 * cs);
       const bottom = h - 18;
+      const brakeY = bottom - brakeH;
+      const shiftY = brakeY - gap - bh;
+      const laneY = shiftY - gap - laneH;
       return {
         width: w,
         height: h,
@@ -1390,16 +1404,12 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         roadY,
         roadH,
         carX: w * 0.06,
-        clutchBtn: { x: pad, y: bottom - bh, w: bw, h: bh },
-        brakeBtn: { x: pad + bw + gap, y: bottom - bh, w: bw, h: bh },
+        shiftUpBtn: { x: pad, y: shiftY, w: bw, h: bh },
+        shiftDownBtn: { x: pad + bw + gap, y: shiftY, w: bw, h: bh },
+        brakeBtn: { x: pad, y: brakeY, w: bw * 2 + gap, h: brakeH },
         gasBtn: { x: w - pad - gasW, y: bottom - gasH, w: gasW, h: gasH },
-        laneUpBtn: { x: pad, y: bottom - bh - gap - laneH, w: bw, h: laneH },
-        laneDownBtn: {
-          x: pad + bw + gap,
-          y: bottom - bh - gap - laneH,
-          w: bw,
-          h: laneH,
-        },
+        laneUpBtn: { x: pad, y: laneY, w: bw, h: laneH },
+        laneDownBtn: { x: pad + bw + gap, y: laneY, w: bw, h: laneH },
       };
     };
 
@@ -1517,6 +1527,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
     let finished = false;
     let shiftFlash = 0;
     let shiftQuality = 0;
+    let lastShiftKind: "up" | "down" = "up";
     let boostLunge = 0;
     let boostLungeMph = 0;
     let boostLungeKind: BoostLungeKind = "shift";
@@ -1541,7 +1552,8 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
     let time = 0;
     let topMph = 0;
     const raceStartTime = performance.now();
-    let clutchDown = false;
+    let shiftUpDown = false;
+    let shiftDownDown = false;
     let brakeDown = false;
     let gasDown = false;
 
@@ -1552,11 +1564,12 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
 
     const rpmRiseRate = (g: number) => 175 / Math.pow(g, 1.85);
 
-    const shift = () => {
+    const shiftUp = () => {
       if (!alive || finished || gear >= GEARS) return;
       unlockGameAudio();
       preloadOctaneAudio();
       if (rpm < SHIFT_PERFECT_MIN * 0.5) {
+        lastShiftKind = "up";
         shiftQuality = -1;
         shiftFlash = 22;
         playOctaneBadShift();
@@ -1564,6 +1577,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         mph = Math.max(0, mph - 4);
         return;
       }
+      lastShiftKind = "up";
       const perfect = rpm >= SHIFT_PERFECT_MIN && rpm <= SHIFT_PERFECT_MAX;
       shiftQuality = perfect ? 1 : rpm > SHIFT_PERFECT_MAX ? -1 : 0;
       shiftFlash = perfect ? 40 : 18;
@@ -1576,18 +1590,33 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       if (shiftQuality === 1) triggerBoostLunge(mph);
     };
 
+    const shiftDown = () => {
+      if (!alive || finished || gear <= 1) return;
+      unlockGameAudio();
+      preloadOctaneAudio();
+      lastShiftKind = "down";
+      gear--;
+      shiftQuality = 0;
+      shiftFlash = 16;
+      playOctaneRevShift(gear);
+      rpm = Math.min(RPM_MAX, rpm + 1800);
+      const cap = GEAR_SPEED_CAP[gear - 1] ?? MPH_MAX;
+      mph = Math.min(mph, cap);
+    };
+
     const warmSamples = () =>
       preloadSamples(SAMPLE_SRC.octaneWarning, SAMPLE_SRC.octaneHit);
 
     /**
      * Each touch owns one control until it lifts, so a finger holding the gas
-     * doesn't block (or get cancelled by) a second finger on the clutch.
+     * doesn't block (or get cancelled by) a second finger on the brake.
      */
-    type HeldControl = "clutch" | "brake" | "gas";
+    type HeldControl = "shiftUp" | "shiftDown" | "brake" | "gas";
     const pointerControl = new Map<number, HeldControl>();
 
     const releaseControl = (control: HeldControl) => {
-      if (control === "clutch") clutchDown = false;
+      if (control === "shiftUp") shiftUpDown = false;
+      else if (control === "shiftDown") shiftDownDown = false;
       else if (control === "brake") brakeDown = false;
       else {
         gasDown = false;
@@ -1600,7 +1629,8 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       unlockGameAudio();
       preloadOctaneAudio();
       warmSamples();
-      const { clutchBtn, brakeBtn, gasBtn, laneUpBtn, laneDownBtn } = getLayout();
+      const { shiftUpBtn, shiftDownBtn, brakeBtn, gasBtn, laneUpBtn, laneDownBtn } =
+        getLayout();
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -1610,10 +1640,14 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       } catch {
         /* capture unsupported */
       }
-      if (hit(x, y, clutchBtn)) {
-        clutchDown = true;
-        pointerControl.set(e.pointerId, "clutch");
-        shift();
+      if (hit(x, y, shiftUpBtn)) {
+        shiftUpDown = true;
+        pointerControl.set(e.pointerId, "shiftUp");
+        shiftUp();
+      } else if (hit(x, y, shiftDownBtn)) {
+        shiftDownDown = true;
+        pointerControl.set(e.pointerId, "shiftDown");
+        shiftDown();
       } else if (hit(x, y, brakeBtn)) {
         brakeDown = true;
         pointerControl.set(e.pointerId, "brake");
@@ -1638,7 +1672,8 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       // leaving the canvas should drop everything.
       if (e.pointerType !== "mouse") return;
       pointerControl.clear();
-      clutchDown = false;
+      shiftUpDown = false;
+      shiftDownDown = false;
       brakeDown = false;
       gasDown = false;
       gasRef.current = false;
@@ -1661,7 +1696,11 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       }
       if (e.code === "ShiftLeft" || e.code === "KeyE") {
         e.preventDefault();
-        shift();
+        shiftUp();
+      }
+      if (e.code === "ShiftRight" || e.code === "KeyQ" || e.code === "ControlLeft") {
+        e.preventDefault();
+        shiftDown();
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -1695,7 +1734,8 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         roadY,
         roadH,
         carX,
-        clutchBtn,
+        shiftUpBtn,
+        shiftDownBtn,
         brakeBtn,
         gasBtn,
         laneUpBtn,
@@ -1711,7 +1751,8 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         if (
           gasRef.current &&
           !gasWasDown &&
-          (mph >= BOOST_LUNGE_TUNING.burnoutMaxMph || burnoutPermanentlyDisabled)
+          mph >= BOOST_LUNGE_TUNING.launchMinMph &&
+          !burnoutAllowed(mph, burnoutPermanentlyDisabled)
         ) {
           triggerBoostLunge(mph, "gas");
         }
@@ -1861,9 +1902,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         }
 
         const burnoutActive =
-          !burnoutPermanentlyDisabled &&
-          gasRef.current &&
-          mph < BOOST_LUNGE_TUNING.burnoutMaxMph;
+          gasRef.current && burnoutAllowed(mph, burnoutPermanentlyDisabled);
         if (burnoutActive) {
           burnoutTime += dt;
           wheelAngle += BOOST_LUNGE_TUNING.burnoutWheelSpin * dt;
@@ -2006,7 +2045,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         ctx.lineTo(cx + size / 2, cy + size / 2);
         ctx.lineTo(cx - size / 2, cy + size / 2);
         ctx.closePath();
-        ctx.fillStyle = o.kind === "oil" ? "#7ec8ff" : "#ffcc33";
+        ctx.fillStyle = o.kind === "oil" ? "#ff4d4d" : "#ffcc33";
         ctx.fill();
         ctx.lineJoin = "round";
         ctx.lineWidth = Math.max(2, size * 0.09);
@@ -2026,9 +2065,8 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
 
       const burnoutActive =
         !finished &&
-        !burnoutPermanentlyDisabled &&
         gasRef.current &&
-        mph < BOOST_LUNGE_TUNING.burnoutMaxMph;
+        burnoutAllowed(mph, burnoutPermanentlyDisabled);
 
       const boost = computeCarPoseEffect({
         boostLunge,
@@ -2236,7 +2274,16 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       );
       ctx.textAlign = "left";
 
-      drawPedal(ctx, clutchBtn.x, clutchBtn.y, clutchBtn.w, clutchBtn.h, clutchDown, "#4aa3ff");
+      drawPedal(ctx, shiftUpBtn.x, shiftUpBtn.y, shiftUpBtn.w, shiftUpBtn.h, shiftUpDown, "#4aa3ff");
+      drawPedal(
+        ctx,
+        shiftDownBtn.x,
+        shiftDownBtn.y,
+        shiftDownBtn.w,
+        shiftDownBtn.h,
+        shiftDownDown,
+        "#4aa3ff",
+      );
       drawPedal(ctx, brakeBtn.x, brakeBtn.y, brakeBtn.w, brakeBtn.h, brakeDown, "#ff5a5a");
       drawPedal(
         ctx,
@@ -2262,7 +2309,8 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 11px Nunito, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText("SHIFT", clutchBtn.x + clutchBtn.w / 2, clutchBtn.y + clutchBtn.h / 2 + 4);
+      ctx.fillText("UP", shiftUpBtn.x + shiftUpBtn.w / 2, shiftUpBtn.y + shiftUpBtn.h / 2 + 4);
+      ctx.fillText("DOWN", shiftDownBtn.x + shiftDownBtn.w / 2, shiftDownBtn.y + shiftDownBtn.h / 2 + 4);
       ctx.fillText("BRAKE", brakeBtn.x + brakeBtn.w / 2, brakeBtn.y + brakeBtn.h / 2 + 4);
       ctx.font = "bold 13px Nunito, sans-serif";
       ctx.fillText("GAS", gasBtn.x + gasBtn.w / 2, gasBtn.y + gasBtn.h / 2 + 5);
@@ -2273,6 +2321,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       ctx.globalAlpha = 1;
       ctx.font = "bold 9px Nunito, sans-serif";
       ctx.fillStyle = "rgba(255,255,255,0.75)";
+      ctx.fillText("SHIFT", (shiftUpBtn.x + shiftDownBtn.x + shiftDownBtn.w) / 2, shiftUpBtn.y - 6);
       ctx.fillText("LANE", (laneUpBtn.x + laneDownBtn.x + laneDownBtn.w) / 2, laneUpBtn.y - 6);
       ctx.textAlign = "left";
 
@@ -2282,7 +2331,15 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         ctx.font = "bold 15px Nunito, sans-serif";
         ctx.textAlign = "center";
         ctx.fillText(
-          shiftQuality === 1 ? "PERFECT!" : shiftQuality === 0 ? "Good shift" : rpm > SHIFT_PERFECT_MAX ? "Over-rev!" : "Too early!",
+          lastShiftKind === "down"
+            ? "Downshift"
+            : shiftQuality === 1
+              ? "PERFECT!"
+              : shiftQuality === 0
+                ? "Good shift"
+                : rpm > SHIFT_PERFECT_MAX
+                  ? "Over-rev!"
+                  : "Too early!",
           width / 2,
           sceneH * 0.35,
         );

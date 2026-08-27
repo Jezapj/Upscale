@@ -187,6 +187,22 @@ export function GameShell({
   }, [refreshDailyBoard]);
 
   useEffect(() => {
+    if (!boardUid) return;
+    const mine = dailyEntries.find((e) => e.uid === boardUid);
+    if (!mine) return;
+    const local = getDailyCompletion(useStore.getState().data, gameId, today);
+    if (local && local.score > 0 && local.score >= mine.score) return;
+    markDailyPlayed(gameId, mine.score, true, {
+      ghostTrace: mine.meta?.ghostTrace
+        ? mine.meta.ghostTrace
+            .split(",")
+            .map(Number)
+            .filter((n) => Number.isFinite(n))
+        : undefined,
+    });
+  }, [dailyEntries, boardUid, gameId, today, markDailyPlayed]);
+
+  useEffect(() => {
     if (!user || !isGoogle) {
       setRemoteDailyLocked(false);
       return;

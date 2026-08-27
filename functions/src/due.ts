@@ -24,6 +24,7 @@ export interface Note {
   title: string;
   body: string;
   reminderAt?: string;
+  deletedAt?: string;
 }
 
 export interface AppData {
@@ -162,6 +163,7 @@ export function dueItems(
   }
 
   for (const note of data.notes ?? []) {
+    if (note.deletedAt) continue;
     if (!note.reminderAt) continue;
     const nid = noteReminderId(note.id);
     if (fired.has(nid)) continue;

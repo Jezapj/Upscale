@@ -1,4 +1,4 @@
-import { emptyAppData, type AppData, type ArcadeProfile, type Note } from "./types";
+import { emptyAppData, type AppData, type ArcadeProfile } from "./types";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { getFirebaseDb } from "./firebase";
 import { activeFirestoreUid } from "./firebaseAuth";
@@ -7,9 +7,11 @@ import { todayKey } from "./dates";
 import {
   BACKUP_FORMAT_VERSION,
   createBackupEnvelope,
+  mergeNotes,
   resolveBackupConflict,
 } from "./backup";
 import { ensureStarterBalance, mergeArcadeUnlocks, mergeWallets } from "./economy";
+import type { GameId } from "./types";
 
 interface CloudPayload {
   formatVersion: number;
@@ -44,22 +46,6 @@ function mergeArcadeProfile(
     optedOut: (left.prompted && left.optedOut) || (right.prompted && right.optedOut),
     username: left.username ?? right.username,
   };
-}
-
-function noteStamp(note: Note): string {
-  return note.updatedAt || note.createdAt || "";
-}
-
-/** Union notes by id; newer `updatedAt` wins so they survive full-backup conflicts. */
-function mergeNotes(a: Note[] | undefined, b: Note[] | undefined): Note[] {
-  const map = new Map<string, Note>();
-  for (const note of [...(a ?? []), ...(b ?? [])]) {
-    const existing = map.get(note.id);
-    if (!existing || noteStamp(note) >= noteStamp(existing)) {
-      map.set(note.id, note);
-    }
-  }
-  return [...map.values()].sort((x, y) => noteStamp(y).localeCompare(noteStamp(x)));
 }
 
 function mergeGameScores(
@@ -125,19 +111,22 @@ function normalizeCloudPayload(raw: Record<string, unknown>): CloudPayload | nul
   };
 }
 
-export async function loadCloudData(userId: string): Promise<CloudPayload | null> {
+export async function loadCloudData(
+  userId: string,
+  timeoutMs = CLOUD_LOAD_TIMEOUT_MS,
+): Promise<CloudPayload | null> {
   const db = getFirebaseDb();
   const uid = firestoreUserDocId(userId);
   if (!db || !uid) return null;
 
   try {
-    const snap = await withTimeout(getDoc(doc(db, "userdata", uid)), CLOUD_LOAD_TIMEOUT_MS);
+    const snap = await withTimeout(getDoc(doc(db, "userdata", uid)), timeoutMs);
     if (!snap.exists()) {
       const legacy = googleSubFromUserId(userId);
       if (legacy && legacy !== uid) {
         const legacySnap = await withTimeout(
           getDoc(doc(db, "userdata", legacy)),
-          CLOUD_LOAD_TIMEOUT_MS,
+          timeoutMs,
         );
         if (legacySnap.exists()) {
           return normalizeCloudPayload(legacySnap.data() as Record<string, unknown>);
@@ -172,7 +161,28 @@ export async function saveCloudData(userId: string, data: AppData): Promise<void
   }
 }
 
-/** Login / sync: merge entities, then union arcade/wallet fields. */
+function mergeLastGhosts(
+  a: AppData["lastGhosts"],
+  b: AppData["lastGhosts"],
+): AppData["lastGhosts"] {
+  if (!a && !b) return undefined;
+  const out: NonNullable<AppData["lastGhosts"]> = { ...(a ?? {}) };
+  for (const [key, ghost] of Object.entries(b ?? {})) {
+    const gameId = key as GameId;
+    const cur = out[gameId];
+    if (!cur) {
+      out[gameId] = ghost;
+      continue;
+    }
+    if (!ghost) continue;
+    if (ghost.day > cur.day || (ghost.day === cur.day && ghost.score >= cur.score)) {
+      out[gameId] = ghost;
+    }
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** Login / sync: merge habits, then always union notes/wallet/arcade from both sides. */
 export function mergeLocalAndCloud(
   local: AppData,
   cloud: CloudPayload | null,
@@ -180,31 +190,27 @@ export function mergeLocalAndCloud(
 ): AppData {
   if (!cloud) return ensureStarterBalance(local);
 
-  const { data: winner, source } = resolveBackupConflict(
+  const { data: winner } = resolveBackupConflict(
     local,
     cloud.data,
     cloud.updatedAt,
   );
-  const loser = source === "local" ? cloud.data : local;
 
   const merged: AppData = {
     ...winner,
-    notes: mergeNotes(winner.notes, loser.notes),
-    arcadeDaily: mergeArcadeDailyStates(winner.arcadeDaily, loser.arcadeDaily, day),
-    arcadeProfile: mergeArcadeProfile(winner.arcadeProfile, loser.arcadeProfile),
-    gameScores: mergeGameScores(winner.gameScores, loser.gameScores),
-    gamePlays: winner.gamePlays ?? loser.gamePlays,
-    gamePremium: winner.gamePremium || loser.gamePremium || undefined,
-    wallet: mergeWallets(winner.wallet, loser.wallet),
-    arcadeUnlocks: mergeArcadeUnlocks(winner.arcadeUnlocks, loser.arcadeUnlocks),
-    lastGhosts: {
-      ...(loser.lastGhosts ?? {}),
-      ...(winner.lastGhosts ?? {}),
-    },
+    notes: mergeNotes(local.notes, cloud.data.notes),
+    arcadeDaily: mergeArcadeDailyStates(local.arcadeDaily, cloud.data.arcadeDaily, day),
+    arcadeProfile: mergeArcadeProfile(local.arcadeProfile, cloud.data.arcadeProfile),
+    gameScores: mergeGameScores(local.gameScores, cloud.data.gameScores),
+    gamePlays: local.gamePlays ?? cloud.data.gamePlays,
+    gamePremium: local.gamePremium || cloud.data.gamePremium || undefined,
+    wallet: mergeWallets(local.wallet, cloud.data.wallet),
+    arcadeUnlocks: mergeArcadeUnlocks(local.arcadeUnlocks, cloud.data.arcadeUnlocks),
+    lastGhosts: mergeLastGhosts(local.lastGhosts, cloud.data.lastGhosts),
     lastRecapWeek:
-      (winner.lastRecapWeek ?? "") >= (loser.lastRecapWeek ?? "")
-        ? winner.lastRecapWeek ?? loser.lastRecapWeek
-        : loser.lastRecapWeek ?? winner.lastRecapWeek,
+      (local.lastRecapWeek ?? "") >= (cloud.data.lastRecapWeek ?? "")
+        ? local.lastRecapWeek ?? cloud.data.lastRecapWeek
+        : cloud.data.lastRecapWeek ?? local.lastRecapWeek,
   };
   if (!merged.lastGhosts || Object.keys(merged.lastGhosts).length === 0) {
     delete merged.lastGhosts;

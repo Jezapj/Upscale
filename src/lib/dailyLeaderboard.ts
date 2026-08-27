@@ -107,6 +107,38 @@ export async function hasUserDailyBoardEntry(
   }
 }
 
+const DAILY_GAME_IDS: GameId[] = ["tiptop", "octane", "dissiada", "daybreak"];
+
+/** Own daily-board rows for today — used to hydrate local arcadeDaily on other devices. */
+export async function listOwnDailyEntries(
+  userId: string,
+  day: string = todayKey(),
+): Promise<Partial<Record<GameId, DailyBoardEntry>>> {
+  if (!cloudConfigured()) return {};
+  const db = getFirebaseDb();
+  if (!db) return {};
+
+  const authed = await waitForFirebaseAuth();
+  const auth = getFirebaseAuth();
+  if (!authed || !auth?.currentUser) return {};
+
+  const uid = firestoreUserDocId(userId);
+  if (!uid) return {};
+
+  const out: Partial<Record<GameId, DailyBoardEntry>> = {};
+  await Promise.all(
+    DAILY_GAME_IDS.map(async (gameId) => {
+      try {
+        const snap = await getDoc(doc(entriesCol(db, gameId, day), uid));
+        if (snap.exists()) out[gameId] = snap.data() as DailyBoardEntry;
+      } catch {
+        /* ignore per-game failures */
+      }
+    }),
+  );
+  return out;
+}
+
 export async function listDailyBoard(
   gameId: GameId,
   day: string = todayKey(),

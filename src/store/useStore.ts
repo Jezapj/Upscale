@@ -25,7 +25,7 @@ import {
   recordGamePlay,
 } from "@/lib/gamePlays";
 import { recordGameScore as mergeGameScore, getGameScores } from "@/lib/gameLeaderboard";
-import { isCloudUser } from "@/lib/cloudSync";
+import { isCloudUser, mergeLocalAndCloud, loadCloudData } from "@/lib/cloudSync";
 import { clearFiredReminder, noteReminderId } from "@/lib/reminders";
 import { markDailyPlayed as applyDailyPlayed } from "@/lib/dailyChallenge";
 import { alignGoogleUserWithFirebase } from "@/lib/storage";
@@ -104,9 +104,11 @@ interface StoreState {
   equipPalette: (gameId: GameId, paletteId: UnlockablePaletteId | null) => void;
   setLastRecapWeek: (weekKey: string) => void;
   clearTokenEarn: () => void;
+  pullFromCloud: () => Promise<void>;
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let saveChain: Promise<void> = Promise.resolve();;
 
 async function syncUserData(userId: string): Promise<AppData> {
   if (isCloudUser(userId) && cloudConfigured()) {
@@ -117,11 +119,28 @@ async function syncUserData(userId: string): Promise<AppData> {
 
 export const useStore = create<StoreState>((set, get) => {
   const persist = () => {
-    const { user, data } = get();
+    const { user } = get();
     if (!user) return;
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      void storage.saveData(user.id, data);
+      saveChain = saveChain
+        .then(async () => {
+          const snapshot = get();
+          if (!snapshot.user) return;
+          const merged = await storage.saveData(snapshot.user.id, snapshot.data);
+          const latest = get();
+          if (latest.user?.id !== snapshot.user.id) return;
+          const combined = mergeLocalAndCloud(latest.data, {
+            formatVersion: 1,
+            updatedAt: merged.syncedAt ?? "",
+            data: merged,
+          });
+          set({ data: combined });
+          if (latest.data !== snapshot.data) persist();
+        })
+        .catch((err) => {
+          console.warn("Cloud save failed", err);
+        });
     }, 150);
   };
 
@@ -277,7 +296,13 @@ export const useStore = create<StoreState>((set, get) => {
     },
     deleteNote(id) {
       clearFiredReminder(noteReminderId(id));
-      mutate((d) => ({ ...d, notes: (d.notes ?? []).filter((n) => n.id !== id) }));
+      const now = new Date().toISOString();
+      mutate((d) => ({
+        ...d,
+        notes: (d.notes ?? []).map((n) =>
+          n.id === id ? { ...n, deletedAt: now, updatedAt: now } : n,
+        ),
+      }));
     },
 
     rate(routineId, rating) {
@@ -461,6 +486,17 @@ export const useStore = create<StoreState>((set, get) => {
 
     clearTokenEarn() {
       set({ lastTokenEarn: null });
+    },
+
+    async pullFromCloud() {
+      const { user } = get();
+      if (!user || !isCloudUser(user.id) || !cloudConfigured()) return;
+      await waitForFirebaseAuth(8000);
+      const cloud = await loadCloudData(user.id);
+      if (!cloud) return;
+      const merged = mergeLocalAndCloud(get().data, cloud);
+      set({ data: merged });
+      await storage.saveData(user.id, merged);
     },
   };
 });

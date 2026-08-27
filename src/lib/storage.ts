@@ -43,7 +43,7 @@ function hasAppContent(data: AppData): boolean {
     data.goals.length > 0 ||
     data.routines.length > 0 ||
     Object.keys(data.logs).length > 0 ||
-    (data.notes?.length ?? 0) > 0
+    (data.notes ?? []).some((n) => !n.deletedAt)
   );
 }
 
@@ -121,15 +121,24 @@ export const storage = {
     return merged;
   },
 
-  async saveData(userId: string, data: AppData): Promise<void> {
-    const stamped: AppData = { ...data, syncedAt: new Date().toISOString() };
-    saveLocal(userId, stamped);
+  async saveData(userId: string, data: AppData): Promise<AppData> {
+    let next: AppData = { ...data, syncedAt: new Date().toISOString() };
 
-    if (!isCloudUser(userId) || !cloudConfigured()) return;
+    if (isCloudUser(userId) && cloudConfigured()) {
+      const auth = getFirebaseAuth();
+      if (auth?.currentUser) {
+        const cloud = await loadCloudData(userId, 3_000);
+        next = {
+          ...mergeLocalAndCloud(data, cloud),
+          syncedAt: new Date().toISOString(),
+        };
+        saveLocal(userId, next);
+        await saveCloudData(userId, next);
+        return next;
+      }
+    }
 
-    const auth = getFirebaseAuth();
-    if (!auth?.currentUser) return;
-
-    await saveCloudData(userId, stamped);
+    saveLocal(userId, next);
+    return next;
   },
 };
