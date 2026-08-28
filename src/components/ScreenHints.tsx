@@ -27,6 +27,7 @@ export function ScreenHints() {
     label: "Menu",
     onClick: () => setSettingsOpen(true),
   };
+  const backHint = wire([{ glyph: "←", label: "Back", action: "back" }], invoke);
 
   if (pathname.startsWith("/checkin")) return null;
 
@@ -51,11 +52,7 @@ export function ScreenHints() {
       return (
         <HintBar
           insetSafe={false}
-          left={[
-            settingsHint,
-            optionsHint,
-            ...wire([{ glyph: "←", label: "Back", action: "back" }], invoke),
-          ]}
+          left={[settingsHint, optionsHint, ...backHint]}
           right={wire([{ glyph: "A", label: "Play", action: "primary" }], invoke)}
         />
       );
@@ -67,12 +64,8 @@ export function ScreenHints() {
     return (
       <HintBar
         insetSafe={false}
-        left={[
-          settingsHint,
-          optionsHint,
-          ...wire([{ glyph: "←", label: "Back", action: "back" }], invoke),
-        ]}
-        right={wire([{ glyph: "A", label: "Open goal", action: "primary" }], invoke)}
+        left={[settingsHint, optionsHint, ...backHint]}
+        right={wire([{ glyph: "A", label: "Open", action: "primary" }], invoke)}
       />
     );
   }
@@ -81,15 +74,11 @@ export function ScreenHints() {
     return (
       <HintBar
         insetSafe={false}
-        left={[
-          settingsHint,
-          optionsHint,
-          ...wire([{ glyph: "←", label: "Back", action: "back" }], invoke),
-        ]}
+        left={[optionsHint, ...backHint]}
         right={wire(
           [
             { glyph: "A", label: "Open", action: "primary" },
-            { glyph: "+", label: "New routine", action: "secondary" },
+            { glyph: "+", label: "New", action: "secondary" },
           ],
           invoke,
         )}
@@ -101,12 +90,8 @@ export function ScreenHints() {
     return (
       <HintBar
         insetSafe={false}
-        left={[
-          settingsHint,
-          optionsHint,
-          ...wire([{ glyph: "←", label: "Back", action: "back" }], invoke),
-        ]}
-        right={wire([{ glyph: "A", label: "New note", action: "primary" }], invoke)}
+        left={[settingsHint, optionsHint, ...backHint]}
+        right={wire([{ glyph: "A", label: "New", action: "primary" }], invoke)}
       />
     );
   }
@@ -148,10 +133,8 @@ export function CheckinHints() {
         { glyph: "LT", label: "Menu", onClick: () => setSettingsOpen(true) },
         { glyph: "B", label: "Options", onClick: toggleQuickMenu },
         ...wire([{ glyph: "←", label: "Back", action: "back" }], invoke),
-        ...wire([{ glyph: "−", label: "Skip", action: "tertiary" }], invoke),
       ]}
       right={wire([{ glyph: "A", label: "Rate", action: "primary" }], invoke)}
     />
   );
 }
-

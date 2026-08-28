@@ -4,6 +4,9 @@ import { getBackgroundTrack } from "@/lib/backgroundMusic";
 import { setWebAudioMusic } from "@/lib/webAudioMusic";
 import { useBackgroundMusic } from "@/store/useBackgroundMusic";
 
+/** Keep theme music behind UI and game SFX (slider is still 0–100). */
+const MUSIC_BED_GAIN = 0.58;
+
 /** Mute on rhythm games; duck on the others so game SFX stay clear. */
 function gameMusicDuck(pathname: string): number {
   const m = pathname.match(/^\/games\/([^/]+)/);
@@ -22,7 +25,9 @@ export function BackgroundMusicPlayer() {
   const trackId = useBackgroundMusic((s) => s.trackId);
   const track = getBackgroundTrack(trackId);
   const unlockedRef = useRef(false);
-  const effectiveVolume = muted ? 0 : volume * gameMusicDuck(location.pathname);
+  const effectiveVolume = muted
+    ? 0
+    : volume * MUSIC_BED_GAIN * gameMusicDuck(location.pathname);
   const loopEnd = "loopEnd" in track ? track.loopEnd : undefined;
 
   useEffect(() => {

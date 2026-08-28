@@ -55,19 +55,30 @@ export function StatusBar() {
 
       <SettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-      <div className="flex min-w-0 items-center gap-1.5">
+      <div className="flex min-w-0 items-center gap-2">
         <button
           type="button"
           data-sfx-skip
           data-tour="mute"
           onClick={toggleMuted}
-          className="capsule flex h-8 shrink-0 items-center gap-1 px-2 text-ink-soft transition-all active:scale-95"
+          className="relative flex h-10 w-10 shrink-0 items-center justify-center active:scale-95"
           aria-pressed={muted}
           aria-label={muted ? "Unmute all sound" : "Mute all sound"}
           title={muted ? "Unmute (hold R + T)" : "Mute (hold R + T)"}
         >
-          <span className="text-[9px] font-900 leading-none text-ink-faint">RT</span>
-          {muted ? <VolumeX size={13} strokeWidth={2.4} /> : <Volume2 size={13} strokeWidth={2.4} />}
+          <span className="capsule absolute -left-1 -top-2 z-20 px-1.5 py-0 text-[9px] font-900 text-ink-faint">
+            RT
+          </span>
+          <span
+            className="relative z-10 flex h-10 w-10 items-center justify-center rounded-full border-2 border-white text-ink-soft shadow-soft"
+            style={{
+              background: muted
+                ? "linear-gradient(160deg,#d4d7de,#b8bcc6)"
+                : "linear-gradient(160deg,#f4f6f9,#dfe3ea)",
+            }}
+          >
+            {muted ? <VolumeX size={16} strokeWidth={2.4} /> : <Volume2 size={16} strokeWidth={2.4} />}
+          </span>
         </button>
         <div className="capsule flex min-w-0 items-center gap-1 px-2.5 py-1 text-[11px] font-800 text-ink-soft sm:gap-1.5 sm:px-3 sm:text-xs">
           <Clock3 size={13} className="shrink-0 text-ink-faint" />

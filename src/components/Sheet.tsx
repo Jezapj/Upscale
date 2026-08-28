@@ -22,7 +22,13 @@ export function Sheet({ open, onClose, title, children }: Props) {
   useEffect(() => {
     if (!open) return;
     playUiChime("popup");
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);

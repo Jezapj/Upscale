@@ -726,6 +726,7 @@ export const SAMPLE_SRC = {
   octaneWarning: "/danger.mp3",
   octaneHit: "/ow.mp3",
   tipTopComplete: "/done.mp3",
+  dissiadaComplete: "/done.mp3",
 } as const;
 
 /** Hazard closing in from off-screen. */
@@ -741,6 +742,11 @@ export function playOctaneHit() {
 /** Stage cleared. */
 export function playTipTopStageComplete() {
   playSampleOneShot(SAMPLE_SRC.tipTopComplete, 0.8);
+}
+
+/** Dissiada run finished (miss / end of run). */
+export function playDissiadaComplete() {
+  playSampleOneShot(SAMPLE_SRC.dissiadaComplete, 0.85);
 }
 
 function clampClip(buffer: AudioBuffer, config: SampleClip) {

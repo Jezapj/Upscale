@@ -15,19 +15,21 @@ interface Props {
   insetSafe?: boolean;
 }
 
+const MAX_HINTS = 4;
+
 function HintButton({ hint }: { hint: Hint }) {
   const clickable = !!hint.onClick;
 
   const inner = (
     <>
-      <span className="glyph">{hint.glyph}</span>
-      {hint.label}
+      <span className="glyph shrink-0">{hint.glyph}</span>
+      <span className="min-w-0 truncate">{hint.label}</span>
     </>
   );
 
   if (!clickable) {
     return (
-      <span className="flex items-center gap-1.5 text-xs font-800 text-ink-soft">
+      <span className="flex max-w-full items-center justify-center gap-1 text-[11px] font-800 text-ink-soft sm:gap-1.5 sm:text-xs">
         {inner}
       </span>
     );
@@ -37,7 +39,7 @@ function HintButton({ hint }: { hint: Hint }) {
     <button
       type="button"
       onClick={hint.onClick}
-      className="flex items-center gap-1.5 rounded-pill px-2 py-1 text-xs font-800 text-ink-soft transition-all hover:bg-white/70 active:scale-95 hint-btn"
+      className="flex max-w-full items-center justify-center gap-1 rounded-pill px-1 py-1 text-[11px] font-800 text-ink-soft transition-all hover:bg-white/70 active:scale-95 hint-btn sm:gap-1.5 sm:px-2 sm:text-xs"
     >
       {inner}
     </button>
@@ -46,23 +48,20 @@ function HintButton({ hint }: { hint: Hint }) {
 
 /** Console-style control hints - clickable when an action is wired. */
 export function HintBar({ left = [], right = [], insetSafe = true }: Props) {
+  const hints = [...left, ...right].slice(0, MAX_HINTS);
+
   return (
     <div
       data-tour="hints"
-      className={`flex items-center justify-between px-5 pt-1 no-select ${
+      className={`flex w-full items-center px-2 pt-1 no-select sm:px-4 ${
         insetSafe ? "pb-[max(0.75rem,env(safe-area-inset-bottom))]" : "pb-0.5"
       }`}
     >
-      <div className="flex items-center gap-2">
-        {left.map((h, i) => (
-          <HintButton key={i} hint={h} />
-        ))}
-      </div>
-      <div className="flex items-center gap-2">
-        {right.map((h, i) => (
-          <HintButton key={i} hint={h} />
-        ))}
-      </div>
+      {hints.map((h, i) => (
+        <div key={`${h.glyph}-${h.label}-${i}`} className="flex min-w-0 flex-1 justify-center">
+          <HintButton hint={h} />
+        </div>
+      ))}
     </div>
   );
 }

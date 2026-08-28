@@ -2,7 +2,10 @@ import { useEffect, useRef } from "react";
 import { useGamePalette } from "./GamePaletteContext";
 import type { GameResult } from "./gameResult";
 import {
+  playDissiadaComplete,
   playDissiadaNote,
+  preloadSamples,
+  SAMPLE_SRC,
   startDissiadaHold,
   stopAllDissiadaHolds,
   stopDissiadaHold,
@@ -128,6 +131,9 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    unlockGameAudio();
+    preloadSamples(SAMPLE_SRC.dissiadaComplete);
 
     let canvasW = 0;
     let canvasH = 0;
@@ -259,6 +265,7 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
     const endRun = () => {
       alive = false;
       stopAllDissiadaHolds();
+      playDissiadaComplete();
       onGameOverRef.current({
         score,
         title: "Run over",
