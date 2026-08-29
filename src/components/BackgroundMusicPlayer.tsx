@@ -13,7 +13,8 @@ function gameMusicDuck(pathname: string): number {
   if (!m) return 1;
   const id = m[1];
   if (id === "daybreak" || id === "dissiada") return 0;
-  if (id === "tiptop" || id === "octane") return 0.22;
+  if (id === "tiptop" || id === "octane" || id === "spacewalk" || id === "accretion")
+    return 0.22;
   return 1;
 }
 

@@ -58,12 +58,52 @@ export interface DaybreakPalette {
   particleDeath: string[];
 }
 
+export interface SpacewalkPalette {
+  bgTop: string;
+  bgBot: string;
+  star: string;
+  nebula: string;
+  planet: string;
+  station: string;
+  stationLight: string;
+  rocket: string;
+  rocketNose: string;
+  fin: string;
+  flameInner: string;
+  flameOuter: string;
+  smoke: string;
+  portalRim: string;
+  portalCore: string;
+  portalParticle: string;
+  drawPreview: string;
+  danger: string;
+  hudText: string;
+}
+
+export interface AccretionPalette {
+  grassTop: string;
+  grassBot: string;
+  grassStripe: string;
+  path: string;
+  pathEdge: string;
+  hedge: string;
+  hedgeDark: string;
+  ball: string;
+  ballPanel: string;
+  finish: string;
+  hudText: string;
+  danger: string;
+  sparkle: string;
+}
+
 export interface GamePalette {
   isDark: boolean;
   tiptop: TipTopPalette;
   octane: OctanePalette;
   dissiada: DissiadaPalette;
   daybreak: DaybreakPalette;
+  spacewalk: SpacewalkPalette;
+  accretion: AccretionPalette;
 }
 
 const PALETTES: Record<Theme, GamePalette> = {
@@ -122,6 +162,42 @@ const PALETTES: Record<Theme, GamePalette> = {
       particleLand: "#c9b8ff",
       particleDeath: ["#ff9e64", "#ff5c5c", "#ffd76e", "#ffffff"],
     },
+    spacewalk: {
+      bgTop: "#232a55",
+      bgBot: "#4a4f8c",
+      star: "#e8ecff",
+      nebula: "rgba(140, 120, 220, 0.16)",
+      planet: "#7a8ad4",
+      station: "#3a4070",
+      stationLight: "#8fd8ff",
+      rocket: "#e8ecf5",
+      rocketNose: "#ff7a59",
+      fin: "#6a7dff",
+      flameInner: "#ffe27a",
+      flameOuter: "#ff8a4a",
+      smoke: "rgba(200, 205, 225, 0.35)",
+      portalRim: "#6ee7ff",
+      portalCore: "rgba(60, 140, 255, 0.30)",
+      portalParticle: "#aef2ff",
+      drawPreview: "rgba(110, 231, 255, 0.7)",
+      danger: "#ff5c5c",
+      hudText: "#f0f2ff",
+    },
+    accretion: {
+      grassTop: "#7ecb6e",
+      grassBot: "#5cb85c",
+      grassStripe: "rgba(255, 255, 255, 0.07)",
+      path: "#e8d8ae",
+      pathEdge: "#c4a86a",
+      hedge: "#3f8f4a",
+      hedgeDark: "#2d6e38",
+      ball: "#ffffff",
+      ballPanel: "#2d3038",
+      finish: "#ff7a59",
+      hudText: "#1e3d2a",
+      danger: "#ff5c5c",
+      sparkle: "#ffd76e",
+    },
   },
   dark: {
     isDark: true,
@@ -178,6 +254,42 @@ const PALETTES: Record<Theme, GamePalette> = {
       particleDeath: ["#ff9e64", "#ff5c5c", "#ffd76e", "#ffffff"],
       progressTrack: "rgba(240, 240, 245, 0.2)",
     },
+    spacewalk: {
+      bgTop: "#070a1a",
+      bgBot: "#1a1f42",
+      star: "#dfe6ff",
+      nebula: "rgba(120, 90, 200, 0.14)",
+      planet: "#3a4580",
+      station: "#1c2244",
+      stationLight: "#6ee7ff",
+      rocket: "#dfe3f0",
+      rocketNose: "#ff7a59",
+      fin: "#6a7dff",
+      flameInner: "#ffe27a",
+      flameOuter: "#ff8a4a",
+      smoke: "rgba(160, 168, 200, 0.30)",
+      portalRim: "#6ee7ff",
+      portalCore: "rgba(70, 130, 255, 0.28)",
+      portalParticle: "#aef2ff",
+      drawPreview: "rgba(110, 231, 255, 0.7)",
+      danger: "#ff5c5c",
+      hudText: "#f0f2ff",
+    },
+    accretion: {
+      grassTop: "#1e3a26",
+      grassBot: "#16301e",
+      grassStripe: "rgba(255, 255, 255, 0.04)",
+      path: "#6a5c3e",
+      pathEdge: "#4a4030",
+      hedge: "#1f5230",
+      hedgeDark: "#143a20",
+      ball: "#e8e8ec",
+      ballPanel: "#1a1c22",
+      finish: "#ff7a59",
+      hudText: "#f0f2ff",
+      danger: "#ff5c5c",
+      sparkle: "#ffd76e",
+    },
   },
 };
 
@@ -210,6 +322,23 @@ const UNLOCK_OVERLAYS: Record<
       accent: "#ff9e64",
       terrainTop: "#ffb08a",
     },
+    spacewalk: {
+      ...base.spacewalk,
+      portalRim: "#ffb87a",
+      portalCore: "rgba(255, 158, 100, 0.28)",
+      portalParticle: "#ffd9b0",
+      drawPreview: "rgba(255, 184, 122, 0.7)",
+      fin: "#ff9e64",
+      nebula: "rgba(255, 140, 90, 0.14)",
+    },
+    accretion: {
+      ...base.accretion,
+      grassTop: "#d4a05c",
+      grassBot: "#b8823e",
+      ballPanel: "#8a4a2a",
+      finish: "#ff9e64",
+      sparkle: "#ffe0b8",
+    },
   }),
   midnight: (base) => ({
     ...base,
@@ -238,6 +367,27 @@ const UNLOCK_OVERLAYS: Record<
       terrainTop: "#6a5a9a",
       accent: "#c084fc",
     },
+    spacewalk: {
+      ...base.spacewalk,
+      bgTop: "#0a0618",
+      bgBot: "#1e1438",
+      portalRim: "#c084fc",
+      portalCore: "rgba(192, 132, 252, 0.28)",
+      portalParticle: "#e0c8ff",
+      drawPreview: "rgba(192, 132, 252, 0.7)",
+      fin: "#c084fc",
+    },
+    accretion: {
+      ...base.accretion,
+      grassTop: "#2a2244",
+      grassBot: "#1c1734",
+      path: "#5a4e78",
+      pathEdge: "#3e3458",
+      hedge: "#4a3a78",
+      hedgeDark: "#342858",
+      ballPanel: "#c084fc",
+      hudText: "#f0f2ff",
+    },
   }),
   mint: (base) => ({
     ...base,
@@ -259,6 +409,24 @@ const UNLOCK_OVERLAYS: Record<
       accent: "#5cd0a8",
       terrainTop: "#2bc4a8",
     },
+    spacewalk: {
+      ...base.spacewalk,
+      portalRim: "#5cd0a8",
+      portalCore: "rgba(92, 208, 168, 0.28)",
+      portalParticle: "#b8f5e0",
+      drawPreview: "rgba(92, 208, 168, 0.7)",
+      fin: "#2bc4a8",
+      nebula: "rgba(60, 200, 160, 0.12)",
+    },
+    accretion: {
+      ...base.accretion,
+      grassTop: "#8ee6c8",
+      grassBot: "#5cd0a8",
+      hedge: "#2bc4a8",
+      hedgeDark: "#1e9a84",
+      ballPanel: "#1e9a84",
+      finish: "#2bc4a8",
+    },
   }),
   candy: (base) => ({
     ...base,
@@ -278,6 +446,27 @@ const UNLOCK_OVERLAYS: Record<
       ...base.daybreak,
       accent: "#ff77b0",
       terrainTop: "#a06bff",
+    },
+    spacewalk: {
+      ...base.spacewalk,
+      portalRim: "#ff77b0",
+      portalCore: "rgba(255, 119, 176, 0.26)",
+      portalParticle: "#ffc8de",
+      drawPreview: "rgba(255, 119, 176, 0.7)",
+      fin: "#ff77b0",
+      nebula: "rgba(255, 120, 180, 0.13)",
+    },
+    accretion: {
+      ...base.accretion,
+      grassTop: "#ffb8d9",
+      grassBot: "#ff8ec4",
+      path: "#fff0f6",
+      pathEdge: "#e8a8c8",
+      hedge: "#a06bff",
+      hedgeDark: "#7a4ed4",
+      ballPanel: "#ff77b0",
+      finish: "#a06bff",
+      hudText: "#5a2a44",
     },
   }),
   mono: (base) => ({
@@ -307,6 +496,31 @@ const UNLOCK_OVERLAYS: Record<
       accent: "#3c4047",
       terrain: "#3c4047",
       terrainTop: "#9aabb8",
+    },
+    spacewalk: {
+      ...base.spacewalk,
+      bgTop: "#14161c",
+      bgBot: "#2a2e38",
+      nebula: "rgba(154, 171, 184, 0.10)",
+      planet: "#5a6068",
+      portalRim: "#c5ccd4",
+      portalCore: "rgba(197, 204, 212, 0.22)",
+      portalParticle: "#e8eef5",
+      drawPreview: "rgba(197, 204, 212, 0.7)",
+      fin: "#9aabb8",
+      rocketNose: "#5a6068",
+    },
+    accretion: {
+      ...base.accretion,
+      grassTop: "#9aabb8",
+      grassBot: "#7a8894",
+      path: "#e8eef5",
+      pathEdge: "#c5ccd4",
+      hedge: "#5a6068",
+      hedgeDark: "#3c4047",
+      ballPanel: "#3c4047",
+      finish: "#3c4047",
+      hudText: "#22252a",
     },
   }),
 };

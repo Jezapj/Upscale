@@ -21,6 +21,8 @@ export const BOARD_STAT_LABEL: Record<GameId, string> = {
   octane: "Top speed · Time",
   dissiada: "Combo · Score",
   daybreak: "Tries · Done",
+  spacewalk: "Flips · Time",
+  accretion: "Junk · Time",
 };
 
 function parseMedals(raw: string | undefined): Medal[] {
@@ -103,6 +105,24 @@ export function GameStatDetail({
       <span className="flex items-center gap-1">
         {meta?.["Max combo"] ? <Chip>{meta["Max combo"]} combo</Chip> : null}
         {meta?.Notes ? <Chip>{meta.Notes} notes</Chip> : null}
+      </span>
+    );
+  }
+
+  if (gameId === "spacewalk") {
+    return (
+      <span className="flex items-center gap-1">
+        {meta?.Flips ? <Chip>{meta.Flips} flips</Chip> : null}
+        {meta?.Time ? <Chip>{meta.Time}</Chip> : null}
+      </span>
+    );
+  }
+
+  if (gameId === "accretion") {
+    return (
+      <span className="flex items-center gap-1">
+        {meta?.Junk ? <Chip>{meta.Junk} junk</Chip> : null}
+        {meta?.Time ? <Chip>{meta.Time}</Chip> : null}
       </span>
     );
   }

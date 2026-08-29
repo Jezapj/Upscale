@@ -1,6 +1,12 @@
-/** Arcade games hub - TipTop, Octane, Dissiada, Daybreak. */
+/** Arcade games hub - TipTop, Octane, Dissiada, Daybreak, Spacewalk, Accretion. */
 
-export type GameId = "tiptop" | "octane" | "dissiada" | "daybreak";
+export type GameId =
+  | "tiptop"
+  | "octane"
+  | "dissiada"
+  | "daybreak"
+  | "spacewalk"
+  | "accretion";
 
 /** Bypass endless play limits (dev only: set VITE_UNLIMITED_PLAYS=true). */
 export const UNLIMITED_PLAYS =
@@ -52,6 +58,20 @@ export const GAMES: GameMeta[] = [
     color: "#ff9e64",
     controls: "Tap / Space / Click to jump on the beat for bonus points",
   },
+  {
+    id: "spacewalk",
+    name: "Spacewalk",
+    tagline: "Flip falling rockets back into orbit",
+    color: "#6a7dff",
+    controls: "Trace a line to open a gravity portal (3 max) - falling rockets flip upward, tilt the line to aim them. Fling one back into a launch bay to knock it offline",
+  },
+  {
+    id: "accretion",
+    name: "Accretion",
+    tagline: "Roll the park clean before time runs out",
+    color: "#5cb85c",
+    controls: "Swipe left / right (or A/D) to steer the rolling ball - collect junk to grow, don't clip the path edges",
+  },
 ];
 
 /** Emoji tile glyph per game (arcade hub, result screens). */
@@ -60,6 +80,8 @@ export const GAME_GLYPH: Record<GameId, string> = {
   octane: "🏎️",
   dissiada: "🎹",
   daybreak: "🌅",
+  spacewalk: "🚀",
+  accretion: "⚽",
 };
 
 export const GAME_BY_ID = Object.fromEntries(

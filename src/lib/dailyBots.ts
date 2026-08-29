@@ -115,6 +115,43 @@ function rollRun(gameId: GameId, rand: () => number): BotRun {
     };
   }
 
+  if (gameId === "spacewalk") {
+    const survived = rand() < 0.4;
+    if (survived) {
+      const portals = Math.round(between(rand, 14, 30));
+      const flips = Math.round(between(rand, portals, portals * 1.6));
+      const score = 8000 + Math.max(0, 2000 - portals * 60);
+      return {
+        score,
+        meta: { Flips: String(flips), Time: "30.0s" },
+      };
+    }
+    const timeSec = between(rand, 6, 27);
+    const flips = Math.round(timeSec * between(rand, 0.4, 0.9));
+    return {
+      score: Math.round(timeSec * 100),
+      meta: { Flips: String(flips), Time: `${timeSec.toFixed(1)}s` },
+    };
+  }
+
+  if (gameId === "accretion") {
+    const finished = rand() < 0.45;
+    if (finished) {
+      const junk = Math.round(between(rand, 8, 26));
+      const timeSec = between(rand, 16.5, 19.8);
+      const score = 3000 + junk * 120 + Math.round(between(rand, 40, 700));
+      return {
+        score,
+        meta: { Junk: String(junk), Time: `${timeSec.toFixed(1)}s` },
+      };
+    }
+    const junk = Math.round(between(rand, 3, 16));
+    return {
+      score: junk * 120 + Math.round(between(rand, 100, 700)),
+      meta: { Junk: String(junk), Time: "20.0s" },
+    };
+  }
+
   // daybreak
   const completed = rand() < 0.35;
   const progress = completed ? 100 : Math.round(between(rand, 15, 92));

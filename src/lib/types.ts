@@ -180,7 +180,13 @@ export interface ArcadeProfile {
   prompted: boolean;
 }
 
-export type GameId = "tiptop" | "octane" | "dissiada" | "daybreak";
+export type GameId =
+  | "tiptop"
+  | "octane"
+  | "dissiada"
+  | "daybreak"
+  | "spacewalk"
+  | "accretion";
 
 export interface GamePlaysState {
   date: string;

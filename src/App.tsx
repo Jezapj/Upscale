@@ -32,6 +32,8 @@ import { TipTopScreen } from "@/screens/games/TipTopScreen";
 import { OctaneScreen } from "@/screens/games/OctaneScreen";
 import { DissiadaScreen } from "@/screens/games/DissiadaScreen";
 import { DaybreakScreen } from "@/screens/games/DaybreakScreen";
+import { SpacewalkScreen } from "@/screens/games/SpacewalkScreen";
+import { AccretionScreen } from "@/screens/games/AccretionScreen";
 import { ProgressScreen } from "@/screens/ProgressScreen";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { useScreenOrientation } from "@/hooks/useScreenOrientation";
@@ -163,6 +165,8 @@ function AppShell() {
           <Route path="/games/octane" element={<OctaneScreen />} />
           <Route path="/games/dissiada" element={<DissiadaScreen />} />
           <Route path="/games/daybreak" element={<DaybreakScreen />} />
+          <Route path="/games/spacewalk" element={<SpacewalkScreen />} />
+          <Route path="/games/accretion" element={<AccretionScreen />} />
           <Route path="/progress" element={<ProgressScreen />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

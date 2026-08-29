@@ -135,6 +135,8 @@ Four mini-games with **daily challenges** (one seeded run per game per calendar 
 | **Octane** | `octane` | Drag race / free ride: rev to redline |
 | **Dissiada** | `dissiada` | Rhythm tiles on a beat line |
 | **Daybreak** | `daybreak` | Platformer: jump on the beat for bonus points |
+| **Spacewalk** | `spacewalk` | Trace gravity portals to flip falling rockets back up |
+| **Accretion** | `accretion` | Steer a growing ball of park junk down a zigzag path |
 
 - **Personal high scores**: stored in `AppData.gameScores` (top 10 per board key).
 - **Global daily leaderboard**: Firestore `dailyBoards/{gameId}_{day}/entries/{uid}`; one create-once entry per user per game per day.
@@ -516,6 +518,8 @@ firebase deploy --only firestore:rules
 - **Octane**: daily is always a ¼-mile (402 m) drag; practice supports distance picker and separate board keys (`octane:402`, etc.).
 - **Daybreak**: daily mode grants a fixed pool of 10 attempts (`DAILY_DAYBREAK_ATTEMPTS`).
 - **TipTop / Dissiada**: seeded obstacle/tile patterns from daily seed.
+- **Spacewalk**: portrait survival - rockets launch at up to 45° from five station bays and ricochet off the walls; trace a line (max 3 active) to open a gravity portal that inverts gravity (briefly boosted, decaying back to normal) until the rocket climbs just past halfway, with tilted portals deflecting sideways. Flipping a rocket back into a launch bay destroys it, knocking that bay offline for 8s. Daily is a seeded 30-second hold-out (win score rewards fewer portals); endless ramps spawn rate and gravity.
+- **Accretion**: portrait auto-roller - a soccer ball rolls up a seeded zigzag park path; swipe (or A/D) to steer, roll over junk (Katamari-style accretion grows the ball) and reach the finish inside 20 seconds. Clipping the hedges knocks junk off and briefly slows you. Endless chains courses: each finished lap grants +15s while the path narrows and speeds up.
 
 ---
 
@@ -652,6 +656,8 @@ Or `npm run deploy:firebase`. First functions deploy enables Cloud Scheduler on 
 | `/games/octane` | Octane |
 | `/games/dissiada` | Dissiada |
 | `/games/daybreak` | Daybreak |
+| `/games/spacewalk` | Spacewalk |
+| `/games/accretion` | Accretion |
 
 ---
 

@@ -107,7 +107,14 @@ export async function hasUserDailyBoardEntry(
   }
 }
 
-const DAILY_GAME_IDS: GameId[] = ["tiptop", "octane", "dissiada", "daybreak"];
+const DAILY_GAME_IDS: GameId[] = [
+  "tiptop",
+  "octane",
+  "dissiada",
+  "daybreak",
+  "spacewalk",
+  "accretion",
+];
 
 /** Own daily-board rows for today — used to hydrate local arcadeDaily on other devices. */
 export async function listOwnDailyEntries(
