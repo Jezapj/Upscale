@@ -15,6 +15,7 @@ import { formatReminderLabel } from "@/lib/reminders";
 import { computeRoutineStats } from "@/lib/stats";
 import type { CategoryKey, Routine } from "@/lib/types";
 import { useRegisterControls } from "@/store/useControls";
+import { ScrollArea } from "@/components/ScrollArea";
 
 type ViewMode = "grid" | "list";
 
@@ -116,7 +117,7 @@ export function LibraryScreen() {
         ))}
       </div>
 
-      <div className="scroll-area px-4 pb-2">
+      <ScrollArea className="px-4 pb-2">
         {routines.length === 0 ? (
           <div className="card mt-4 p-6 text-center">
             <div className="mx-auto mb-3 w-fit">
@@ -228,7 +229,7 @@ export function LibraryScreen() {
             <Plus size={18} /> New routine
           </button>
         )}
-      </div>
+      </ScrollArea>
 
       <Sheet open={addOpen} onClose={() => setAddOpen(false)} title="New routine">
         <RoutineForm

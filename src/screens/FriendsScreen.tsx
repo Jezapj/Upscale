@@ -5,6 +5,7 @@ import { StatusBar } from "@/components/StatusBar";
 import { PageHeader } from "@/components/PageHeader";
 import { useStore } from "@/store/useStore";
 import { useRegisterControls } from "@/store/useControls";
+import { ScrollArea } from "@/components/ScrollArea";
 import {
   acceptFriendRequest,
   ensureSocialProfile,
@@ -98,7 +99,7 @@ export function FriendsScreen() {
   return (
     <>
       <StatusBar />
-      <div className="scroll-area px-4 pb-4">
+      <ScrollArea className="px-4 pb-4">
         <button
           type="button"
           onClick={() => nav("/games")}
@@ -224,7 +225,7 @@ export function FriendsScreen() {
             )}
           </>
         )}
-      </div>
+      </ScrollArea>
     </>
   );
 }

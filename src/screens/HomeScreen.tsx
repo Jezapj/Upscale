@@ -16,6 +16,7 @@ import { isDueToday, isScheduledOn } from "@/lib/frequency";
 import { todayKey, prettyDay } from "@/lib/dates";
 import { activeNotes } from "@/lib/types";
 import { useRegisterControls } from "@/store/useControls";
+import { ScrollArea } from "@/components/ScrollArea";
 
 export function HomeScreen() {
   const nav = useNavigate();
@@ -68,7 +69,7 @@ export function HomeScreen() {
   return (
     <>
       <StatusBar />
-      <div className="scroll-area px-4 pb-2">
+      <ScrollArea className="px-4 pb-2">
         <div className="mb-3 mt-2 lg:hidden">
           <p className="text-sm font-700 text-ink-faint">{prettyDay(key)}</p>
           <h1 className="hero-greeting font-display text-3xl font-800 leading-tight text-ink drop-shadow-light">
@@ -323,7 +324,7 @@ export function HomeScreen() {
             </div>
           </div>
         </div>
-      </div>
+      </ScrollArea>
 
       <Sheet
         open={addRoutineOpen}

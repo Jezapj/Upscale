@@ -18,6 +18,7 @@ import { cloudConfigured } from "@/lib/firebase";
 import type { GameId } from "@/lib/types";
 import { prettyDay } from "@/lib/dates";
 import { verifyCheckoutSession } from "@/lib/subscription";
+import { ScrollArea } from "@/components/ScrollArea";
 
 export function GamesScreen() {
   const nav = useNavigate();
@@ -81,7 +82,7 @@ export function GamesScreen() {
   return (
     <>
       <StatusBar />
-      <div className="scroll-area px-4 pb-4">
+      <ScrollArea className="px-4 pb-4">
         <PageHeader
           title="Arcade"
           subtitle={`${prettyDay(today)}: one shared daily challenge each.`}
@@ -172,7 +173,7 @@ export function GamesScreen() {
             );
           })}
         </div>
-      </div>
+      </ScrollArea>
 
       <ProSubscriptionSheet open={proOpen} onClose={() => setProOpen(false)} />
       <ArcadeShopSheet open={shopOpen} onClose={() => setShopOpen(false)} />

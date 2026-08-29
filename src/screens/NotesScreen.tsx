@@ -11,6 +11,7 @@ import { formatNoteReminderLabel } from "@/lib/reminders";
 import type { Note } from "@/lib/types";
 import { activeNotes } from "@/lib/types";
 import { useRegisterControls } from "@/store/useControls";
+import { ScrollArea } from "@/components/ScrollArea";
 
 export function NotesScreen() {
   const nav = useNavigate();
@@ -45,7 +46,7 @@ export function NotesScreen() {
   return (
     <>
       <StatusBar />
-      <div className="scroll-area px-4 pb-4">
+      <ScrollArea className="px-4 pb-4">
         <PageHeader
           title="Notes"
           subtitle="Jot things down and get a nudge when it matters."
@@ -80,7 +81,7 @@ export function NotesScreen() {
             ))}
           </div>
         )}
-      </div>
+      </ScrollArea>
 
       <Sheet open={addOpen} onClose={() => setAddOpen(false)} title="New note">
         <NoteForm

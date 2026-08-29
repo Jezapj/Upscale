@@ -10,6 +10,7 @@ import {
 } from "@/lib/revenuecat";
 import { useSubscription } from "@/hooks/useSubscription";
 import { useStore } from "@/store/useStore";
+import { ScrollArea } from "@/components/ScrollArea";
 
 interface Props {
   open: boolean;
@@ -223,7 +224,7 @@ function PaywallOverlay({
             <X size={18} />
           </button>
         </div>
-        <div ref={containerRef} className="scroll-area min-h-0 flex-1 px-2 pb-2" />
+        <ScrollArea ref={containerRef} className="min-h-0 flex-1 px-2 pb-2" />
       </div>
     </div>,
     shell,

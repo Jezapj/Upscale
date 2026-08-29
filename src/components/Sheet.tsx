@@ -58,7 +58,7 @@ export function Sheet({ open, onClose, title, children }: Props) {
           </button>
         </div>
         {/* Extra bottom padding clears the dock so the confirm button scrolls into view. */}
-        <div className="scroll-area min-h-0 flex-1 px-5 pt-3 pb-[calc(6.75rem+env(safe-area-inset-bottom))]">
+        <div className="sheet-scroll px-5 pt-3 pb-[calc(6.75rem+env(safe-area-inset-bottom))]">
           {children}
         </div>
       </div>

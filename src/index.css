@@ -11,6 +11,25 @@
   --tile-top: 245 246 248;
   --tile-bottom: 221 224 230;
   --loading-glow: rgba(58, 142, 240, 0.55);
+  /* Scroll-edge dissolve. Edit the -mobile / -desktop values; the live
+     --scroll-fade-* vars swap at the same breakpoint as the wide layout. */
+  --scroll-fade-top-mobile: 0.6rem;
+  --scroll-fade-bottom-mobile: 0.5rem;
+  --scroll-fade-end-gap-mobile: 0.25rem;
+  --scroll-fade-top-desktop: 0.15rem;
+  --scroll-fade-bottom-desktop: 0.5rem;
+  --scroll-fade-end-gap-desktop: 0.25rem;
+  --scroll-fade-top: var(--scroll-fade-top-mobile);
+  --scroll-fade-bottom: var(--scroll-fade-bottom-mobile);
+  --scroll-fade-end-gap: var(--scroll-fade-end-gap-mobile);
+}
+
+@media (min-width: 720px), (orientation: landscape) and (min-height: 420px) {
+  :root {
+    --scroll-fade-top: var(--scroll-fade-top-desktop);
+    --scroll-fade-bottom: var(--scroll-fade-bottom-desktop);
+    --scroll-fade-end-gap: var(--scroll-fade-end-gap-desktop);
+  }
 }
 
 [data-theme="dark"] {
@@ -47,10 +66,12 @@ body {
 }
 
 /* The IISU "paper": near-white centre, soft grey vignette to the edges,
-   with a faint perforated dot grid printed over it. */
-.paper-bg {
-  position: absolute;
-  inset: 0;
+   with a faint perforated dot grid printed over it.
+   Scroll-fade overlays reuse this fill (background-attachment: fixed) so the
+   edge dissolve matches the paper without masking .card descendants. */
+.paper-bg,
+.scroll-fade::before,
+.scroll-fade::after {
   background-color: rgb(var(--surface-body));
   background-image:
     radial-gradient(circle, rgba(150, 158, 172, 0.16) 1px, transparent 1.4px),
@@ -61,9 +82,17 @@ body {
   background-position:
     0 0,
     0 0;
+  background-attachment: fixed;
 }
 
-[data-theme="dark"] .paper-bg {
+.paper-bg {
+  position: absolute;
+  inset: 0;
+}
+
+[data-theme="dark"] .paper-bg,
+[data-theme="dark"] .scroll-fade::before,
+[data-theme="dark"] .scroll-fade::after {
   background-image:
     radial-gradient(circle, rgba(255, 255, 255, 0.1) 1px, transparent 1.4px),
     radial-gradient(ellipse 90% 70% at 50% 28%, rgba(30, 27, 75, 0.72) 0%, transparent 68%),
@@ -248,14 +277,69 @@ body {
   min-width: 0;
 }
 
+/* Edge dissolve: paper painted on top of the list, then masked on the
+   overlay only. Masking this wrapper would kill backdrop-filter on .card. */
+.scroll-fade {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.scroll-fade::before,
+.scroll-fade::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  pointer-events: none;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+.scroll-fade::before {
+  top: 0;
+  height: var(--scroll-fade-top);
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 100%);
+}
+.scroll-fade::after {
+  bottom: 0;
+  height: var(--scroll-fade-bottom);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 100%);
+  mask-image: linear-gradient(to top, #000 0%, transparent 100%);
+}
+
 .scroll-area {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
 }
 .scroll-area::-webkit-scrollbar {
+  display: none;
+}
+.scroll-fade .scroll-area::after {
+  content: "";
+  display: block;
+  height: var(--scroll-fade-end-gap);
+  pointer-events: none;
+}
+
+/* Bottom sheets size to their form, then scroll once they hit max-height.
+   Do not use .scroll-fade here — its 0 flex-basis collapses the panel to the title. */
+.sheet-scroll {
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.sheet-scroll::-webkit-scrollbar {
   display: none;
 }
 

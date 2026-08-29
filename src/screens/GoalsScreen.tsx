@@ -14,6 +14,7 @@ import { computeGoalProgress, routinesForGoal } from "@/lib/stats";
 import { prettyDay } from "@/lib/dates";
 import type { Goal, Routine } from "@/lib/types";
 import { useRegisterControls } from "@/store/useControls";
+import { ScrollArea } from "@/components/ScrollArea";
 
 export function GoalsScreen() {
   const nav = useNavigate();
@@ -52,7 +53,7 @@ export function GoalsScreen() {
   return (
     <>
       <StatusBar />
-      <div className="scroll-area px-4 pb-4">
+      <ScrollArea className="px-4 pb-4">
         <PageHeader
           title="Goals"
           subtitle="Big things you're working toward."
@@ -110,7 +111,7 @@ export function GoalsScreen() {
             })}
           </div>
         )}
-      </div>
+      </ScrollArea>
 
       {/* Goal detail */}
       <Sheet open={!!selected} onClose={closeGoal} title={selected?.title}>

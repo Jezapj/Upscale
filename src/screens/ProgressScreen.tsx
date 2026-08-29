@@ -19,6 +19,7 @@ import { computeInsights } from "@/lib/insights";
 import { buildWeeklyRecap } from "@/lib/weeklyRecap";
 import { parseDay, weekdayShort } from "@/lib/dates";
 import { useRegisterControls } from "@/store/useControls";
+import { ScrollArea } from "@/components/ScrollArea";
 import { storage } from "@/lib/storage";
 
 /** Bar tint by local weekday (Sun=0 … Sat=6). */
@@ -87,7 +88,7 @@ export function ProgressScreen() {
   return (
     <>
       <StatusBar />
-      <div className="scroll-area px-4 pb-4">
+      <ScrollArea className="px-4 pb-4">
         <PageHeader title="Progress" subtitle="Your streaks and history, mapped." />
 
         <button
@@ -277,7 +278,7 @@ export function ProgressScreen() {
             })}
           </div>
         )}
-      </div>
+      </ScrollArea>
 
       <WeeklyRecapSheet
         open={recapOpen}
