@@ -1379,22 +1379,22 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       const dashH = h - sceneH;
       const roadY = sceneH * 0.72;
       const roadH = sceneH - roadY;
-      // Thumb-friendly control clusters: shift/brake + lane arrows under the
-      // left thumb, one large gas pedal under the right thumb. Scales with
-      // screen width so buttons stay big on phones.
-      const cs = Math.max(1, Math.min(1.6, w / 560));
-      const pad = 14;
-      const gap = Math.round(10 * cs);
-      const bw = Math.round(58 * cs);
-      const bh = Math.round(54 * cs);
-      const laneH = Math.round(44 * cs);
-      const gasW = Math.round(88 * cs);
-      const gasH = Math.round(112 * cs);
-      const brakeH = Math.round(48 * cs);
-      const bottom = h - 18;
-      const brakeY = bottom - brakeH;
-      const shiftY = brakeY - gap - bh;
-      const laneY = shiftY - gap - laneH;
+      // Left: shift up/down stacked, lane ▲▼ stacked. Right: tall brake beside
+      // a square gas pedal (same height, twice as wide). Sized from the dash
+      // so they stay thumb-friendly without swallowing the gauges.
+      const pad = 12;
+      const gap = 8;
+      const bottom = h - 14;
+      const clusterH = Math.round(Math.min(dashH * 0.66, 108));
+      const gasH = clusterH;
+      const gasW = clusterH;
+      const brakeH = clusterH;
+      const brakeW = Math.round(clusterH * 0.5);
+      const rowH = Math.round((clusterH - gap) / 2);
+      const colW = Math.round(Math.min(70, clusterH * 0.64));
+      const leftY = bottom - clusterH;
+      const gasX = w - pad - gasW;
+      const brakeX = gasX - gap - brakeW;
       return {
         width: w,
         height: h,
@@ -1404,12 +1404,12 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         roadY,
         roadH,
         carX: w * 0.06,
-        shiftUpBtn: { x: pad, y: shiftY, w: bw, h: bh },
-        shiftDownBtn: { x: pad + bw + gap, y: shiftY, w: bw, h: bh },
-        brakeBtn: { x: pad, y: brakeY, w: bw * 2 + gap, h: brakeH },
-        gasBtn: { x: w - pad - gasW, y: bottom - gasH, w: gasW, h: gasH },
-        laneUpBtn: { x: pad, y: laneY, w: bw, h: laneH },
-        laneDownBtn: { x: pad + bw + gap, y: laneY, w: bw, h: laneH },
+        shiftUpBtn: { x: pad, y: leftY, w: colW, h: rowH },
+        shiftDownBtn: { x: pad, y: leftY + rowH + gap, w: colW, h: rowH },
+        laneUpBtn: { x: pad + colW + gap, y: leftY, w: colW, h: rowH },
+        laneDownBtn: { x: pad + colW + gap, y: leftY + rowH + gap, w: colW, h: rowH },
+        brakeBtn: { x: brakeX, y: leftY, w: brakeW, h: brakeH },
+        gasBtn: { x: gasX, y: leftY, w: gasW, h: gasH },
       };
     };
 
@@ -2307,22 +2307,27 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       );
 
       ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 11px Nunito, sans-serif";
+      ctx.font = "bold 12px Nunito, sans-serif";
       ctx.textAlign = "center";
       ctx.fillText("UP", shiftUpBtn.x + shiftUpBtn.w / 2, shiftUpBtn.y + shiftUpBtn.h / 2 + 4);
       ctx.fillText("DOWN", shiftDownBtn.x + shiftDownBtn.w / 2, shiftDownBtn.y + shiftDownBtn.h / 2 + 4);
-      ctx.fillText("BRAKE", brakeBtn.x + brakeBtn.w / 2, brakeBtn.y + brakeBtn.h / 2 + 4);
-      ctx.font = "bold 13px Nunito, sans-serif";
+      ctx.save();
+      ctx.font = "bold 11px Nunito, sans-serif";
+      ctx.translate(brakeBtn.x + brakeBtn.w / 2, brakeBtn.y + brakeBtn.h / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText("BRAKE", 0, 4);
+      ctx.restore();
+      ctx.font = "bold 14px Nunito, sans-serif";
       ctx.fillText("GAS", gasBtn.x + gasBtn.w / 2, gasBtn.y + gasBtn.h / 2 + 5);
       ctx.globalAlpha = laneSwitchable ? 1 : 0.4;
-      ctx.font = "bold 18px Nunito, sans-serif";
+      ctx.font = "bold 20px Nunito, sans-serif";
       ctx.fillText("▲", laneUpBtn.x + laneUpBtn.w / 2, laneUpBtn.y + laneUpBtn.h / 2 + 7);
       ctx.fillText("▼", laneDownBtn.x + laneDownBtn.w / 2, laneDownBtn.y + laneDownBtn.h / 2 + 7);
       ctx.globalAlpha = 1;
       ctx.font = "bold 9px Nunito, sans-serif";
       ctx.fillStyle = "rgba(255,255,255,0.75)";
-      ctx.fillText("SHIFT", (shiftUpBtn.x + shiftDownBtn.x + shiftDownBtn.w) / 2, shiftUpBtn.y - 6);
-      ctx.fillText("LANE", (laneUpBtn.x + laneDownBtn.x + laneDownBtn.w) / 2, laneUpBtn.y - 6);
+      ctx.fillText("SHIFT", shiftUpBtn.x + shiftUpBtn.w / 2, shiftUpBtn.y - 6);
+      ctx.fillText("LANE", laneUpBtn.x + laneUpBtn.w / 2, laneUpBtn.y - 6);
       ctx.textAlign = "left";
 
       if (shiftFlash > 0) {
