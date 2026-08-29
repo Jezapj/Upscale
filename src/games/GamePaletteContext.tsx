@@ -3,7 +3,6 @@ import { getGamePalette, getGamePaletteWithUnlock, type GamePalette } from "@/li
 import { useTheme } from "@/store/useTheme";
 import { useStore } from "@/store/useStore";
 import type { GameId } from "@/lib/types";
-import { ensureUnlocks } from "@/lib/economy";
 
 const GamePaletteContext = createContext<GamePalette | null>(null);
 
@@ -15,10 +14,9 @@ export function GamePaletteProvider({
   gameId?: GameId;
 }) {
   const theme = useTheme((s) => s.theme);
-  const data = useStore((s) => s.data);
-  const equipped = gameId
-    ? ensureUnlocks(data).equipped[gameId]
-    : undefined;
+  const equipped = useStore((s) =>
+    gameId ? s.data?.arcadeUnlocks?.equipped?.[gameId] : undefined,
+  );
   const palette = getGamePaletteWithUnlock(theme, equipped);
   return (
     <GamePaletteContext.Provider value={palette}>

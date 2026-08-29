@@ -18,6 +18,7 @@ import {
 } from "./daybreak/levelGen";
 import { ELEVATION_SPAN } from "./daybreak/musicTheory";
 import { SHOW_NEAR_BACKGROUND } from "./daybreak/config";
+import { canvasDpr } from "./gameLoop";
 
 interface Props {
   width: number;
@@ -928,7 +929,7 @@ export function DaybreakGame({
 
     const syncCanvas = () => {
       const { width: w, height: h } = sizeRef.current;
-      const dpr = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+      const dpr = canvasDpr();
       const pw = Math.round(w * dpr);
       const ph = Math.round(h * dpr);
       if (canvas.width !== pw || canvas.height !== ph) {

@@ -717,9 +717,16 @@ export function playSampleOneShot(src: string, volume = 0.8, playbackRate = 1) {
 
 /** Warm the decode cache so the first play isn't late. */
 export function preloadSamples(...srcs: string[]) {
-  const audioCtx = ctx();
-  if (!audioCtx) return;
-  for (const src of srcs) void ensureSample(audioCtx, src);
+  const warm = () => {
+    const audioCtx = ctx();
+    if (!audioCtx) return;
+    for (const src of srcs) void ensureSample(audioCtx, src);
+  };
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(warm, { timeout: 900 });
+  } else {
+    window.setTimeout(warm, 0);
+  }
 }
 
 export const SAMPLE_SRC = {

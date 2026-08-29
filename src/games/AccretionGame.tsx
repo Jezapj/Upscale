@@ -7,7 +7,7 @@ import {
   SAMPLE_SRC,
   unlockGameAudio,
 } from "./gameAudio";
-import { frameDecay, frameScale } from "./gameLoop";
+import { canvasDpr, frameDecay, frameScale } from "./gameLoop";
 import type { PlayMode } from "./GameShell";
 
 interface Props {
@@ -34,6 +34,10 @@ const SEG = 220;
 const ITEM_GAP = 95;
 const TREE_GAP = 170;
 const JUNK_VALUE = 120;
+/** Only this many glyphs ride the ball; further pickups grow those glyphs instead. */
+const VISUAL_JUNK_CAP = 12;
+const JUNK_SCALE_STEP = 0.05;
+const JUNK_SCALE_MAX = 1.9;
 const PICKUP_SFX = "/tapchime.mp3";
 const LOOP_SFX = "/successchime.mp3";
 
@@ -103,7 +107,10 @@ export function AccretionGame({
   seedRef.current = seed;
   modeRef.current = playMode;
 
+  const layoutReady = width >= 32 && height >= 32;
+
   useEffect(() => {
+    if (!layoutReady) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -121,10 +128,11 @@ export function AccretionGame({
     let canvasW = 0;
     let canvasH = 0;
     const resizeCanvas = (w: number, h: number) => {
+      if (w < 32 || h < 32) return;
       if (w === canvasW && h === canvasH) return;
       canvasW = w;
       canvasH = h;
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasDpr();
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -136,20 +144,21 @@ export function AccretionGame({
         ? seedRef.current >>> 0
         : (Date.now() & 0xffffffff) >>> 0;
 
-    const unit = () => sizeRef.current.height / 640;
+    const unit = () => Math.max(0.5, sizeRef.current.height / 640);
 
     // ----- Course geometry (world units along the course, seed-derived) -----
 
     /** Zigzag control point offset (fraction of width) at index i. */
     const cpOffset = (i: number): number => {
-      if (i < 2) return 0; // straight start
+      if (!Number.isFinite(i) || i < 2) return 0; // straight start
       const side = i % 2 === 0 ? -1 : 1;
       return side * (0.08 + hash01(courseSeed, i, 1) * 0.2);
     };
 
     /** Path centerline x (fraction of width) at course distance d. */
     const centerFrac = (d: number): number => {
-      const i = Math.floor(d / SEG);
+      if (!Number.isFinite(d)) return 0.5;
+      const i = Math.max(0, Math.floor(d / SEG));
       const t = smoothstep(Math.min(1, Math.max(0, (d - i * SEG) / SEG)));
       const a = cpOffset(i);
       const b = cpOffset(i + 1);
@@ -198,19 +207,33 @@ export function AccretionGame({
     let ballRot = 0;
     let collected = 0;
     let loops = 0;
-    let slowTimer = 0;
     let iframes = 0;
     let shake = 0;
     let warned = false;
+    let junkScale = 1;
     const attached: Attached[] = [];
     const takenSlots = new Set<number>();
     const particles: Particle[] = [];
     const heldKeys = new Set<string>();
     let lastPointerX: number | null = null;
+    let lastPointerY: number | null = null;
     let activePointer: number | null = null;
+    let laidOut = false;
+    let thrust = 0;
 
-    const ballRadius = () => Math.min(52 * unit(), (16 + attached.length * 1.15) * unit());
-    const forwardSpeed = () => 3.2 * (1 + loops * 0.08) * (slowTimer > 0 ? 0.4 : 1);
+    const ballRadius = () => {
+      const u = unit();
+      // Daily is a 20s sprint: grow fast and cap high. Endless is slower.
+      const perJunk = daily ? 4.8 : 2.1;
+      const cap = (daily ? 128 : 88) * u;
+      return Math.min(cap, (16 + attached.length * perJunk) * u);
+    };
+    const forwardSpeed = () => {
+      const loopBoost = 1 + loops * 0.08;
+      const t = Math.min(1, (daily ? ballD : ballD % COURSE_LEN) / COURSE_LEN);
+      const ramp = daily ? 1 + 0.4 * Math.sqrt(t) : 1 + 0.1 * Math.sqrt(t);
+      return 1.15 * loopBoost * ramp * (1 + thrust);
+    };
 
     const finish = (won: boolean) => {
       if (ended) return;
@@ -255,18 +278,28 @@ export function AccretionGame({
       unlockGameAudio();
       activePointer = e.pointerId;
       lastPointerX = e.clientX;
+      lastPointerY = e.clientY;
     };
     const onPointerMove = (e: PointerEvent) => {
-      if (e.pointerId !== activePointer || lastPointerX === null) return;
+      if (e.pointerId !== activePointer || lastPointerX === null || lastPointerY === null)
+        return;
       if (pausedRef.current || !alive) return;
       const dx = e.clientX - lastPointerX;
+      const dy = e.clientY - lastPointerY;
       lastPointerX = e.clientX;
-      steer(dx * 0.055 * unit());
+      lastPointerY = e.clientY;
+      const u = unit();
+      // Horizontal component steers; upward component (negative dy) adds speed.
+      steer(dx * 0.055 * u);
+      const up = Math.max(0, -dy);
+      const mass = Math.pow((16 * u) / ballRadius(), 0.7);
+      thrust = Math.min(2.6, thrust + up * 0.014 * mass);
     };
     const onPointerUp = (e: PointerEvent) => {
       if (e.pointerId !== activePointer) return;
       activePointer = null;
       lastPointerX = null;
+      lastPointerY = null;
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === "KeyA" || e.code === "ArrowLeft") {
@@ -275,11 +308,15 @@ export function AccretionGame({
       } else if (e.code === "KeyD" || e.code === "ArrowRight") {
         e.preventDefault();
         heldKeys.add("right");
+      } else if (e.code === "KeyW" || e.code === "ArrowUp") {
+        e.preventDefault();
+        heldKeys.add("up");
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code === "KeyA" || e.code === "ArrowLeft") heldKeys.delete("left");
       else if (e.code === "KeyD" || e.code === "ArrowRight") heldKeys.delete("right");
+      else if (e.code === "KeyW" || e.code === "ArrowUp") heldKeys.delete("up");
     };
     canvas.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("pointermove", onPointerMove);
@@ -298,6 +335,18 @@ export function AccretionGame({
       lastFrame = now;
       const { width: w, height: h } = sizeRef.current;
       resizeCanvas(w, h);
+      // Wait until the shell has a real canvas. A 0-height first frame
+      // makes unit() = 0, which turns `x += cell` into an infinite loop
+      // and never draws the path.
+      if (w < 8 || h < 8) {
+        raf = requestAnimationFrame(loop);
+        return;
+      }
+      if (!laidOut) {
+        ballX = w / 2;
+        laidOut = true;
+        lastFrame = now;
+      }
       const u = unit();
       const p = paletteRef.current.accretion;
       const ballScreenY = h * 0.72;
@@ -319,6 +368,10 @@ export function AccretionGame({
         // Keyboard steering.
         if (heldKeys.has("left")) steer(-0.55 * u * dt);
         if (heldKeys.has("right")) steer(0.55 * u * dt);
+        if (heldKeys.has("up")) {
+          const mass = Math.pow((16 * u) / r, 0.7);
+          thrust = Math.min(2.6, thrust + 0.045 * dt * mass);
+        }
 
         // Forward roll + lateral drift.
         const spd = forwardSpeed();
@@ -327,7 +380,6 @@ export function AccretionGame({
         ballX += vx * dt;
         // Low friction: swipes leave lasting momentum you must counter-swipe.
         vx *= frameDecay(0.975, dt);
-        if (slowTimer > 0) slowTimer -= dt;
         if (iframes > 0) iframes -= dt;
         if (shake > 0) shake = Math.max(0, shake - dt);
 
@@ -352,11 +404,12 @@ export function AccretionGame({
           vx = -vx * 0.55;
           if (iframes <= 0) {
             iframes = 45;
-            slowTimer = 35;
             shake = 12;
+            thrust = Math.max(0, thrust * 0.45);
             playSampleOneShot(SAMPLE_SRC.octaneHit, 0.4);
             // Knock up to 3 pieces of junk back off the ball.
             const dropped = attached.splice(Math.max(0, attached.length - 3), 3);
+            junkScale = Math.max(1, junkScale - dropped.length * JUNK_SCALE_STEP);
             for (const item of dropped) {
               particles.push({
                 x: ballX,
@@ -387,13 +440,21 @@ export function AccretionGame({
           if (ddx * ddx + ddy * ddy <= rr * rr) {
             takenSlots.add(s);
             collected++;
-            attached.push({
-              glyph: item.glyph,
-              ang: Math.random() * Math.PI * 2,
-              xOff: Math.random() * 1.4 - 0.7,
-            });
-            playSampleOneShot(PICKUP_SFX, 0.4, 0.9 + Math.min(0.6, attached.length * 0.03));
-            for (let i = 0; i < 6; i++) {
+            if (attached.length < VISUAL_JUNK_CAP) {
+              attached.push({
+                glyph: item.glyph,
+                ang: Math.random() * Math.PI * 2,
+                xOff: Math.random() * 1.4 - 0.7,
+              });
+            } else {
+              junkScale = Math.min(JUNK_SCALE_MAX, junkScale + JUNK_SCALE_STEP);
+            }
+            playSampleOneShot(
+              PICKUP_SFX,
+              0.4,
+              0.9 + Math.min(0.6, collected * 0.03),
+            );
+            for (let i = 0; i < 3; i++) {
               particles.push({
                 x: ix,
                 y: iy,
@@ -432,8 +493,9 @@ export function AccretionGame({
       ctx.fillRect(-8, -8, w + 16, h + 16);
 
       // Mowing stripes scroll with the course.
-      const stripeH = 90 * u;
-      const scroll = (ballD * u) % (stripeH * 2);
+      const stripeH = Math.max(8, 90 * u);
+      const stripeSpan = stripeH * 2;
+      const scroll = ((ballD * u) % stripeSpan + stripeSpan) % stripeSpan;
       ctx.fillStyle = p.grassStripe;
       for (let y = -stripeH * 2 + scroll; y < h + stripeH; y += stripeH * 2) {
         ctx.fillRect(-8, y, w + 16, stripeH);
@@ -447,15 +509,20 @@ export function AccretionGame({
         const d = ballD + (ballScreenY - sy) / u;
         if (d < 0) {
           const c0 = centerFrac(0) * w;
-          const hw0 = halfWidthFrac(0) * w;
+          const hw0 = Math.max(48, halfWidthFrac(0) * w);
           leftPts.push([c0 - hw0, sy]);
           rightPts.push([c0 + hw0, sy]);
           continue;
         }
         const c = centerFrac(d) * w;
-        const hw = halfWidthFrac(d) * w;
+        const hw = Math.max(48, halfWidthFrac(d) * w);
         leftPts.push([c - hw, sy]);
         rightPts.push([c + hw, sy]);
+      }
+      if (leftPts.length === 0) {
+        ctx.restore();
+        raf = requestAnimationFrame(loop);
+        return;
       }
       ctx.fillStyle = p.path;
       ctx.beginPath();
@@ -476,9 +543,9 @@ export function AccretionGame({
       }
 
       // Hedge bushes chained along both edges.
-      const hedgeGap = 46;
-      const dLo = Math.floor((ballD - (h - ballScreenY) / u) / hedgeGap) - 1;
-      const dHi = Math.ceil((ballD + ballScreenY / u) / hedgeGap) + 1;
+      const hedgeGap = 70;
+      const dLo = Math.max(0, Math.floor((ballD - (h - ballScreenY) / u) / hedgeGap) - 1);
+      const dHi = Math.min(dLo + 80, Math.ceil((ballD + ballScreenY / u) / hedgeGap) + 1);
       for (let k = dLo; k <= dHi; k++) {
         const d = k * hedgeGap;
         if (d < 0) continue;
@@ -497,8 +564,8 @@ export function AccretionGame({
       }
 
       // Park trees scattered outside the path.
-      const tLo = Math.floor((ballD - (h - ballScreenY) / u) / TREE_GAP) - 1;
-      const tHi = Math.ceil((ballD + ballScreenY / u) / TREE_GAP) + 1;
+      const tLo = Math.max(0, Math.floor((ballD - (h - ballScreenY) / u) / TREE_GAP) - 1);
+      const tHi = Math.min(tLo + 40, Math.ceil((ballD + ballScreenY / u) / TREE_GAP) + 1);
       for (let k = tLo; k <= tHi; k++) {
         const d = k * TREE_GAP + hash01(courseSeed, k, 7) * TREE_GAP * 0.5;
         if (d < 0) continue;
@@ -531,7 +598,8 @@ export function AccretionGame({
         if (sy < -40 * u || sy > h + 40 * u) return;
         const c = centerFrac(fd) * w;
         const hw = halfWidthFrac(fd) * w;
-        const cell = 12 * u;
+        const cell = Math.max(4, 12 * u);
+        if (hw <= 0) return;
         for (let row = 0; row < 2; row++) {
           for (let x = c - hw; x < c + hw; x += cell) {
             const odd = (Math.floor(x / cell) + row) % 2 === 0;
@@ -547,8 +615,8 @@ export function AccretionGame({
       }
 
       // Junk on the path.
-      const jLo = Math.floor((ballD - (h - ballScreenY) / u) / ITEM_GAP) - 1;
-      const jHi = Math.ceil((ballD + ballScreenY / u) / ITEM_GAP) + 1;
+      const jLo = Math.max(0, Math.floor((ballD - (h - ballScreenY) / u) / ITEM_GAP) - 1);
+      const jHi = Math.min(jLo + 60, Math.ceil((ballD + ballScreenY / u) / ITEM_GAP) + 1);
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       for (let s = jLo; s <= jHi; s++) {
@@ -568,12 +636,8 @@ export function AccretionGame({
         ctx.beginPath();
         ctx.arc(ix, iy + bob, 12.5 * u, 0, Math.PI * 2);
         ctx.fill();
-        ctx.save();
-        ctx.shadowColor = p.sparkle;
-        ctx.shadowBlur = 7 * u;
         ctx.font = `${Math.round(19 * u)}px sans-serif`;
         ctx.fillText(item.glyph, ix, iy + bob);
-        ctx.restore();
       }
 
       // The ball: white with rolling panel spots, junk orbiting Katamari-style.
@@ -616,8 +680,8 @@ export function AccretionGame({
         const sph = Math.sin(ph);
         const cph = Math.cos(ph);
         if (cph < -0.35) continue; // hidden behind the ball
-        const scale = 0.6 + 0.4 * Math.max(0, cph);
-        ctx.font = `${Math.round(13 * u * scale)}px sans-serif`;
+        const scale = (0.7 + 0.45 * Math.max(0, cph)) * junkScale;
+        ctx.font = `${Math.round(Math.max(22 * u, r * 0.48) * scale)}px sans-serif`;
         ctx.globalAlpha = (flicker ? 0.45 : 1) * (0.7 + 0.3 * Math.max(0, cph));
         ctx.fillText(
           item.glyph,
@@ -690,7 +754,7 @@ export function AccretionGame({
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, []);
+  }, [layoutReady]);
 
   return (
     <canvas

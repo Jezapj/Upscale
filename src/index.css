@@ -82,7 +82,16 @@ body {
   background-position:
     0 0,
     0 0;
-  background-attachment: fixed;
+  /* `fixed` is a known mobile paint hitch (worse with the dark multi-layer theme). */
+  background-attachment: scroll;
+}
+
+@media (min-width: 720px), (orientation: landscape) and (min-height: 420px) {
+  .paper-bg,
+  .scroll-fade::before,
+  .scroll-fade::after {
+    background-attachment: fixed;
+  }
 }
 
 .paper-bg {

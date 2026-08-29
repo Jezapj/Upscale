@@ -74,6 +74,9 @@ function useContainerSize(ref: React.RefObject<HTMLDivElement | null>) {
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
+      // Orientation lock / flex layout can briefly report 0. Keep the last
+      // real size so games don't start (or wipe the canvas) on a 0×0 frame.
+      if (width < 32 || height < 32) return;
       setSize({ width: Math.floor(width), height: Math.floor(height) });
     });
     ro.observe(el);
@@ -760,7 +763,7 @@ export function GameShell({
             </div>
           )}
 
-          {started && size.width > 0 && playMode && (
+          {started && size.width >= 32 && size.height >= 32 && playMode && (
             <>
               {children({
                 ...size,

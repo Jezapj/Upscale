@@ -70,7 +70,7 @@ export const GAMES: GameMeta[] = [
     name: "Accretion",
     tagline: "Roll the park clean before time runs out",
     color: "#5cb85c",
-    controls: "Swipe left / right (or A/D) to steer the rolling ball - collect junk to grow, don't clip the path edges",
+    controls: "Swipe: sideways to steer, upward to speed up (or A/D · ▲) - collect junk to grow, don't clip the path edges",
   },
 ];
 

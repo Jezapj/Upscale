@@ -10,7 +10,7 @@ import {
   SAMPLE_SRC,
   unlockGameAudio,
 } from "./gameAudio";
-import { frameDecay, frameScale, MAX_PHYSICS_STEPS, renderLerp } from "./gameLoop";
+import { canvasDpr, frameDecay, frameScale, MAX_PHYSICS_STEPS, renderLerp } from "./gameLoop";
 
 interface Props {
   width: number;
@@ -2741,7 +2741,7 @@ export function TipTopGame({
       if (w === canvasW && h === canvasH) return;
       canvasW = w;
       canvasH = h;
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasDpr();
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

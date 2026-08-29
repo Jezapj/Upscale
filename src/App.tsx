@@ -143,7 +143,7 @@ function AppShell() {
       <ThemeSyncEffect />
       <BackgroundMusicPlayer />
       <UiTapSound />
-      <BackgroundDecor />
+      <BackgroundDecor paused={isPlayingGame} />
       <TokenEarnToast />
       <div className="relative z-10 flex flex-1 flex-col overflow-hidden">
         {kudosNote && location.pathname === "/" && (

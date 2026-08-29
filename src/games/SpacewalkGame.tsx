@@ -7,7 +7,7 @@ import {
   SAMPLE_SRC,
   unlockGameAudio,
 } from "./gameAudio";
-import { frameDecay, frameScale } from "./gameLoop";
+import { canvasDpr, frameDecay, frameScale } from "./gameLoop";
 import type { PlayMode } from "./GameShell";
 
 interface Props {
@@ -50,6 +50,8 @@ interface Rocket {
   phase: number;
   warned: boolean;
   smokeAcc: number;
+  /** Time since launch, in milliseconds. */
+  ageMs: number;
 }
 
 interface Portal {
@@ -104,6 +106,10 @@ const BRAKE_MAX = 5;
 const BRAKE_DECAY = 0.94;
 /** How long a bay stays destroyed after a rocket is flipped back into it. */
 const BAY_DOWN_MS = 8000;
+/** Half-width of a launch-bay hit box (world units). */
+const BAY_HIT_HALF = 42;
+/** Rockets self-destruct after this many milliseconds in play. */
+const ROCKET_LIFETIME_MS = 8000;
 /** No portals above this screen fraction (dotted limit line). */
 const PORTAL_CEILING_FRAC = 0.32;
 /** Max portal half-length as a fraction of screen width (full span = half screen). */
@@ -228,7 +234,7 @@ export function SpacewalkGame({
       if (w === canvasW && h === canvasH) return;
       canvasW = w;
       canvasH = h;
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasDpr();
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -325,6 +331,7 @@ export function SpacewalkGame({
         phase,
         warned: false,
         smokeAcc: 0,
+        ageMs: 0,
       });
     };
 
@@ -648,6 +655,7 @@ export function SpacewalkGame({
             r.vy = Math.max(-maxRise, Math.min(maxFall, r.vy));
             r.y += r.vy * dt;
             r.x += r.vx * dt;
+            r.ageMs += dt * (1000 / 60);
             // Ricochet off the side walls.
             const m = 12 * u;
             if (r.x < m) {
@@ -668,7 +676,7 @@ export function SpacewalkGame({
             if (r.vy < 0 && r.y <= stationH() + 12 * u) {
               let hitBay = -1;
               for (let b = 0; b < BAY_COUNT; b++) {
-                if (bayEnabled(b) && Math.abs(r.x - bayX(b)) < 24 * u) {
+                if (bayEnabled(b) && Math.abs(r.x - bayX(b)) < BAY_HIT_HALF * u) {
                   hitBay = b;
                   break;
                 }
@@ -728,6 +736,12 @@ export function SpacewalkGame({
             if (r.y >= h - 4 * u) {
               loseAt(r.x, h - 10 * u);
               break;
+            }
+            if (r.ageMs >= ROCKET_LIFETIME_MS) {
+              burst(r.x, r.y, ["#ff8a4a", "#ffd76e", p.stationLight, "#ffffff"], 16, 3 * u);
+              playSampleOneShot(SAMPLE_SRC.octaneHit, 0.28, 0.85);
+              rockets.splice(ri, 1);
+              continue;
             }
 
             // Smoke trail from the engine.
@@ -913,7 +927,7 @@ export function SpacewalkGame({
         const bx = bayX(i);
         const enabled = bayEnabled(i);
         ctx.fillStyle = enabled ? "rgba(0,0,0,0.35)" : "rgba(0,0,0,0.6)";
-        ctx.fillRect(bx - 12 * u, sh - 10 * u, 24 * u, 10 * u);
+        ctx.fillRect(bx - 18 * u, sh - 10 * u, 36 * u, 10 * u);
         if (enabled) {
           const blink = 0.35 + 0.65 * Math.abs(Math.sin(now * 0.003 + i * 1.3));
           ctx.globalAlpha = blink;

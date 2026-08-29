@@ -12,7 +12,7 @@ import {
   unlockGameAudio,
 } from "./gameAudio";
 import { DISSIADA_COMBO_VISUALS } from "./gameSoundConfigs";
-import { frameScale } from "./gameLoop";
+import { canvasDpr, frameScale } from "./gameLoop";
 
 interface Props {
   width: number;
@@ -148,7 +148,7 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
       if (w === canvasW && h === canvasH) return;
       canvasW = w;
       canvasH = h;
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = canvasDpr();
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

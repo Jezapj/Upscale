@@ -16,3 +16,8 @@ export function frameDecay(basePerFrame: number, dt: number): number {
 export function renderLerp(prev: number, current: number, accum: number): number {
   return prev + (current - prev) * (1 - accum);
 }
+
+/** Cap backing-store DPR so 3x phones don't paint 9× the pixels. */
+export function canvasDpr(): number {
+  return Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+}

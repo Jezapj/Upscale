@@ -109,9 +109,13 @@ const ITEMS: Item[] = [
   { Comp: D.Drop, c: CORAL, size: 22, left: "20%", top: "44%", rot: -20, delay: "2.2s" },
 ];
 
-export function BackgroundDecor() {
+export function BackgroundDecor({ paused = false }: { paused?: boolean }) {
   return (
-    <div className="paper-bg pointer-events-none overflow-hidden">
+    <div
+      className="paper-bg pointer-events-none overflow-hidden"
+      hidden={paused}
+      aria-hidden={paused}
+    >
       {ITEMS.map((it, i) => (
         <span
           key={i}
