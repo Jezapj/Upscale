@@ -117,6 +117,28 @@ export default defineConfig(({ mode }) => {
         "@": path.resolve(__dirname, "./src"),
       },
     },
+    build: {
+      chunkSizeWarningLimit: 800,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            const file = id.replaceAll("\\", "/");
+            if (!file.includes("node_modules/")) return;
+            if (file.includes("firebase") || file.includes("@firebase")) return "firebase";
+            if (file.includes("@revenuecat")) return "revenuecat";
+            if (file.includes("lucide-react")) return "lucide";
+            if (
+              file.includes("/react-dom/") ||
+              file.includes("/react-router") ||
+              file.includes("/scheduler/") ||
+              file.includes("/node_modules/react/")
+            ) {
+              return "react";
+            }
+          },
+        },
+      },
+    },
     plugins: [
       react(),
       firebaseSwConfigPlugin(env),
@@ -234,6 +256,7 @@ export default defineConfig(({ mode }) => {
           navigateFallbackDenylist: [/^\/seo\.html$/, /^\/robots\.txt$/, /^\/sitemap\.xml$/],
           cleanupOutdatedCaches: true,
           importScripts: ["sw-firebase-config.js", "sw-notifications.js"],
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         },
         devOptions: {
           enabled: true,

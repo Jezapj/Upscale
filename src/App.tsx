@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -29,14 +29,47 @@ import { LibraryScreen } from "@/screens/LibraryScreen";
 import { NotesScreen } from "@/screens/NotesScreen";
 import { GamesScreen } from "@/screens/GamesScreen";
 import { FriendsScreen } from "@/screens/FriendsScreen";
-import { TipTopScreen } from "@/screens/games/TipTopScreen";
-import { OctaneScreen } from "@/screens/games/OctaneScreen";
-import { DissiadaScreen } from "@/screens/games/DissiadaScreen";
-import { DaybreakScreen } from "@/screens/games/DaybreakScreen";
-import { SpacewalkScreen } from "@/screens/games/SpacewalkScreen";
-import { AccretionScreen } from "@/screens/games/AccretionScreen";
 import { ProgressScreen } from "@/screens/ProgressScreen";
 import { LoadingScreen } from "@/components/LoadingScreen";
+
+const TipTopScreen = lazy(() =>
+  import("@/screens/games/TipTopScreen").then((m) => ({ default: m.TipTopScreen })),
+);
+const OctaneScreen = lazy(() =>
+  import("@/screens/games/OctaneScreen").then((m) => ({ default: m.OctaneScreen })),
+);
+const DissiadaScreen = lazy(() =>
+  import("@/screens/games/DissiadaScreen").then((m) => ({ default: m.DissiadaScreen })),
+);
+const DaybreakScreen = lazy(() =>
+  import("@/screens/games/DaybreakScreen").then((m) => ({ default: m.DaybreakScreen })),
+);
+const SpacewalkScreen = lazy(() =>
+  import("@/screens/games/SpacewalkScreen").then((m) => ({ default: m.SpacewalkScreen })),
+);
+const AccretionScreen = lazy(() =>
+  import("@/screens/games/AccretionScreen").then((m) => ({ default: m.AccretionScreen })),
+);
+
+function GameRouteFallback() {
+  return (
+    <div
+      className="flex flex-1 items-center justify-center"
+      role="status"
+      aria-live="polite"
+      aria-label="Loading game"
+    >
+      <img
+        src="/Upscale.png"
+        alt=""
+        width={80}
+        height={80}
+        draggable={false}
+        className="loading-logo"
+      />
+    </div>
+  );
+}
 import { useScreenOrientation } from "@/hooks/useScreenOrientation";
 import { setAppBadgeCount } from "@/lib/appBadge";
 import { isDueToday } from "@/lib/frequency";
@@ -190,12 +223,54 @@ function AppShell() {
           <Route path="/notes" element={<NotesScreen />} />
           <Route path="/games" element={<GamesScreen />} />
           <Route path="/friends" element={<FriendsScreen />} />
-          <Route path="/games/tiptop" element={<TipTopScreen />} />
-          <Route path="/games/octane" element={<OctaneScreen />} />
-          <Route path="/games/dissiada" element={<DissiadaScreen />} />
-          <Route path="/games/daybreak" element={<DaybreakScreen />} />
-          <Route path="/games/spacewalk" element={<SpacewalkScreen />} />
-          <Route path="/games/accretion" element={<AccretionScreen />} />
+          <Route
+            path="/games/tiptop"
+            element={
+              <Suspense fallback={<GameRouteFallback />}>
+                <TipTopScreen />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/games/octane"
+            element={
+              <Suspense fallback={<GameRouteFallback />}>
+                <OctaneScreen />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/games/dissiada"
+            element={
+              <Suspense fallback={<GameRouteFallback />}>
+                <DissiadaScreen />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/games/daybreak"
+            element={
+              <Suspense fallback={<GameRouteFallback />}>
+                <DaybreakScreen />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/games/spacewalk"
+            element={
+              <Suspense fallback={<GameRouteFallback />}>
+                <SpacewalkScreen />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/games/accretion"
+            element={
+              <Suspense fallback={<GameRouteFallback />}>
+                <AccretionScreen />
+              </Suspense>
+            }
+          />
           <Route path="/progress" element={<ProgressScreen />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
