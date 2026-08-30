@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Pause } from "lucide-react";
 import type { GameId } from "@/lib/types";
-import { GAME_BY_ID } from "@/lib/games";
+import { GAME_BY_ID, UNLIMITED_PLAYS } from "@/lib/games";
 import { GamePaletteProvider } from "./GamePaletteContext";
 import type { GameResult } from "./gameResult";
 import { useStore } from "@/store/useStore";
@@ -57,6 +57,8 @@ interface Props {
     seed?: number;
     /** TipTop ghost flap trace to race against. */
     ghostTrace?: number[];
+    /** First successful frame: lock daily / spend the endless token. */
+    onLive: () => void;
   }) => React.ReactNode;
   /** Custom practice lobby (e.g. Octane mode picker). Call `start()` when ready. */
   renderPracticeLobby?: (start: () => void) => React.ReactNode;
@@ -109,6 +111,9 @@ export function GameShell({
   const meta = GAME_BY_ID[gameId];
   const containerRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false);
+  /** Charge daily lock / endless token only after the canvas is actually live. */
+  const pendingChargeRef = useRef<null | "daily" | "practice">(null);
+  const liveCommittedRef = useRef(false);
   const size = useContainerSize(containerRef);
 
   const [playMode, setPlayMode] = useState<PlayMode | null>(null);
@@ -222,6 +227,8 @@ export function GameShell({
   const goArcade = useCallback(() => nav("/games"), [nav]);
 
   const resetToLobby = useCallback(() => {
+    pendingChargeRef.current = null;
+    liveCommittedRef.current = false;
     onSessionReset?.();
     startedRef.current = false;
     setStarted(false);
@@ -238,6 +245,7 @@ export function GameShell({
   const beginRun = useCallback((mode: PlayMode) => {
     if (startedRef.current) return;
     startedRef.current = true;
+    liveCommittedRef.current = false;
     setPlayMode(mode);
     setStarted(true);
     setPaused(false);
@@ -245,6 +253,27 @@ export function GameShell({
     setIsNewBest(false);
     setShowPracticePicker(false);
   }, []);
+
+  const commitCharge = useCallback(() => {
+    if (liveCommittedRef.current) return;
+    const kind = pendingChargeRef.current;
+    if (!kind) return;
+    pendingChargeRef.current = null;
+    liveCommittedRef.current = true;
+    if (kind === "daily") {
+      markDailyPlayed(gameId, 0);
+      return;
+    }
+    const state = useStore.getState().data;
+    if (state.gamePremium || UNLIMITED_PLAYS) return;
+    if (!consumePlay(gameId)) {
+      resetToLobby();
+    }
+  }, [consumePlay, gameId, markDailyPlayed, resetToLobby]);
+
+  const onLive = useCallback(() => {
+    commitCharge();
+  }, [commitCharge]);
 
   const startDaily = useCallback(async () => {
     if (user && isGoogle) {
@@ -255,16 +284,23 @@ export function GameShell({
       }
     }
     if (hasPlayedDaily(useStore.getState().data, gameId, todayKey())) return;
-    markDailyPlayed(gameId, 0);
+    pendingChargeRef.current = "daily";
     beginRun("daily");
-  }, [beginRun, gameId, isGoogle, markDailyPlayed, user]);
+    if (gameId !== "accretion") commitCharge();
+  }, [beginRun, commitCharge, gameId, isGoogle, markDailyPlayed, user]);
 
   const startEndlessDirect = useCallback(() => {
     if (!isPro && endlessLeft <= 0) {
       return;
     }
-    if (!consumePlay(gameId)) {
-      return;
+    pendingChargeRef.current = "practice";
+    if (gameId !== "accretion") {
+      if (!consumePlay(gameId)) {
+        pendingChargeRef.current = null;
+        return;
+      }
+      liveCommittedRef.current = true;
+      pendingChargeRef.current = null;
     }
     beginRun("practice");
   }, [beginRun, consumePlay, endlessLeft, gameId, isPro]);
@@ -723,8 +759,14 @@ export function GameShell({
                       if (!isPro && endlessLeft <= 0) {
                         return;
                       }
-                      if (!consumePlay(gameId)) {
-                        return;
+                      pendingChargeRef.current = "practice";
+                      if (gameId !== "accretion") {
+                        if (!consumePlay(gameId)) {
+                          pendingChargeRef.current = null;
+                          return;
+                        }
+                        liveCommittedRef.current = true;
+                        pendingChargeRef.current = null;
                       }
                       onSessionReset?.();
                       setResult(null);
@@ -735,6 +777,7 @@ export function GameShell({
                         startedRef.current = false;
                         setStarted(false);
                       } else {
+                        startedRef.current = false;
                         beginRun("practice");
                       }
                     }}
@@ -770,6 +813,7 @@ export function GameShell({
                 onGameOver,
                 paused,
                 playMode,
+                onLive,
                 seed: playMode === "daily" ? daySeed : undefined,
                 ghostTrace:
                   gameId === "tiptop" && raceGhost ? ghostTrace : undefined,

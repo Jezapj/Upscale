@@ -19,6 +19,8 @@ interface Props {
   /** Course layout seed (daily challenge). */
   seed?: number;
   playMode: PlayMode;
+  /** Called once the park has actually painted. */
+  onLive?: () => void;
 }
 
 /** Park rubbish that accretes onto the ball. */
@@ -79,6 +81,25 @@ function smoothstep(t: number): number {
   return t * t * (3 - 2 * t);
 }
 
+/** Oval via arc+scale so iOS Safari never throws on missing ctx.ellipse. */
+function fillOval(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  rx: number,
+  ry: number,
+) {
+  const radX = Math.max(0.5, rx);
+  const radY = Math.max(0.5, ry);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(radX, radY);
+  ctx.beginPath();
+  ctx.arc(0, 0, 1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 /**
  * Accretion: a soccer ball rolls up a zigzagging park path on its own; swipe
  * to steer, roll over rubbish to grow it Katamari-style, and reach the finish
@@ -91,6 +112,7 @@ export function AccretionGame({
   paused = false,
   seed,
   playMode,
+  onLive,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const palette = useGamePalette();
@@ -100,6 +122,7 @@ export function AccretionGame({
   const pausedRef = useRef(paused);
   const seedRef = useRef(seed);
   const modeRef = useRef(playMode);
+  const onLiveRef = useRef(onLive);
 
   sizeRef.current = { width, height };
   onGameOverRef.current = onGameOver;
@@ -107,6 +130,7 @@ export function AccretionGame({
   pausedRef.current = paused;
   seedRef.current = seed;
   modeRef.current = playMode;
+  onLiveRef.current = onLive;
 
   const layoutReady = width >= 32 && height >= 32;
 
@@ -145,7 +169,10 @@ export function AccretionGame({
         ? seedRef.current >>> 0
         : (Date.now() & 0xffffffff) >>> 0;
 
-    const unit = () => Math.max(0.5, sizeRef.current.height / 640);
+    const unit = () => {
+      const h = sizeRef.current.height;
+      return Math.max(0.5, (h >= 32 ? h : canvas.clientHeight) / 640);
+    };
 
     // ----- Course geometry (world units along the course, seed-derived) -----
 
@@ -167,7 +194,8 @@ export function AccretionGame({
     };
 
     /** Path half-width (fraction of width): narrows within and across loops. */
-    const halfWidthFrac = (d: number): number => {
+    const halfWidthFrac = (dRaw: number): number => {
+      const d = Number.isFinite(dRaw) ? Math.max(0, dRaw) : 0;
       const loop = Math.floor(d / COURSE_LEN);
       const t = (d % COURSE_LEN) / COURSE_LEN;
       const start = Math.max(0.24, 0.34 - loop * 0.012);
@@ -221,6 +249,7 @@ export function AccretionGame({
     let activePointer: number | null = null;
     let laidOut = false;
     let thrust = 0;
+    let wentLive = false;
 
     const ballRadius = () => {
       const u = unit();
@@ -332,23 +361,23 @@ export function AccretionGame({
     const loop = (now: number) => {
       if (!alive) return;
 
+      try {
       const dt = frameScale(now - lastFrame);
       lastFrame = now;
-      const { width: w, height: h } = sizeRef.current;
+      // Shell size is authoritative; clientWidth/Height only as a fallback.
+      // Comparisons are written so NaN fails (NaN < 32 would pass).
+      const shellW = sizeRef.current.width;
+      const shellH = sizeRef.current.height;
+      const w = shellW >= 32 ? shellW : canvas.clientWidth;
+      const h = shellH >= 32 ? shellH : canvas.clientHeight;
+      if (!(w >= 32) || !(h >= 32)) return;
       resizeCanvas(w, h);
-      // Wait until the shell has a real canvas. A 0-height first frame
-      // makes unit() = 0, which turns `x += cell` into an infinite loop
-      // and never draws the path.
-      if (w < 8 || h < 8) {
-        raf = requestAnimationFrame(loop);
-        return;
-      }
       if (!laidOut) {
         ballX = w / 2;
         laidOut = true;
         lastFrame = now;
       }
-      const u = unit();
+      const u = Math.max(0.5, h / 640);
       const p = paletteRef.current.accretion;
       const ballScreenY = h * 0.72;
       const r = ballRadius();
@@ -381,6 +410,12 @@ export function AccretionGame({
         ballX += vx * dt;
         // Low friction: swipes leave lasting momentum you must counter-swipe.
         vx *= frameDecay(0.975, dt);
+        // One bad number used to blank the whole course; never let it persist.
+        if (!Number.isFinite(ballD)) ballD = 0;
+        if (!Number.isFinite(ballX)) ballX = w / 2;
+        if (!Number.isFinite(vx)) vx = 0;
+        if (!Number.isFinite(thrust)) thrust = 0;
+        if (!Number.isFinite(ballRot)) ballRot = 0;
         if (iframes > 0) iframes -= dt;
         if (shake > 0) shake = Math.max(0, shake - dt);
 
@@ -400,7 +435,9 @@ export function AccretionGame({
         const c = centerFrac(ballD) * w;
         const halfW = halfWidthFrac(ballD) * w;
         const limit = halfW - r;
-        if (Math.abs(ballX - c) > limit) {
+        if (limit < 8) {
+          ballX += (c - ballX) * Math.min(1, 0.15 * dt);
+        } else if (Math.abs(ballX - c) > limit) {
           ballX = c + Math.sign(ballX - c) * limit;
           vx = -vx * 0.55;
           if (iframes <= 0) {
@@ -428,8 +465,14 @@ export function AccretionGame({
         }
 
         // Junk pickups around the ball's course position.
-        const slotLo = Math.floor((ballD - r / u - ITEM_GAP) / ITEM_GAP);
-        const slotHi = Math.ceil((ballD + r / u + ITEM_GAP) / ITEM_GAP);
+        const slotLo = Math.max(
+          0,
+          Math.floor((ballD - r / u - ITEM_GAP) / ITEM_GAP),
+        );
+        const slotHi = Math.min(
+          slotLo + 16,
+          Math.ceil((ballD + r / u + ITEM_GAP) / ITEM_GAP),
+        );
         for (let s = slotLo; s <= slotHi; s++) {
           if (takenSlots.has(s)) continue;
           const item = junkAt(s);
@@ -508,36 +551,36 @@ export function AccretionGame({
       const leftPts: [number, number][] = [];
       const rightPts: [number, number][] = [];
       for (let sy = -step; sy <= h + step; sy += step) {
-        const d = ballD + (ballScreenY - sy) / u;
-        if (d < 0) {
-          const c0 = centerFrac(0) * w;
-          const hw0 = Math.max(48, halfWidthFrac(0) * w);
-          leftPts.push([c0 - hw0, sy]);
-          rightPts.push([c0 + hw0, sy]);
-          continue;
-        }
-        const c = centerFrac(d) * w;
-        const hw = Math.max(48, halfWidthFrac(d) * w);
+        const dRaw = ballD + (ballScreenY - sy) / u;
+        const d = Number.isFinite(dRaw) ? Math.max(0, dRaw) : 0;
+        const cRaw = centerFrac(d) * w;
+        const c = Number.isFinite(cRaw) ? cRaw : w / 2;
+        const hwRaw = halfWidthFrac(d) * w;
+        const hw = Number.isFinite(hwRaw) ? Math.max(48, hwRaw) : w * 0.3;
         leftPts.push([c - hw, sy]);
         rightPts.push([c + hw, sy]);
       }
-      if (leftPts.length === 0) {
-        ctx.restore();
-        raf = requestAnimationFrame(loop);
-        return;
+      if (leftPts.length > 0) {
+        ctx.fillStyle = p.path;
+        ctx.beginPath();
+        ctx.moveTo(leftPts[0][0], leftPts[0][1]);
+        for (const [x, y] of leftPts) ctx.lineTo(x, y);
+        for (let i = rightPts.length - 1; i >= 0; i--) {
+          ctx.lineTo(rightPts[i][0], rightPts[i][1]);
+        }
+        ctx.closePath();
+        ctx.fill();
       }
-      ctx.fillStyle = p.path;
-      ctx.beginPath();
-      ctx.moveTo(leftPts[0][0], leftPts[0][1]);
-      for (const [x, y] of leftPts) ctx.lineTo(x, y);
-      for (let i = rightPts.length - 1; i >= 0; i--) ctx.lineTo(rightPts[i][0], rightPts[i][1]);
-      ctx.closePath();
-      ctx.fill();
+      if (!wentLive) {
+        wentLive = true;
+        onLiveRef.current?.();
+      }
 
       // Packed-dirt edge lines.
       ctx.strokeStyle = p.pathEdge;
       ctx.lineWidth = 5 * u;
       for (const pts of [leftPts, rightPts]) {
+        if (pts.length === 0) continue;
         ctx.beginPath();
         ctx.moveTo(pts[0][0], pts[0][1]);
         for (const [x, y] of pts) ctx.lineTo(x, y);
@@ -579,9 +622,7 @@ export function AccretionGame({
         if (tx < -30 * u || tx > w + 30 * u) continue;
         const tr = (16 + hash01(courseSeed, k, 9) * 10) * u;
         ctx.fillStyle = "rgba(0,0,0,0.15)";
-        ctx.beginPath();
-        ctx.ellipse(tx, sy + tr * 1.15, tr * 0.9, tr * 0.28, 0, 0, Math.PI * 2);
-        ctx.fill();
+        fillOval(ctx, tx, sy + tr * 1.15, tr * 0.9, tr * 0.28);
         ctx.fillStyle = "#7a5230";
         ctx.fillRect(tx - 2.5 * u, sy + tr * 0.4, 5 * u, tr * 0.7);
         ctx.fillStyle = p.hedgeDark;
@@ -629,9 +670,7 @@ export function AccretionGame({
         const iy = ballScreenY - (item.d - ballD) * u;
         if (iy < -30 * u || iy > h + 30 * u) continue;
         ctx.fillStyle = "rgba(0,0,0,0.14)";
-        ctx.beginPath();
-        ctx.ellipse(ix, iy + 9 * u, 10 * u, 4 * u, 0, 0, Math.PI * 2);
-        ctx.fill();
+        fillOval(ctx, ix, iy + 9 * u, 10 * u, 4 * u);
         // Bright halo so trash pops against the path.
         const bob = Math.sin(now * 0.004 + item.slot) * 1.5 * u;
         ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
@@ -646,9 +685,7 @@ export function AccretionGame({
       const flicker = iframes > 0 && Math.floor(now / 80) % 2 === 0;
       ctx.globalAlpha = flicker ? 0.45 : 1;
       ctx.fillStyle = "rgba(0,0,0,0.18)";
-      ctx.beginPath();
-      ctx.ellipse(ballX, ballScreenY + r * 0.92, r * 0.85, r * 0.3, 0, 0, Math.PI * 2);
-      ctx.fill();
+      fillOval(ctx, ballX, ballScreenY + r * 0.92, r * 0.85, r * 0.3);
       ctx.fillStyle = p.ball;
       ctx.beginPath();
       ctx.arc(ballX, ballScreenY, r, 0, Math.PI * 2);
@@ -742,8 +779,16 @@ export function AccretionGame({
       ctx.fillStyle = p.finish;
       ctx.fillRect(w / 2 - barW / 2, 60 * u, barW * progress, 4 * u);
       ctx.textAlign = "left";
-
-      raf = requestAnimationFrame(loop);
+      } catch {
+        /* Keep the loop alive: a single canvas exception used to freeze the park. */
+        try {
+          ctx.restore();
+        } catch {
+          /* ignore */
+        }
+      } finally {
+        if (alive) raf = requestAnimationFrame(loop);
+      }
     };
 
     raf = requestAnimationFrame(loop);
@@ -761,7 +806,7 @@ export function AccretionGame({
   return (
     <canvas
       ref={canvasRef}
-      className="block h-full w-full touch-none select-none"
+      className="block touch-none select-none"
       style={{ width, height }}
     />
   );
