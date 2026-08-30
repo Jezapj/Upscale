@@ -2,6 +2,7 @@ import { useNavigate, useLocation, NavLink } from "react-router-dom";
 import { Home, Gamepad2, Trophy, Smile, LayoutGrid } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { dockNext, dockPrev } from "@/lib/dock";
+import { hapticLight } from "@/lib/haptic";
 
 interface Item {
   to: string;
@@ -22,8 +23,14 @@ export function Dock() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
 
-  const goPrev = () => navigate(dockPrev(pathname));
-  const goNext = () => navigate(dockNext(pathname));
+  const goPrev = () => {
+    hapticLight();
+    navigate(dockPrev(pathname));
+  };
+  const goNext = () => {
+    hapticLight();
+    navigate(dockNext(pathname));
+  };
 
   return (
     <nav className="relative z-50 px-4 pb-[max(0.85rem,env(safe-area-inset-bottom))] pt-1 no-select">
@@ -58,6 +65,7 @@ export function Dock() {
               end={item.to === "/"}
               className="relative flex flex-1 items-center justify-center py-1"
               data-sfx="tapLow"
+              onClick={() => hapticLight()}
             >
               {({ isActive }) => (
                 <span

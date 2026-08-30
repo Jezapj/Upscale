@@ -9,6 +9,7 @@ import {
 } from "./gameAudio";
 import { canvasDpr, frameDecay, frameScale } from "./gameLoop";
 import type { PlayMode } from "./GameShell";
+import { hapticExplode } from "@/lib/haptic";
 
 interface Props {
   width: number;
@@ -685,6 +686,7 @@ export function SpacewalkGame({
                 bayDownUntil[hitBay] = elapsedMs + BAY_DOWN_MS;
                 burst(bayX(hitBay), stationH(), ["#ff8a4a", "#ffd76e", p.stationLight, "#ffffff"], 22, 3.4 * u);
                 playSampleOneShot(SAMPLE_SRC.octaneHit, 0.45, 1.25);
+                hapticExplode();
                 rockets.splice(ri, 1);
                 continue;
               }
@@ -740,6 +742,7 @@ export function SpacewalkGame({
             if (r.ageMs >= ROCKET_LIFETIME_MS) {
               burst(r.x, r.y, ["#ff8a4a", "#ffd76e", p.stationLight, "#ffffff"], 16, 3 * u);
               playSampleOneShot(SAMPLE_SRC.octaneHit, 0.28, 0.85);
+              hapticExplode();
               rockets.splice(ri, 1);
               continue;
             }

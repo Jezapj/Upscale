@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useControls } from "@/store/useControls";
 import { useMasterMute } from "@/store/useMasterMute";
 import { dockNext, dockPrev } from "@/lib/dock";
+import { hapticLight } from "@/lib/haptic";
 
 function isTypingTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -56,10 +57,12 @@ export function useKeyboardControls() {
         e.preventDefault();
         keysRef.current.add(key);
         if (lHeld) {
+          hapticLight();
           navigate(dockPrev(pathname));
           return;
         }
         if (rHeld) {
+          hapticLight();
           navigate(dockNext(pathname));
           return;
         }

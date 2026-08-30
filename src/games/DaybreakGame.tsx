@@ -19,6 +19,7 @@ import {
 import { ELEVATION_SPAN } from "./daybreak/musicTheory";
 import { SHOW_NEAR_BACKGROUND } from "./daybreak/config";
 import { canvasDpr } from "./gameLoop";
+import { hapticDefeat, hapticMedium, hapticPulse } from "@/lib/haptic";
 
 interface Props {
   width: number;
@@ -468,6 +469,7 @@ export function DaybreakGame({
       bestX = Math.max(bestX, xOf(simTime));
       audio.stopTrack();
       audio.death();
+      hapticDefeat();
       explode(xOf(simTime) + 0.5, py);
       afterimages = [];
     };
@@ -523,6 +525,7 @@ export function DaybreakGame({
       if (useDouble) {
         doubleJumpReady = false;
         spawnCrack(xOf(simTime) + 0.5, py);
+        hapticMedium();
       }
 
       vy = jumpVel;
@@ -602,6 +605,7 @@ export function DaybreakGame({
       rainbowStartedAt = performance.now();
       rainbowUntil = rainbowStartedAt + RAINBOW_FLASH_S * 1000;
       audio.padBoost(clampElev(row));
+      hapticMedium();
       spawnBurst(
         xOf(simTime) + 0.5,
         row,
@@ -1584,6 +1588,7 @@ export function DaybreakGame({
         updateCracks(frameDt);
 
         if (dropCharging && phase === "playing") {
+          hapticPulse("daybreak-drop", 170, 10);
           if (!dropBoostArmed && now - dropChargeStart >= DROP_CHARGE_MIN_MS) {
             dropBoostArmed = true;
             audio.landNote(clampElev(py));

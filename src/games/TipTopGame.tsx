@@ -11,6 +11,7 @@ import {
   unlockGameAudio,
 } from "./gameAudio";
 import { canvasDpr, frameDecay, frameScale, MAX_PHYSICS_STEPS, renderLerp } from "./gameLoop";
+import { hapticLight, hapticMedium, hapticZap } from "@/lib/haptic";
 
 interface Props {
   width: number;
@@ -2899,6 +2900,7 @@ export function TipTopGame({
       );
       flapImpacts.push({ forceX: impactDir.x, forceY: impactDir.y, ageMs: 0 });
       playTipTopFlap();
+      hapticLight();
     };
 
     const hitBtn = (
@@ -3017,6 +3019,7 @@ export function TipTopGame({
         if (!ends) continue;
         if (circleHitsSegment(px, py, ballR, ends.x0, ends.y0, ends.x1, ends.y1)) {
           playTipTopLaserZap();
+          hapticZap();
           resetBall();
           return false;
         }
@@ -3189,6 +3192,7 @@ export function TipTopGame({
               onGround = true;
               clearFrames = STAGE_CLEAR_FRAMES;
               playTipTopStageComplete();
+              hapticMedium();
             } else {
               py = surface - ballR;
               vy *= -0.15;

@@ -16,6 +16,7 @@ import {
   SAMPLE_SRC,
   unlockGameAudio,
 } from "./gameAudio";
+import { hapticLaunch, hapticLight, hapticThrottled } from "@/lib/haptic";
 import { canvasDpr } from "./gameLoop";
 
 interface Props {
@@ -1584,6 +1585,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       shiftFlash = perfect ? 40 : 18;
       gear++;
       playOctaneRevShift(gear);
+      hapticLight();
       if (perfect) playOctaneNitroPerfect();
       else if (rpm > SHIFT_PERFECT_MAX) playOctaneBadShift();
       rpm = perfect ? 3800 + gear * 100 : rpm > SHIFT_PERFECT_MAX ? 5200 : 4500;
@@ -1600,6 +1602,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       shiftQuality = 0;
       shiftFlash = 16;
       playOctaneRevShift(gear);
+      hapticLight();
       rpm = Math.min(RPM_MAX, rpm + 1800);
       const cap = GEAR_SPEED_CAP[gear - 1] ?? MPH_MAX;
       mph = Math.min(mph, cap);
@@ -1752,6 +1755,13 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         if (
           gasRef.current &&
           !gasWasDown &&
+          mph < 8
+        ) {
+          hapticLaunch();
+        }
+        if (
+          gasRef.current &&
+          !gasWasDown &&
           mph >= BOOST_LUNGE_TUNING.launchMinMph &&
           !burnoutAllowed(mph, burnoutPermanentlyDisabled)
         ) {
@@ -1879,6 +1889,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
             hitFlash = 18;
             if (o.kind === "oil") oilLockMs = 400;
             playOctaneHit();
+            hapticThrottled("octane-obstacle", 1600, 28);
             break;
           }
         }

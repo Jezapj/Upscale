@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Check, Home, Flame, StickyNote, Gamepad2 } from "lucide-react";
 import { useStore } from "@/store/useStore";
@@ -17,6 +17,7 @@ import { RATING_BY_KEY } from "@/lib/rating";
 import { tokensEarnedOnDate } from "@/lib/economy";
 import type { Rating, Routine } from "@/lib/types";
 import { useRegisterControls } from "@/store/useControls";
+import { hapticSuccess, hapticTick } from "@/lib/haptic";
 
 export function CheckinScreen() {
   const nav = useNavigate();
@@ -45,6 +46,7 @@ export function CheckinScreen() {
 
   const pick = (r: Rating) => {
     if (!current) return;
+    hapticTick();
     rate(current.id, r);
     setTimeout(() => setIndex((i) => i + 1), 240);
   };
@@ -241,6 +243,10 @@ function Summary({
   const priority = rated.filter((x) => x.entry?.rating === "no");
   const done = rated.filter((x) => x.entry?.completed).length;
   const earnedToday = tokensEarnedOnDate(data.wallet, key);
+
+  useEffect(() => {
+    hapticSuccess();
+  }, []);
 
   return (
     <div className="relative flex h-full flex-col">

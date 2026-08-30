@@ -9,6 +9,7 @@ import {
 } from "./gameAudio";
 import { canvasDpr, frameDecay, frameScale } from "./gameLoop";
 import type { PlayMode } from "./GameShell";
+import { hapticImpact } from "@/lib/haptic";
 
 interface Props {
   width: number;
@@ -407,6 +408,7 @@ export function AccretionGame({
             shake = 12;
             thrust = Math.max(0, thrust * 0.45);
             playSampleOneShot(SAMPLE_SRC.octaneHit, 0.4);
+            hapticImpact();
             // Knock up to 3 pieces of junk back off the ball.
             const dropped = attached.splice(Math.max(0, attached.length - 3), 3);
             junkScale = Math.max(1, junkScale - dropped.length * JUNK_SCALE_STEP);

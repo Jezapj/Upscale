@@ -11,8 +11,9 @@ import {
   stopDissiadaHold,
   unlockGameAudio,
 } from "./gameAudio";
-import { DISSIADA_COMBO_VISUALS } from "./gameSoundConfigs";
+import { DISSIADA_COMBO_HARMONICS, DISSIADA_COMBO_VISUALS } from "./gameSoundConfigs";
 import { canvasDpr, frameScale } from "./gameLoop";
+import { hapticMedium, hapticPulse } from "@/lib/haptic";
 
 interface Props {
   width: number;
@@ -249,7 +250,17 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
       return "ok";
     };
 
+    const comboSoundMilestone = (prev: number, next: number) => {
+      for (const harmonic of DISSIADA_COMBO_HARMONICS) {
+        if (prev < harmonic.minCombo && next >= harmonic.minCombo) {
+          hapticMedium();
+          return;
+        }
+      }
+    };
+
     const awardHit = (quality: JudgedQuality) => {
+      const prevCombo = combo;
       if (quality === "perfect") {
         score += 2;
         combo++;
@@ -260,6 +271,7 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
       maxCombo = Math.max(maxCombo, combo);
       notesHit += 1;
       speed = Math.min(12, 6.5 + score * 0.035);
+      comboSoundMilestone(prevCombo, combo);
     };
 
     const endRun = () => {
@@ -315,6 +327,7 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
         // Tail length ÷ scroll speed is how long the note will ring for.
         const holdMs = (target.holdLen / Math.max(0.5, speed)) * (1000 / 60);
         startDissiadaHold(lane, holdMs);
+        hapticPulse("dissiada-hold", 160, 10);
         pushFx(lane, quality, edgeHighlight, fullFlash);
         playDissiadaNote(lane, quality, noteCombo);
         awardHit(quality);
@@ -432,6 +445,7 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
               t.holdTicks += 1;
               score += 1;
               laneFlash[t.lane] = 10;
+              hapticPulse("dissiada-hold", 160, 10);
             }
             // Tail trails above the head; the hold ends once its top reaches the line.
             const tailTop = t.y - t.holdLen;
@@ -442,8 +456,10 @@ export function DissiadaGame({ width, height, onGameOver, paused = false, seed }
               stopDissiadaHold(t.lane);
               heldLanes[t.lane] = false;
               score += 2;
+              const prevCombo = combo;
               combo += 1;
               maxCombo = Math.max(maxCombo, combo);
+              comboSoundMilestone(prevCombo, combo);
               pushFx(t.lane, "perfect", true, false, "HOLD!");
             }
           }
