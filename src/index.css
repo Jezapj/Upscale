@@ -161,6 +161,22 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.8);
   }
 
+  /* Arcade hub: 4 capsules in one row; type and icons shrink together. */
+  .arcade-hub-row {
+    container-type: inline-size;
+    font-size: clamp(0.58rem, 3.35cqi, 0.8125rem);
+  }
+  .arcade-hub-btn {
+    @apply capsule inline-flex min-w-0 items-center justify-center whitespace-nowrap font-800 text-ink active:scale-95;
+    gap: 0.28em;
+    padding: 0.42em 0.4em;
+  }
+  .arcade-hub-btn svg {
+    width: 1.15em;
+    height: 1.15em;
+    flex-shrink: 0;
+  }
+
   /* Console-style button glyph: circled letter, embossed grey. */
   .glyph {
     @apply inline-flex items-center justify-center rounded-full text-[11px] font-900;

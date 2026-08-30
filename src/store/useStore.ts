@@ -31,6 +31,8 @@ import { markDailyPlayed as applyDailyPlayed } from "@/lib/dailyChallenge";
 import { alignGoogleUserWithFirebase } from "@/lib/storage";
 import {
   applyCheckinEarnings,
+  applyDailySession,
+  applyLoginBonus,
   equipPalette as applyEquipPalette,
   spendContinueTxnId,
   spendTokens,
@@ -56,6 +58,8 @@ interface StoreState {
   today: string;
   /** Latest token earn pulse for toast UI. */
   lastTokenEarn: TokenEarnEvent | null;
+  /** Daily login bonus sheet (auto once per day, or from Arcade). */
+  loginBonusOpen: boolean;
 
   init: () => Promise<void>;
   signIn: (user: User) => Promise<void>;
@@ -104,6 +108,9 @@ interface StoreState {
   equipPalette: (gameId: GameId, paletteId: UnlockablePaletteId | null) => void;
   setLastRecapWeek: (weekKey: string) => void;
   clearTokenEarn: () => void;
+  openLoginBonus: () => void;
+  closeLoginBonus: () => void;
+  claimLoginBonus: () => void;
   pullFromCloud: () => Promise<void>;
 }
 
@@ -156,6 +163,7 @@ export const useStore = create<StoreState>((set, get) => {
     signingIn: false,
     today: todayKey(),
     lastTokenEarn: null,
+    loginBonusOpen: false,
 
     async init() {
       let user = storage.getUser();
@@ -166,17 +174,17 @@ export const useStore = create<StoreState>((set, get) => {
           storage.setUser(user);
           try {
             const synced = await syncUserData(user.id);
-            set({ user, data: synced, today: todayKey() });
+            set({ user, data: applyDailySession(synced), today: todayKey() });
             get().refreshToday();
           } catch (err) {
             console.warn("Cloud sync failed", err);
             const data = storage.loadLocalData(user.id);
-            set({ user, data, today: todayKey() });
+            set({ user, data: applyDailySession(data), today: todayKey() });
             get().refreshToday();
           }
         } else {
           const data = storage.loadLocalData(user.id);
-          set({ user, data, today: todayKey() });
+          set({ user, data: applyDailySession(data), today: todayKey() });
           get().refreshToday();
         }
       }
@@ -191,18 +199,26 @@ export const useStore = create<StoreState>((set, get) => {
           user = alignGoogleUserWithFirebase(user);
         }
         storage.setUser(user);
-        get().refreshToday();
         if (isCloudUser(user.id) && cloudConfigured()) {
           try {
             const synced = await syncUserData(user.id);
-            set({ user, data: synced, today: todayKey() });
+            set({ user, data: applyDailySession(synced), today: todayKey() });
           } catch (err) {
             console.warn("Cloud sync failed", err);
-            set({ user, data: storage.loadLocalData(user.id), today: todayKey() });
+            set({
+              user,
+              data: applyDailySession(storage.loadLocalData(user.id)),
+              today: todayKey(),
+            });
           }
         } else {
-          set({ user, data: storage.loadLocalData(user.id), today: todayKey() });
+          set({
+            user,
+            data: applyDailySession(storage.loadLocalData(user.id)),
+            today: todayKey(),
+          });
         }
+        get().refreshToday();
       } finally {
         set({ signingIn: false });
       }
@@ -215,7 +231,7 @@ export const useStore = create<StoreState>((set, get) => {
         if (auth) void firebaseSignOut(auth);
       }
       storage.setUser(null);
-      set({ user: null, data: emptyAppData(), lastTokenEarn: null });
+      set({ user: null, data: emptyAppData(), lastTokenEarn: null, loginBonusOpen: false });
     },
 
     addGoal(g) {
@@ -350,9 +366,7 @@ export const useStore = create<StoreState>((set, get) => {
     refreshToday() {
       const key = todayKey();
       set({ today: key });
-      mutate((d) =>
-        d.lastActiveDate === key ? d : { ...d, lastActiveDate: key },
-      );
+      mutate((d) => applyDailySession(d, key));
     },
 
     gamePlaysLeft(gameId) {
@@ -488,13 +502,41 @@ export const useStore = create<StoreState>((set, get) => {
       set({ lastTokenEarn: null });
     },
 
+    openLoginBonus() {
+      set({ loginBonusOpen: true });
+    },
+
+    closeLoginBonus() {
+      const key = todayKey();
+      set({ loginBonusOpen: false });
+      mutate((d) =>
+        d.loginBonus?.lastPopupDate === key
+          ? d
+          : { ...d, loginBonus: { ...d.loginBonus, lastPopupDate: key } },
+      );
+    },
+
+    claimLoginBonus() {
+      const key = todayKey();
+      mutate((d) => {
+        const result = applyLoginBonus(d, key);
+        return result.data.loginBonus?.lastPopupDate === key
+          ? result.data
+          : {
+              ...result.data,
+              loginBonus: { ...result.data.loginBonus, lastPopupDate: key },
+            };
+      });
+      set({ loginBonusOpen: false });
+    },
+
     async pullFromCloud() {
       const { user } = get();
       if (!user || !isCloudUser(user.id) || !cloudConfigured()) return;
       await waitForFirebaseAuth(8000);
       const cloud = await loadCloudData(user.id);
       if (!cloud) return;
-      const merged = mergeLocalAndCloud(get().data, cloud);
+      const merged = applyDailySession(mergeLocalAndCloud(get().data, cloud));
       set({ data: merged });
       await storage.saveData(user.id, merged);
     },

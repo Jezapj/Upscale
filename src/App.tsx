@@ -15,6 +15,7 @@ import { BackgroundMusicPlayer } from "@/components/BackgroundMusicPlayer";
 import { UiTapSound } from "@/components/UiTapSound";
 import { TokenEarnToast } from "@/components/TokenEarnToast";
 import { WeeklyRecapSheet } from "@/components/WeeklyRecapSheet";
+import { LoginBonusSheet } from "@/components/LoginBonusSheet";
 import { useKeyboardControls } from "@/hooks/useKeyboardControls";
 import { useRoutineReminders } from "@/hooks/useRoutineReminders";
 import { ThemeSyncEffect } from "@/store/useTheme";
@@ -50,6 +51,7 @@ import { cloudConfigured } from "@/lib/firebase";
 import { playUiChime } from "@/lib/uiSound";
 import { setAppAudioMuted } from "@/games/gameAudio";
 import { useMasterMute } from "@/store/useMasterMute";
+import { loginTxnId } from "@/lib/economy";
 
 function AppShell() {
   const location = useLocation();
@@ -58,7 +60,11 @@ function AppShell() {
   const data = useStore((s) => s.data);
   const user = useStore((s) => s.user);
   const setLastRecapWeek = useStore((s) => s.setLastRecapWeek);
+  const loginBonusOpen = useStore((s) => s.loginBonusOpen);
+  const openLoginBonus = useStore((s) => s.openLoginBonus);
+  const closeLoginBonus = useStore((s) => s.closeLoginBonus);
   const startTour = useWalkthrough((s) => s.start);
+  const walkthroughActive = useWalkthrough((s) => s.active);
   const [recapOpen, setRecapOpen] = useState(false);
   const [kudosNote, setKudosNote] = useState<string | null>(null);
 
@@ -123,6 +129,29 @@ function AppShell() {
   const isPlayingGame = /^\/games\/[^/]+/.test(location.pathname);
   const hideChrome = isCheckin || isPlayingGame;
 
+  // Daily login bonus once per calendar day (skipped during games / recap / tour).
+  useEffect(() => {
+    if (loginBonusOpen || recapOpen || walkthroughActive) return;
+    if (!walkthroughSeen()) return;
+    if (isPlayingGame || isCheckin) return;
+    if (data.loginBonus?.lastPopupDate === todayKey()) return;
+    const claimed = (data.wallet?.txns ?? []).some(
+      (t) => t.id === loginTxnId(todayKey()),
+    );
+    if (claimed) return;
+    openLoginBonus();
+  }, [
+    data.loginBonus?.lastPopupDate,
+    data.wallet,
+    data.syncedAt,
+    loginBonusOpen,
+    recapOpen,
+    walkthroughActive,
+    isPlayingGame,
+    isCheckin,
+    openLoginBonus,
+  ]);
+
   useKeyboardControls();
   useRoutineReminders();
 
@@ -181,6 +210,7 @@ function AppShell() {
         }}
         recap={recap}
       />
+      <LoginBonusSheet open={loginBonusOpen} onClose={closeLoginBonus} />
       {!hideChrome && (
         <div className="relative z-30">
           <ScreenHints />

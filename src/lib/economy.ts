@@ -7,12 +7,13 @@ import type {
   AppData,
   ArcadeUnlocks,
   GameId,
+  LoginBonusState,
   Routine,
   TokenReason,
   TokenTxn,
   TokenWallet,
 } from "./types";
-import { dayKey, daysBetween, parseDay, todayKey } from "./dates";
+import { dayKey, daysBetween, parseDay, shiftDay, todayKey } from "./dates";
 import { isScheduledOn } from "./frequency";
 
 /** Lightweight current streak so economy does not import stats (avoids a cycle). */
@@ -44,6 +45,20 @@ export const STREAK_MILESTONE_EVERY = 7;
 export const MAX_GRACE_BANKED = 2;
 
 export const STARTER_TXN_ID = "starter:v1";
+
+/** Consecutive-login daily rate: 1, then 3 at 3 days, then 5 from day 5 on. */
+export const LOGIN_DAILY_RATES: { streak: number; daily: number }[] = [
+  { streak: 1, daily: 1 },
+  { streak: 3, daily: 3 },
+  { streak: 5, daily: 5 },
+];
+
+/** Extra tokens on specific consecutive-login days (on top of the daily rate). */
+export const LOGIN_STREAK_BONUSES: { streak: number; amount: number }[] = [
+  { streak: 10, amount: 8 },
+  { streak: 20, amount: 10 },
+  { streak: 50, amount: 20 },
+];
 
 export type UnlockablePaletteId =
   | "sunset"
@@ -178,6 +193,145 @@ export function graceEarnTxnId(routineId: string, milestone: number): string {
 
 export function graceSpendTxnId(routineId: string, missedDay: string): string {
   return `grace:spend:${routineId}:${missedDay}`;
+}
+
+export function loginTxnId(date: string): string {
+  return `login:${date}`;
+}
+
+export function loginDailyRate(streak: number): number {
+  let daily = 1;
+  for (const step of LOGIN_DAILY_RATES) {
+    if (streak >= step.streak) daily = step.daily;
+  }
+  return daily;
+}
+
+export function loginMilestoneBonus(streak: number): number {
+  return LOGIN_STREAK_BONUSES.find((b) => b.streak === streak)?.amount ?? 0;
+}
+
+export function loginRewardAtStreak(streak: number): {
+  daily: number;
+  milestone: number;
+  total: number;
+} {
+  const daily = loginDailyRate(streak);
+  const milestone = loginMilestoneBonus(streak);
+  return { daily, milestone, total: daily + milestone };
+}
+
+/** Days shown on one login-bonus board (7×4, like a monthly stamp card). */
+export const LOGIN_BOARD_DAYS = 28;
+
+export function nextLoginGoal(streak: number): {
+  streak: number;
+  kind: "rate" | "bonus";
+  value: number;
+} | null {
+  const nextRate = LOGIN_DAILY_RATES.find((s) => s.streak > streak);
+  const nextBonus = LOGIN_STREAK_BONUSES.find((s) => s.streak > streak);
+  if (nextRate && (!nextBonus || nextRate.streak <= nextBonus.streak)) {
+    return { streak: nextRate.streak, kind: "rate", value: nextRate.daily };
+  }
+  if (nextBonus) {
+    return { streak: nextBonus.streak, kind: "bonus", value: nextBonus.amount };
+  }
+  return null;
+}
+
+/** Consecutive days with a login claim ending on `endDate` (0 if that day is missing). */
+export function loginStreakEndingOn(
+  wallet: TokenWallet | undefined,
+  endDate: string,
+): number {
+  let streak = 0;
+  let date = endDate;
+  while (hasTxn(wallet, loginTxnId(date))) {
+    streak += 1;
+    date = shiftDay(date, -1);
+  }
+  return streak;
+}
+
+export interface LoginBonusSummary {
+  date: string;
+  claimed: boolean;
+  streak: number;
+  daily: number;
+  milestone: number;
+  total: number;
+  next: ReturnType<typeof nextLoginGoal>;
+}
+
+export function loginBonusSummary(
+  data: AppData,
+  date: string = todayKey(),
+): LoginBonusSummary {
+  const claimed = hasTxn(data.wallet, loginTxnId(date));
+  const streak = claimed
+    ? loginStreakEndingOn(data.wallet, date)
+    : loginStreakEndingOn(data.wallet, shiftDay(date, -1)) + 1;
+  const daily = loginDailyRate(streak);
+  const milestone = loginMilestoneBonus(streak);
+  return {
+    date,
+    claimed,
+    streak,
+    daily,
+    milestone,
+    total: daily + milestone,
+    next: nextLoginGoal(streak),
+  };
+}
+
+/**
+ * Mint today's login bonus once. Streak is the run of consecutive calendar
+ * days that already have a `login:` txn, plus today.
+ */
+export function applyLoginBonus(
+  data: AppData,
+  date: string = todayKey(),
+): { data: AppData; earned: number; summary: LoginBonusSummary } {
+  const summary = loginBonusSummary(data, date);
+  if (summary.claimed) {
+    return { data, earned: 0, summary };
+  }
+  const wallet = ensureWallet(data);
+  const nextWallet = appendTxn(
+    wallet,
+    makeTxn(loginTxnId(date), summary.total, "login", date),
+  );
+  return {
+    data: { ...data, wallet: nextWallet },
+    earned: summary.total,
+    summary: { ...summary, claimed: true },
+  };
+}
+
+/** Stamp last-active day. Login tokens are claimed from the daily bonus popup. */
+export function applyDailySession(
+  data: AppData,
+  date: string = todayKey(),
+): AppData {
+  return data.lastActiveDate === date
+    ? data
+    : { ...data, lastActiveDate: date };
+}
+
+export function mergeLoginBonus(
+  a: LoginBonusState | undefined,
+  b: LoginBonusState | undefined,
+): LoginBonusState | undefined {
+  if (!a && !b) return undefined;
+  const left = a?.lastPopupDate ?? "";
+  const right = b?.lastPopupDate ?? "";
+  const lastPopupDate =
+    left >= right
+      ? a?.lastPopupDate ?? b?.lastPopupDate
+      : b?.lastPopupDate ?? a?.lastPopupDate;
+  if (!lastPopupDate) return undefined;
+  return { lastPopupDate };
 }
 
 /**
@@ -368,7 +522,10 @@ export function mergeWallets(
   if (!b) return a;
   const map = new Map<string, TokenTxn>();
   for (const t of [...a.txns, ...b.txns]) {
-    if (!map.has(t.id)) map.set(t.id, t);
+    const prev = map.get(t.id);
+    if (!prev || (t.amount > prev.amount && t.amount > 0)) {
+      map.set(t.id, t);
+    }
   }
   const txns = [...map.values()].sort((x, y) =>
     x.createdAt.localeCompare(y.createdAt),

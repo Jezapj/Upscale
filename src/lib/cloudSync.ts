@@ -10,7 +10,7 @@ import {
   mergeNotes,
   resolveBackupConflict,
 } from "./backup";
-import { ensureStarterBalance, mergeArcadeUnlocks, mergeWallets } from "./economy";
+import { applyDailySession, ensureStarterBalance, mergeArcadeUnlocks, mergeLoginBonus, mergeWallets } from "./economy";
 import type { GameId } from "./types";
 
 interface CloudPayload {
@@ -188,7 +188,7 @@ export function mergeLocalAndCloud(
   cloud: CloudPayload | null,
   day: string = todayKey(),
 ): AppData {
-  if (!cloud) return ensureStarterBalance(local);
+  if (!cloud) return applyDailySession(ensureStarterBalance(local));
 
   const { data: winner } = resolveBackupConflict(
     local,
@@ -211,9 +211,10 @@ export function mergeLocalAndCloud(
       (local.lastRecapWeek ?? "") >= (cloud.data.lastRecapWeek ?? "")
         ? local.lastRecapWeek ?? cloud.data.lastRecapWeek
         : cloud.data.lastRecapWeek ?? local.lastRecapWeek,
+    loginBonus: mergeLoginBonus(local.loginBonus, cloud.data.loginBonus),
   };
   if (!merged.lastGhosts || Object.keys(merged.lastGhosts).length === 0) {
     delete merged.lastGhosts;
   }
-  return ensureStarterBalance(merged);
+  return applyDailySession(ensureStarterBalance(merged));
 }

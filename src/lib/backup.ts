@@ -8,7 +8,7 @@ import {
   type Routine,
 } from "./types";
 import { mergeArcadeDailyStates } from "./dailyChallenge";
-import { mergeArcadeUnlocks, mergeWallets } from "./economy";
+import { mergeArcadeUnlocks, mergeLoginBonus, mergeWallets } from "./economy";
 import { todayKey } from "./dates";
 
 export const BACKUP_FORMAT_VERSION = 1;
@@ -156,6 +156,7 @@ export function mergeAppDataEntities(local: AppData, cloud: AppData): AppData {
     gamePremium: local.gamePremium || cloud.gamePremium,
     lastGhosts: { ...(cloud.lastGhosts ?? {}), ...(local.lastGhosts ?? {}) },
     lastRecapWeek: local.lastRecapWeek ?? cloud.lastRecapWeek,
+    loginBonus: mergeLoginBonus(local.loginBonus, cloud.loginBonus),
     syncedAt:
       (local.syncedAt ?? "") >= (cloud.syncedAt ?? "")
         ? local.syncedAt ?? cloud.syncedAt

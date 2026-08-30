@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Gamepad2, Crown, Store, Users } from "lucide-react";
+import { Gamepad2, Crown, Store, Users, Gift } from "lucide-react";
 import { StatusBar } from "@/components/StatusBar";
 import { PageHeader } from "@/components/PageHeader";
 import { Tile } from "@/components/Tile";
@@ -29,6 +29,7 @@ export function GamesScreen() {
   const endlessLeft = useStore((s) => s.endlessPlaysLeft());
   const setGamePremium = useStore((s) => s.setGamePremium);
   const markDailyPlayed = useStore((s) => s.markDailyPlayed);
+  const openLoginBonus = useStore((s) => s.openLoginBonus);
   const isPro = data.gamePremium === true;
   const [proOpen, setProOpen] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
@@ -88,23 +89,31 @@ export function GamesScreen() {
           subtitle={`${prettyDay(today)}: one shared daily challenge each.`}
         />
 
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <TokenBalanceCapsule onClick={() => setShopOpen(true)} />
+        <div className="arcade-hub-row mb-3 grid grid-cols-4 gap-1.5">
+          <TokenBalanceCapsule compact onClick={() => setShopOpen(true)} />
           <button
             type="button"
             onClick={() => setShopOpen(true)}
-            className="capsule inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-800 text-ink active:scale-95"
+            className="arcade-hub-btn"
           >
-            <Store size={16} />
+            <Store />
             Shop
           </button>
           <button
             type="button"
             onClick={() => nav("/friends")}
-            className="capsule inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-800 text-ink active:scale-95"
+            className="arcade-hub-btn"
           >
-            <Users size={16} />
+            <Users />
             Friends
+          </button>
+          <button
+            type="button"
+            onClick={() => openLoginBonus()}
+            className="arcade-hub-btn"
+          >
+            <Gift />
+            Bonus
           </button>
         </div>
 

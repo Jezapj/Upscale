@@ -1,4 +1,4 @@
-/** Arcade games hub - TipTop, Octane, Dissiada, Daybreak, Spacewalk, Accretion. */
+/** Arcade games hub - Spacewalk, Accretion, Octane, TipTop, Dissiada, Daybreak. */
 
 export type GameId =
   | "tiptop"
@@ -31,11 +31,18 @@ export interface GameMeta {
 
 export const GAMES: GameMeta[] = [
   {
-    id: "tiptop",
-    name: "TipTop",
-    tagline: "Flap into the pits",
-    color: "#5cd0a8",
-    controls: "A/D or ◀ ▶ to flap left and right",
+    id: "spacewalk",
+    name: "Spacewalk",
+    tagline: "Flip falling rockets back into orbit",
+    color: "#6a7dff",
+    controls: "Trace a line to open a gravity portal (3 max) - falling rockets flip upward, tilt the line to aim them. Fling one back into a launch bay to knock it offline",
+  },
+  {
+    id: "accretion",
+    name: "Accretion",
+    tagline: "Roll the park clean before time runs out",
+    color: "#5cb85c",
+    controls: "Swipe: sideways to steer, upward to speed up (or A/D · ▲) - collect junk to grow, don't clip the path edges",
   },
   {
     id: "octane",
@@ -43,6 +50,13 @@ export const GAMES: GameMeta[] = [
     tagline: "Drag race or free ride - rev to redline",
     color: "#ff7a59",
     controls: "Hold GAS, SHIFT UP at redline, SHIFT DOWN to drop a gear, ▲▼ to change lane (Space · W/S · E/Q)",
+  },
+  {
+    id: "tiptop",
+    name: "TipTop",
+    tagline: "Flap into the pits",
+    color: "#5cd0a8",
+    controls: "A/D or ◀ ▶ to flap left and right",
   },
   {
     id: "dissiada",
@@ -57,20 +71,6 @@ export const GAMES: GameMeta[] = [
     tagline: "Jump to the key you're dealt",
     color: "#ff9e64",
     controls: "Tap / Space / Click to jump on the beat for bonus points",
-  },
-  {
-    id: "spacewalk",
-    name: "Spacewalk",
-    tagline: "Flip falling rockets back into orbit",
-    color: "#6a7dff",
-    controls: "Trace a line to open a gravity portal (3 max) - falling rockets flip upward, tilt the line to aim them. Fling one back into a launch bay to knock it offline",
-  },
-  {
-    id: "accretion",
-    name: "Accretion",
-    tagline: "Roll the park clean before time runs out",
-    color: "#5cb85c",
-    controls: "Swipe: sideways to steer, upward to speed up (or A/D · ▲) - collect junk to grow, don't clip the path edges",
   },
 ];
 

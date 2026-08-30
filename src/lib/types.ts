@@ -123,6 +123,8 @@ export interface AppData {
   >;
   /** ISO week key (e.g. 2026-W12) of the last weekly recap the user saw. */
   lastRecapWeek?: string;
+  /** Daily login bonus popup / claim presentation. */
+  loginBonus?: LoginBonusState;
   version: number;
 }
 
@@ -140,11 +142,17 @@ export interface ArcadeDailyState {
   completed: Partial<Record<GameId, ArcadeDailyCompletion>>;
 }
 
+export interface LoginBonusState {
+  /** Last local calendar day the login bonus popup was dismissed. */
+  lastPopupDate?: string;
+}
+
 export type TokenReason =
   | "starter"
   | "checkin"
   | "clear_day"
   | "streak_milestone"
+  | "login"
   | "endless"
   | "continue"
   | "palette"

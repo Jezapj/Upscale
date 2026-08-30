@@ -15,6 +15,13 @@ export const parseDay = (key: string): Date => startOfDay(parseISO(key));
 export const daysBetween = (aKey: string, bKey: string): number =>
   differenceInCalendarDays(parseDay(bKey), parseDay(aKey));
 
+/** Shift a YYYY-MM-DD key by a number of calendar days. */
+export function shiftDay(key: string, days: number): string {
+  const d = parseDay(key);
+  d.setDate(d.getDate() + days);
+  return dayKey(d);
+}
+
 export const prettyDay = (key: string): string =>
   format(parseDay(key), "EEE d MMM");
 
