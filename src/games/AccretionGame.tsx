@@ -28,11 +28,11 @@ const JUNK_GLYPHS = ["🍎", "🦴", "👢", "📄", "🍌", "🥫"];
 
 const RUN_TIME_MS = 20_000;
 /** Extra time granted per finished course loop in endless mode. */
-const LOOP_BONUS_MS = 15_000;
+const LOOP_BONUS_MS = 10_000;
 /** Course length in world units (1 wu = 1px at 640px height). */
 const COURSE_LEN = 3400;
 /** Distance between zigzag control points. */
-const SEG = 220;
+const SEG = 420;
 /** Distance between junk spawn slots. */
 const ITEM_GAP = 95;
 const TREE_GAP = 170;
@@ -43,6 +43,13 @@ const JUNK_SCALE_STEP = 0.05;
 const JUNK_SCALE_MAX = 1.9;
 const PICKUP_SFX = "/tapchime.mp3";
 const LOOP_SFX = "/successchime.mp3";
+
+/** Thrust decays per 60fps frame when no upward input (player stops swiping up). */
+const THRUST_DECAY_PER_FRAME = 0.994;
+/** How quickly thrust builds from upward swipes. */
+const THRUST_BUILD_RATE = 0.0030;
+/** Maximum thrust multiplier from player input. */
+const THRUST_MAX = 108.2;
 
 interface Attached {
   glyph: string;
@@ -255,14 +262,14 @@ export function AccretionGame({
       const u = unit();
       // Daily is a 20s sprint: grow fast and cap high. Endless is slower.
       const perJunk = daily ? 4.8 : 2.1;
-      const cap = (daily ? 128 : 88) * u;
+      const cap = (daily ? 128 : 150) * u;
       return Math.min(cap, (16 + attached.length * perJunk) * u);
     };
     const forwardSpeed = () => {
-      const loopBoost = 1 + loops * 0.08;
+      const loopBoost = 1 + loops * 0.05; // Reduced loop boost so player skill matters more
       const t = Math.min(1, (daily ? ballD : ballD % COURSE_LEN) / COURSE_LEN);
-      const ramp = daily ? 1 + 0.4 * Math.sqrt(t) : 1 + 0.1 * Math.sqrt(t);
-      return 1.15 * loopBoost * ramp * (1 + thrust);
+      const ramp = daily ? 1 + 0.25 * Math.sqrt(t) : 1 + 0.10 * Math.sqrt(t); // Reduced auto-ramp
+      return 1.05 * loopBoost * ramp * (1 + thrust);
     };
 
     const finish = (won: boolean) => {
@@ -319,11 +326,22 @@ export function AccretionGame({
       lastPointerX = e.clientX;
       lastPointerY = e.clientY;
       const u = unit();
-      // Horizontal component steers; upward component (negative dy) adds speed.
-      steer(dx * 0.055 * u);
+      
+      let upInput = false;
       const up = Math.max(0, -dy);
+      if (up > 0) upInput = true;
       const mass = Math.pow((16 * u) / ballRadius(), 0.7);
-      thrust = Math.min(2.6, thrust + up * 0.014 * mass);
+
+      // Horizontal component steers; upward component (negative dy) adds speed.
+      steer(dx * Math.abs((0.025 - mass /80)) * u);
+
+      if (upInput) {
+        thrust = Math.min(THRUST_MAX, thrust + up * THRUST_BUILD_RATE * (mass + 0.5));
+      }
+      // Natural thrust decay when no upward input
+      if (!upInput) {
+        thrust = Math.max(0, thrust * frameDecay(THRUST_DECAY_PER_FRAME, 1));
+      }
     };
     const onPointerUp = (e: PointerEvent) => {
       if (e.pointerId !== activePointer) return;
@@ -398,9 +416,16 @@ export function AccretionGame({
         // Keyboard steering.
         if (heldKeys.has("left")) steer(-0.55 * u * dt);
         if (heldKeys.has("right")) steer(0.55 * u * dt);
+        let upInput = false;
         if (heldKeys.has("up")) {
+          upInput = true;
           const mass = Math.pow((16 * u) / r, 0.7);
-          thrust = Math.min(2.6, thrust + 0.045 * dt * mass);
+          thrust = Math.min(THRUST_MAX, thrust + THRUST_BUILD_RATE * dt * mass);
+        }
+        
+        // Natural thrust decay when no upward input - ball slows down without upward swipes
+        if (!upInput) {
+          thrust = Math.max(0, thrust * frameDecay(THRUST_DECAY_PER_FRAME, dt));
         }
 
         // Forward roll + lateral drift.
@@ -426,7 +451,7 @@ export function AccretionGame({
         }
         if (!daily && ballD >= (loops + 1) * COURSE_LEN) {
           loops++;
-          timeLeftMs += LOOP_BONUS_MS;
+          timeLeftMs += LOOP_BONUS_MS - loops * 200; // Slightly reduced bonus per loop to keep pressure on player
           warned = false;
           playSampleOneShot(LOOP_SFX, 0.5);
         }
@@ -443,7 +468,8 @@ export function AccretionGame({
           if (iframes <= 0) {
             iframes = 45;
             shake = 12;
-            thrust = Math.max(0, thrust * 0.45);
+            // Reduce thrust less severely - player can recover by swiping up
+            thrust = Math.max(0, thrust * 0.7);
             playSampleOneShot(SAMPLE_SRC.octaneHit, 0.4);
             hapticImpact();
             // Knock up to 3 pieces of junk back off the ball.
