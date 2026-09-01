@@ -597,6 +597,7 @@ function drawGauge(
   tickColor: string,
   needleColor: string,
   tickMode: "rpm" | "speed" = "rpm",
+  cachedGradients?: { bezel: CanvasGradient; faceGrad: CanvasGradient; hub: CanvasGradient },
 ) {
   const startA = Math.PI * 0.75;
   const endA = Math.PI * 2.25;
@@ -604,30 +605,42 @@ function drawGauge(
 
   ctx.save();
 
+  // Use cached gradients if provided, otherwise create new ones.
+  const gradients = cachedGradients ?? {
+    bezel: ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r),
+    faceGrad: ctx.createRadialGradient(
+      cx - r * 0.3,
+      cy - r * 0.4,
+      r * 0.1,
+      cx,
+      cy,
+      r,
+    ),
+    hub: ctx.createLinearGradient(cx - 6, cy - 6, cx + 6, cy + 6),
+  };
+
+  if (!cachedGradients) {
+    gradients.bezel.addColorStop(0, "#8d95a6");
+    gradients.bezel.addColorStop(0.35, "#454c5a");
+    gradients.bezel.addColorStop(0.62, "#7c8494");
+    gradients.bezel.addColorStop(1, "#2b303a");
+
+    gradients.faceGrad.addColorStop(0, "#252b38");
+    gradients.faceGrad.addColorStop(0.7, faceColor);
+    gradients.faceGrad.addColorStop(1, "#05070c");
+
+    gradients.hub.addColorStop(0, "#e9edf5");
+    gradients.hub.addColorStop(1, "#5b6272");
+  }
+
   // Brushed metal bezel.
-  const bezel = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
-  bezel.addColorStop(0, "#8d95a6");
-  bezel.addColorStop(0.35, "#454c5a");
-  bezel.addColorStop(0.62, "#7c8494");
-  bezel.addColorStop(1, "#2b303a");
-  ctx.fillStyle = bezel;
+  ctx.fillStyle = gradients.bezel;
   ctx.beginPath();
   ctx.arc(cx, cy, r + 4, 0, Math.PI * 2);
   ctx.fill();
 
   // Recessed dial face.
-  const faceGrad = ctx.createRadialGradient(
-    cx - r * 0.3,
-    cy - r * 0.4,
-    r * 0.1,
-    cx,
-    cy,
-    r,
-  );
-  faceGrad.addColorStop(0, "#252b38");
-  faceGrad.addColorStop(0.7, faceColor);
-  faceGrad.addColorStop(1, "#05070c");
-  ctx.fillStyle = faceGrad;
+  ctx.fillStyle = gradients.faceGrad;
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
   ctx.fill();
@@ -717,10 +730,7 @@ function drawGauge(
   ctx.restore();
 
   // Chrome hub.
-  const hub = ctx.createLinearGradient(cx - 6, cy - 6, cx + 6, cy + 6);
-  hub.addColorStop(0, "#e9edf5");
-  hub.addColorStop(1, "#5b6272");
-  ctx.fillStyle = hub;
+  ctx.fillStyle = gradients.hub;
   ctx.beginPath();
   ctx.arc(cx, cy, 5.5, 0, Math.PI * 2);
   ctx.fill();
@@ -777,58 +787,88 @@ function roundRectPath(
   ctx.closePath();
 }
 
-/** Solid moulded control button; `accent` lights it up while held. */
-function drawPedal(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  active: boolean,
-  accent: string,
-) {
-  const r = Math.min(10, w * 0.22);
-  const press = active ? 1.5 : 0;
+/** Cached inactive pedal gradient (shared across all inactive pedals). */
+    const inactivePedalGradCache = {
+      grad: null as CanvasGradient | null,
+      lastKey: "" as string,
+    };
 
-  ctx.save();
-  // Recessed socket behind the button.
-  roundRectPath(ctx, x - 2, y - 2, w + 4, h + 4, r + 2);
-  ctx.fillStyle = "rgba(0,0,0,0.45)";
-  ctx.fill();
+    /** Get or create cached inactive pedal gradient. */
+    const getInactivePedalGrad = (ctx: CanvasRenderingContext2D, x: number, y: number, h: number) => {
+      const key = `${x}:${y}:${h}`;
+      if (inactivePedalGradCache.lastKey === key && inactivePedalGradCache.grad) {
+        return inactivePedalGradCache.grad;
+      }
+      const grad = ctx.createLinearGradient(x, y, x, y + h);
+      grad.addColorStop(0, "#4a505c");
+      grad.addColorStop(0.52, "#333844");
+      grad.addColorStop(1, "#20242c");
+      inactivePedalGradCache.grad = grad;
+      inactivePedalGradCache.lastKey = key;
+      return grad;
+    };
 
-  roundRectPath(ctx, x, y + press, w, h - press, r);
-  const body = ctx.createLinearGradient(x, y, x, y + h);
-  if (active) {
-    body.addColorStop(0, accent);
-    body.addColorStop(1, "rgba(20,22,28,0.95)");
-  } else {
-    body.addColorStop(0, "#4a505c");
-    body.addColorStop(0.52, "#333844");
-    body.addColorStop(1, "#20242c");
-  }
-  ctx.fillStyle = body;
-  ctx.fill();
+    /** Get or create cached pedal sheen gradient. */
+    const getPedalSheenGrad = (ctx: CanvasRenderingContext2D, x: number, y: number, h: number) => {
+      const key = `sheen:${x}:${y}:${h}`;
+      if (inactivePedalGradCache.lastKey === key && inactivePedalGradCache.grad) {
+        return inactivePedalGradCache.grad;
+      }
+      const grad = ctx.createLinearGradient(x, y, x, y + h * 0.45);
+      grad.addColorStop(0, "rgba(255,255,255,0.26)");
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      inactivePedalGradCache.grad = grad;
+      inactivePedalGradCache.lastKey = key;
+      return grad;
+    };
 
-  // Top sheen.
-  ctx.save();
-  ctx.clip();
-  const sheen = ctx.createLinearGradient(x, y, x, y + h * 0.45);
-  sheen.addColorStop(0, "rgba(255,255,255,0.26)");
-  sheen.addColorStop(1, "rgba(255,255,255,0)");
-  ctx.fillStyle = sheen;
-  ctx.fillRect(x, y, w, h * 0.45);
-  ctx.restore();
+    /** Solid moulded control button; `accent` lights it up while held. */
+    function drawPedal(
+      ctx: CanvasRenderingContext2D,
+      x: number,
+      y: number,
+      w: number,
+      h: number,
+      active: boolean,
+      accent: string,
+    ) {
+      const r = Math.min(10, w * 0.22);
+      const press = active ? 1.5 : 0;
 
-  if (active) {
-    ctx.shadowColor = accent;
-    ctx.shadowBlur = 12;
-  }
-  roundRectPath(ctx, x + 0.5, y + press + 0.5, w - 1, h - press - 1, r);
-  ctx.strokeStyle = active ? accent : "rgba(220,228,240,0.45)";
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.restore();
-}
+      ctx.save();
+      // Recessed socket behind the button.
+      roundRectPath(ctx, x - 2, y - 2, w + 4, h + 4, r + 2);
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.fill();
+
+      roundRectPath(ctx, x, y + press, w, h - press, r);
+      if (active) {
+        const body = ctx.createLinearGradient(x, y, x, y + h);
+        body.addColorStop(0, accent);
+        body.addColorStop(1, "rgba(20,22,28,0.95)");
+        ctx.fillStyle = body;
+      } else {
+        ctx.fillStyle = getInactivePedalGrad(ctx, x, y, h);
+      }
+      ctx.fill();
+
+      // Top sheen.
+      ctx.save();
+      ctx.clip();
+      ctx.fillStyle = getPedalSheenGrad(ctx, x, y, h);
+      ctx.fillRect(x, y, w, h * 0.45);
+      ctx.restore();
+
+      if (active) {
+        ctx.shadowColor = accent;
+        ctx.shadowBlur = 12;
+      }
+      roundRectPath(ctx, x + 0.5, y + press + 0.5, w - 1, h - press - 1, r);
+      ctx.strokeStyle = active ? accent : "rgba(220,228,240,0.45)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+    }
 
 /** Stable sub-tile scroll offset (avoids float drift on long drives). */
 function scrollFrac(scrollPx: number, parallax: number, period: number): {
@@ -1723,6 +1763,81 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
     const engineSound = createOctaneEngineSound();
     const brakeSound = createOctaneBrakeSound();
 
+    /** Cached gradients to avoid per-frame allocations. */
+    const gradientCache = {
+      dashGrad: null as CanvasGradient | null,
+      rpmBezel: null as CanvasGradient | null,
+      rpmFace: null as CanvasGradient | null,
+      rpmHub: null as CanvasGradient | null,
+      lastDashKey: "" as string,
+      lastGaugeKey: "" as string,
+    };
+
+    /** Get or create cached dashboard gradient. */
+    const getDashGrad = (
+      ctx: CanvasRenderingContext2D,
+      dashY: number,
+      dashH: number,
+      isDark: boolean,
+    ) => {
+      const key = `${dashY}:${dashH}:${isDark}`;
+      if (gradientCache.lastDashKey === key && gradientCache.dashGrad) {
+        return gradientCache.dashGrad;
+      }
+      const grad = ctx.createLinearGradient(0, dashY, 0, dashY + dashH);
+      grad.addColorStop(0, isDark ? "#151922" : "#252a33");
+      grad.addColorStop(0.25, isDark ? "#0c0f16" : "#181c23");
+      grad.addColorStop(1, "#05070c");
+      gradientCache.dashGrad = grad;
+      gradientCache.lastDashKey = key;
+      return grad;
+    };
+
+    /** Get or create cached gauge gradients. */
+    const getGaugeGradients = (
+      ctx: CanvasRenderingContext2D,
+      cx: number,
+      cy: number,
+      r: number,
+      faceColor: string,
+    ) => {
+      const key = `${cx}:${cy}:${r}:${faceColor}`;
+      if (gradientCache.lastGaugeKey === key && gradientCache.rpmBezel) {
+        return {
+          bezel: gradientCache.rpmBezel!,
+          faceGrad: gradientCache.rpmFace!,
+          hub: gradientCache.rpmHub!,
+        };
+      }
+      const bezel = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+      bezel.addColorStop(0, "#8d95a6");
+      bezel.addColorStop(0.35, "#454c5a");
+      bezel.addColorStop(0.62, "#7c8494");
+      bezel.addColorStop(1, "#2b303a");
+
+      const faceGrad = ctx.createRadialGradient(
+        cx - r * 0.3,
+        cy - r * 0.4,
+        r * 0.1,
+        cx,
+        cy,
+        r,
+      );
+      faceGrad.addColorStop(0, "#252b38");
+      faceGrad.addColorStop(0.7, faceColor);
+      faceGrad.addColorStop(1, "#05070c");
+
+      const hub = ctx.createLinearGradient(cx - 6, cy - 6, cx + 6, cy + 6);
+      hub.addColorStop(0, "#e9edf5");
+      hub.addColorStop(1, "#5b6272");
+
+      gradientCache.rpmBezel = bezel;
+      gradientCache.rpmFace = faceGrad;
+      gradientCache.rpmHub = hub;
+      gradientCache.lastGaugeKey = key;
+      return { bezel, faceGrad, hub };
+    };
+
     const loop = (now: number) => {
       if (!alive) return;
       const dt = Math.min(32, now - last) / 16.67;
@@ -1976,12 +2091,13 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
           spacing;
         ctx.strokeStyle = `rgba(255,255,255,${0.62 + (laneS - 1) * 2.4})`;
         ctx.lineWidth = ROAD_MARKINGS.lineWidth * laneS;
+        // Batch all dashes into a single path per lane for performance.
+        ctx.beginPath();
         for (let lx = -offset; lx < width + dashLen; lx += spacing) {
-          ctx.beginPath();
           ctx.moveTo(lx, markY);
           ctx.lineTo(lx + dashLen, markY);
-          ctx.stroke();
         }
+        ctx.stroke();
       }
 
       /**
@@ -2175,11 +2291,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         }
       }
 
-      const dashGrad = ctx.createLinearGradient(0, dashY, 0, dashY + dashH);
-      dashGrad.addColorStop(0, palette.isDark ? "#151922" : "#252a33");
-      dashGrad.addColorStop(0.25, palette.isDark ? "#0c0f16" : "#181c23");
-      dashGrad.addColorStop(1, "#05070c");
-      ctx.fillStyle = dashGrad;
+      ctx.fillStyle = getDashGrad(ctx, dashY, dashH, palette.isDark);
       ctx.fillRect(0, dashY, width, dashH);
       // Chrome lip along the top of the dash.
       ctx.fillStyle = "rgba(255,255,255,0.14)";
@@ -2199,6 +2311,9 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       const face = "#12151d";
       const tick = "#e6ebf5";
 
+      const rpmGradients = getGaugeGradients(ctx, rpmCx, gaugeCy, gaugeR, face);
+      const mphGradients = getGaugeGradients(ctx, mphCx, gaugeCy, gaugeR, face);
+
       drawGauge(
         ctx,
         rpmCx,
@@ -2213,6 +2328,8 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         face,
         tick,
         rpm >= REDLINE_START ? "#ff4444" : "#ffaa44",
+        "rpm",
+        rpmGradients,
       );
 
       const mphDisplay = Math.round(mph);
@@ -2231,6 +2348,7 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
         tick,
         "#44aaff",
         "speed",
+        mphGradients,
       );
 
       const gearX = width * 0.5;
@@ -2240,19 +2358,31 @@ export function OctaneGame({ width, height, config, onGameOver, paused = false }
       ctx.textAlign = "center";
       ctx.fillText("GEAR", gearX, gearTop);
       const bars = ["#4aa3ff", "#5cd0a8", "#ffb43d", "#ff7a59", "#ff5a5a", "#c084fc"];
+      // Draw unlit bars first (no shadow).
       for (let i = 0; i < GEARS; i++) {
         const bx = gearX - 28 + i * 10;
         const lit = i < gear;
-        ctx.save();
-        if (lit) {
-          ctx.shadowColor = bars[i % bars.length];
-          ctx.shadowBlur = 8;
+        if (!lit) {
+          ctx.fillStyle = "rgba(140,150,170,0.22)";
+          roundRectPath(ctx, bx, gearTop + 8, 8, 22, 3);
+          ctx.fill();
         }
-        ctx.fillStyle = lit ? bars[i % bars.length] : "rgba(140,150,170,0.22)";
-        roundRectPath(ctx, bx, gearTop + 8, 8, 22, 3);
-        ctx.fill();
-        ctx.restore();
       }
+      // Draw lit bars with a single shadow pass.
+      ctx.save();
+      ctx.shadowColor = "#ffffff";
+      ctx.shadowBlur = 8;
+      for (let i = 0; i < GEARS; i++) {
+        const bx = gearX - 28 + i * 10;
+        const lit = i < gear;
+        if (lit) {
+          ctx.fillStyle = bars[i % bars.length];
+          roundRectPath(ctx, bx, gearTop + 8, 8, 22, 3);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+      // Draw gear number with glow.
       ctx.save();
       ctx.font = "bold 30px Nunito, sans-serif";
       ctx.fillStyle = gear === 0 ? tick : bars[(gear - 1) % bars.length];

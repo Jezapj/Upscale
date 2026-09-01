@@ -308,6 +308,8 @@ function drawBallTrail(
   ctx.save();
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
+  ctx.strokeStyle = "#ffffff";
+  ctx.fillStyle = "#ffffff";
 
   for (let i = 1; i < trail.length; i++) {
     const fade = (i / trail.length) * fadeScale;
@@ -316,7 +318,7 @@ function drawBallTrail(
 
     const p0 = trail[i - 1];
     const p1 = trail[i];
-    ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+    ctx.globalAlpha = alpha;
     ctx.lineWidth = ballR * 0.25 + tuning.width * fade;
     ctx.beginPath();
     ctx.moveTo(p0.x - camX, p0.y);
@@ -330,7 +332,7 @@ function drawBallTrail(
     if (alpha <= 0.02) continue;
 
     const p = trail[i];
-    ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+    ctx.globalAlpha = alpha;
     ctx.beginPath();
     ctx.arc(p.x - camX, p.y, ballR * (0.22 + 0.42 * fade), 0, Math.PI * 2);
     ctx.fill();
@@ -2301,18 +2303,22 @@ function drawPortalBarrier(
 
   const pulse = 0.55 + 0.15 * Math.sin(timeMs * 0.006);
   ctx.save();
-  ctx.fillStyle = `rgba(28, 22, 48, ${0.82 + 0.08 * pulse})`;
+  const barrierAlpha = 0.82 + 0.08 * pulse;
+  ctx.fillStyle = `rgba(28, 22, 48, ${barrierAlpha.toFixed(3)})`;
   ctx.fillRect(sx, rect.y, rect.w, rect.h);
 
+  // Cache the edge glow gradient since it only changes with pulse
   const edgeGlow = ctx.createLinearGradient(sx - 10, 0, sx + rect.w + 10, 0);
+  const pulse28 = 0.28 * pulse;
   edgeGlow.addColorStop(0, "rgba(80, 160, 255, 0)");
-  edgeGlow.addColorStop(0.35, `rgba(70, 190, 255, ${0.28 * pulse})`);
-  edgeGlow.addColorStop(0.65, `rgba(255, 140, 40, ${0.28 * pulse})`);
+  edgeGlow.addColorStop(0.35, `rgba(70, 190, 255, ${pulse28.toFixed(3)})`);
+  edgeGlow.addColorStop(0.65, `rgba(255, 140, 40, ${pulse28.toFixed(3)})`);
   edgeGlow.addColorStop(1, "rgba(255, 140, 40, 0)");
   ctx.fillStyle = edgeGlow;
   ctx.fillRect(sx - 8, rect.y, rect.w + 16, rect.h);
 
-  ctx.strokeStyle = `rgba(180, 200, 255, ${0.45 * pulse})`;
+  const strokeAlpha = (0.45 * pulse).toFixed(3);
+  ctx.strokeStyle = `rgba(180, 200, 255, ${strokeAlpha})`;
   ctx.lineWidth = 2;
   ctx.setLineDash([6, 8]);
   ctx.strokeRect(sx + 1, rect.y + 4, rect.w - 2, rect.h - 8);
@@ -2496,6 +2502,7 @@ function drawPortalPad(
   const glowLen = 22 + 4 * Math.sin(timeMs * 0.01);
 
   ctx.save();
+  ctx.fillStyle = `rgb(${rgb})`;
 
   // Feathered outward glow (into free space along the surface normal).
   const layers = 7;
@@ -2503,7 +2510,7 @@ function drawPortalPad(
     const t = i / layers;
     const reach = glowLen * t;
     const alpha = 0.22 * (1 - t) * (1 - t) * pulse;
-    ctx.fillStyle = `rgba(${rgb},${alpha})`;
+    ctx.globalAlpha = alpha;
     if (Math.abs(rect.ny) > Math.abs(rect.nx)) {
       // Horizontal portal on floor/ceiling
       const gy = rect.ny < 0 ? sy - reach : sy + rect.h;
@@ -2546,7 +2553,7 @@ function drawPortalPad(
   for (let i = 0; i < 5; i++) {
     const t = i / 5;
     const alpha = (0.28 - t * 0.22) * pulse;
-    ctx.fillStyle = `rgba(${rgb},${alpha})`;
+    ctx.globalAlpha = alpha;
     if (Math.abs(rect.ny) > Math.abs(rect.nx)) {
       const yy = rect.ny < 0 ? sy - 2 - i * 3.2 : sy + rect.h - 1 + i * 3.2;
       ctx.beginPath();
@@ -2561,7 +2568,7 @@ function drawPortalPad(
   }
 
   // Solid flush band on the surface
-  ctx.fillStyle = `rgba(${rgb},0.95)`;
+  ctx.globalAlpha = 0.95;
   const rr = 2.5;
   ctx.beginPath();
   ctx.moveTo(sx + rr, sy);
@@ -2576,7 +2583,7 @@ function drawPortalPad(
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = `rgba(255,255,255,${0.35 + 0.2 * pulse})`;
+  ctx.globalAlpha = 0.35 + 0.2 * pulse;
   if (Math.abs(rect.ny) > Math.abs(rect.nx)) {
     ctx.fillRect(sx + 4, sy + rect.h * 0.25, rect.w - 8, Math.max(1.5, rect.h * 0.35));
   } else {
@@ -2772,6 +2779,7 @@ export function TipTopGame({
       cup: p.cup,
       cupInner: p.cupInner,
     };
+    
     const rebuildBackdrops = (w: number, playH: number) => {
       for (const stage of stages) {
         stage.backdrop = buildStageBackdrop(stage, w, playH, forestPal);
@@ -3411,7 +3419,10 @@ export function TipTopGame({
           const closeness = Math.max(0, 1 - heightAbove / (playH * 0.55));
           if (closeness > 0.05) {
             const shadowR = ballR * (0.45 + 0.55 * closeness);
-            ctx.fillStyle = `rgba(0,0,0,${(0.22 * closeness).toFixed(3)})`;
+            // Quantize closeness to avoid per-frame string allocation.
+            const quantizedCloseness = Math.round(closeness * 20) / 20;
+            const shadowAlpha = 0.22 * quantizedCloseness;
+            ctx.fillStyle = `rgba(0,0,0,${shadowAlpha.toFixed(3)})`;
             ctx.beginPath();
             ctx.ellipse(bsx + 2, surfaceY + 3, shadowR, shadowR * 0.35, 0, 0, Math.PI * 2);
             ctx.fill();
@@ -3484,13 +3495,22 @@ export function TipTopGame({
       }
 
       const { left: leftBtn, right: rightBtn } = getButtons();
+      
+      /** Cache button styles to avoid per-frame string allocation. */
+      const btnStyles = {
+        activeFill: "rgba(92, 208, 168, 0.55)",
+        inactiveFill: "rgba(255,255,255,0.18)",
+        activeStroke: "#5cd0a8",
+        inactiveStroke: "rgba(255,255,255,0.35)",
+      };
+      
       const drawBtn = (
         b: { x: number; y: number; w: number; h: number },
         label: string,
         active: boolean,
       ) => {
-        ctx.fillStyle = active ? "rgba(92, 208, 168, 0.55)" : "rgba(255,255,255,0.18)";
-        ctx.strokeStyle = active ? "#5cd0a8" : "rgba(255,255,255,0.35)";
+        ctx.fillStyle = active ? btnStyles.activeFill : btnStyles.inactiveFill;
+        ctx.strokeStyle = active ? btnStyles.activeStroke : btnStyles.inactiveStroke;
         ctx.lineWidth = 2;
         ctx.fillRect(b.x, b.y, b.w, b.h);
         ctx.strokeRect(b.x, b.y, b.w, b.h);

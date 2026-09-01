@@ -100,6 +100,30 @@ export function ArcadeShopSheet({ open, onClose, focusGameId }: Props) {
                   })}
                 </div>
               )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                {games.map((g) => {
+                  const equippedId = unlocks.equipped[g.id];
+                  const hasPaletteEquipped = !!equippedId;
+                  const equippedPalette = hasPaletteEquipped
+                    ? UNLOCKABLE_PALETTES.find((pal) => pal.id === equippedId)
+                    : null;
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      className={`capsule px-3 py-1 text-xs font-800 ${
+                        !hasPaletteEquipped ? "bg-ink/10 text-ink" : "text-ink-soft"
+                      }`}
+                      onClick={() => equip(g.id, null)}
+                      disabled={!hasPaletteEquipped}
+                    >
+                      {hasPaletteEquipped
+                        ? `Remove ${equippedPalette?.name ?? "palette"} from ${g.name}`
+                        : `Default for ${g.name}`}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           );
         })}
