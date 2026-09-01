@@ -496,6 +496,9 @@ export function unlockPalette(
   };
 }
 
+/** Sentinel for "explicitly no palette" - distinguishes unset from explicitly cleared. */
+const NO_PALETTE = "__NONE__" as const;
+
 export function equipPalette(
   data: AppData,
   gameId: GameId,
@@ -505,7 +508,7 @@ export function equipPalette(
   if (paletteId && !unlocks.palettes.includes(paletteId)) return data;
   const equipped = { ...unlocks.equipped };
   if (paletteId) equipped[gameId] = paletteId;
-  else delete equipped[gameId];
+  else equipped[gameId] = NO_PALETTE;
   return {
     ...data,
     arcadeUnlocks: { ...unlocks, equipped },
@@ -541,7 +544,21 @@ export function mergeArcadeUnlocks(
   if (!a) return b;
   if (!b) return a;
   const palettes = [...new Set([...a.palettes, ...b.palettes])];
-  const equipped = { ...b.equipped, ...a.equipped };
+  const equipped: Record<string, string> = {};
+  const allGameIds = new Set<string>([
+    ...Object.keys(a.equipped ?? {}),
+    ...Object.keys(b.equipped ?? {}),
+  ]);
+  for (const gameId of allGameIds) {
+    const aVal = a.equipped?.[gameId as GameId];
+    const bVal = b.equipped?.[gameId as GameId];
+    // Local (a) wins if it has an explicit value (including NO_PALETTE sentinel)
+    if (aVal !== undefined) {
+      if (aVal !== NO_PALETTE) equipped[gameId] = aVal;
+    } else if (bVal !== undefined && bVal !== NO_PALETTE) {
+      equipped[gameId] = bVal;
+    }
+  }
   return { palettes, equipped };
 }
 

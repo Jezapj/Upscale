@@ -121,20 +121,24 @@ export const storage = {
     return merged;
   },
 
-  async saveData(userId: string, data: AppData): Promise<AppData> {
-    let next: AppData = { ...data, syncedAt: new Date().toISOString() };
+  async saveData(
+    userId: string,
+    data: AppData,
+    options?: { skipCloudSync?: boolean }
+  ): Promise<AppData> {
+    const next: AppData = { ...data, syncedAt: new Date().toISOString() };
 
-    if (isCloudUser(userId) && cloudConfigured()) {
+    if (isCloudUser(userId) && cloudConfigured() && !options?.skipCloudSync) {
       const auth = getFirebaseAuth();
       if (auth?.currentUser) {
         const cloud = await loadCloudData(userId, 3_000);
-        next = {
+        const merged = {
           ...mergeLocalAndCloud(data, cloud),
           syncedAt: new Date().toISOString(),
         };
-        saveLocal(userId, next);
-        await saveCloudData(userId, next);
-        return next;
+        saveLocal(userId, merged);
+        await saveCloudData(userId, merged);
+        return merged;
       }
     }
 

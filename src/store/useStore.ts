@@ -134,19 +134,13 @@ export const useStore = create<StoreState>((set, get) => {
         .then(async () => {
           const snapshot = get();
           if (!snapshot.user) return;
-          const merged = await storage.saveData(snapshot.user.id, snapshot.data);
-          const latest = get();
-          if (latest.user?.id !== snapshot.user.id) return;
-          const combined = mergeLocalAndCloud(latest.data, {
-            formatVersion: 1,
-            updatedAt: merged.syncedAt ?? "",
-            data: merged,
+          // Fast local-only save for debounced persist - no cloud round-trip
+          await storage.saveData(snapshot.user.id, snapshot.data, {
+            skipCloudSync: true,
           });
-          set({ data: combined });
-          if (latest.data !== snapshot.data) persist();
         })
         .catch((err) => {
-          console.warn("Cloud save failed", err);
+          console.warn("Local save failed", err);
         });
     }, 150);
   };
