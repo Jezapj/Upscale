@@ -8,7 +8,7 @@ import {
   type UnlockablePaletteId,
 } from "@/lib/economy";
 import type { GameId } from "@/lib/types";
-import { GAMES } from "@/lib/games";
+import { GAMES, GAME_GLYPH } from "@/lib/games";
 
 interface Props {
   open: boolean;
@@ -26,6 +26,14 @@ export function ArcadeShopSheet({ open, onClose, focusGameId }: Props) {
   const games = focusGameId
     ? GAMES.filter((g) => g.id === focusGameId)
     : GAMES;
+
+  const isEquipped = (gameId: GameId, paletteId: UnlockablePaletteId) =>
+    unlocks.equipped[gameId] === paletteId;
+
+  const handleToggle = (gameId: GameId, paletteId: UnlockablePaletteId) => {
+    const currentlyEquipped = isEquipped(gameId, paletteId);
+    equip(gameId, currentlyEquipped ? null : paletteId);
+  };
 
   return (
     <Sheet open={open} onClose={onClose} title="Arcade shop">
@@ -48,7 +56,7 @@ export function ArcadeShopSheet({ open, onClose, focusGameId }: Props) {
           const owned = unlocks.palettes.includes(p.id);
           return (
             <div key={p.id} className="card p-4">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 mb-3">
                 <div className="flex gap-1">
                   {p.swatches.map((c) => (
                     <span
@@ -76,54 +84,46 @@ export function ArcadeShopSheet({ open, onClose, focusGameId }: Props) {
                   </button>
                 ) : null}
               </div>
+
               {owned && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {games.map((g) => {
-                    const equipped = unlocks.equipped[g.id] === p.id;
-                    return (
-                      <button
-                        key={g.id}
-                        type="button"
-                        className={`capsule px-3 py-1 text-xs font-800 ${
-                          equipped ? "bg-mint/40 text-ink" : "text-ink-soft"
-                        }`}
-                        onClick={() =>
-                          equip(
-                            g.id,
-                            equipped ? null : (p.id as UnlockablePaletteId),
-                          )
-                        }
-                      >
-                        {equipped ? `On ${g.name}` : `Equip ${g.name}`}
-                      </button>
-                    );
-                  })}
+                <div className="rounded-2xl bg-ink/5 p-4">
+                  <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+                    {games.map((g) => {
+                      const equipped = isEquipped(g.id, p.id);
+                      return (
+                        <button
+                          key={g.id}
+                          type="button"
+                          className="relative flex flex-col items-center gap-2 py-3"
+                          onClick={() => handleToggle(g.id, p.id)}
+                          data-sfx="click"
+                          aria-label={`${equipped ? "Unequip" : "Equip"} ${p.name} for ${g.name}`}
+                        >
+                          <span className="text-lg">{GAME_GLYPH[g.id]}</span>
+                          <div
+                            className={`relative w-full max-w-[64px] h-6 rounded-full border-2 transition-colors ${
+                              equipped
+                                ? "bg-mint border-mint"
+                                : "bg-ink/10 border-ink/20"
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 h-4 w-4 rounded-full shadow-md transition-transform duration-150 ${
+                                equipped
+                                  ? "translate-x-full-1px bg-mint"
+                                  : "translate-x-[-15px] bg-ink/30"
+                              }`}
+                            />
+                          </div>
+                          <span className="text-[10px] font-700 text-ink-faint uppercase tracking-wide">
+                            {g.name}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
-              <div className="mt-3 flex flex-wrap gap-2">
-                {games.map((g) => {
-                  const equippedId = unlocks.equipped[g.id];
-                  const hasPaletteEquipped = !!equippedId;
-                  const equippedPalette = hasPaletteEquipped
-                    ? UNLOCKABLE_PALETTES.find((pal) => pal.id === equippedId)
-                    : null;
-                  return (
-                    <button
-                      key={g.id}
-                      type="button"
-                      className={`capsule px-3 py-1 text-xs font-800 ${
-                        !hasPaletteEquipped ? "bg-ink/10 text-ink" : "text-ink-soft"
-                      }`}
-                      onClick={() => equip(g.id, null)}
-                      disabled={!hasPaletteEquipped}
-                    >
-                      {hasPaletteEquipped
-                        ? `Remove ${equippedPalette?.name ?? "palette"} from ${g.name}`
-                        : `Default for ${g.name}`}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
           );
         })}
