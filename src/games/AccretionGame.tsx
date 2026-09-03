@@ -261,7 +261,7 @@ export function AccretionGame({
     const ballRadius = () => {
       const u = unit();
       // Daily is a 20s sprint: grow fast and cap high. Endless is slower.
-      const perJunk = daily ? 4.8 : 2.1;
+      const perJunk = daily ? 3.5 : 2.8;
       const cap = (daily ? 128 : 150) * u;
       return Math.min(cap, (16 + attached.length * perJunk) * u);
     };

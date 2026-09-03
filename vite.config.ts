@@ -249,6 +249,8 @@ export default defineConfig(({ mode }) => {
               purpose: "maskable",
             },
           ],
+          // iOS status bar theming for PWA
+          "apple-mobile-web-app-status-bar-style": "black-translucent",
         },
         workbox: {
           globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
