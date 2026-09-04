@@ -244,13 +244,11 @@ export default defineConfig(({ mode }) => {
             },
             {
               src: "icons/icon-512-maskable.png",
-              sizes: "512x512",
+              sizes:"512x512",
               type: "image/png",
               purpose: "maskable",
             },
           ],
-          // iOS status bar theming for PWA
-          "apple-mobile-web-app-status-bar-style": "black-translucent",
         },
         workbox: {
           globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
