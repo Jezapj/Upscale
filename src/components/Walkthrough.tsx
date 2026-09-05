@@ -205,7 +205,7 @@ export function Walkthrough() {
               style={{
                 top: Math.max(4, spot.top - PAD),
                 left: Math.max(4, spot.left - PAD),
-                width: spot.width + PAD * 2,
+                width: Math.min(spot.width + PAD * 2, shell.clientWidth * 0.99),
                 height: spot.height + PAD * 2,
               }}
             />
