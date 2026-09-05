@@ -223,8 +223,8 @@ export default defineConfig(({ mode }) => {
           short_name: "Upscale",
           description:
             "A 3DS eShop styled reminder, self-improvement and goal tracker. Build routines, group them under goals, and map your progress.",
-          theme_color: "#eef0f3",
-          background_color: "#eef0f3",
+          theme_color: "#050508",
+          background_color: "#050508",
           display: "standalone",
           orientation: "any",
           start_url: "/",
