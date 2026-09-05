@@ -1,13 +1,6 @@
 /** Background theme tunes (files in /public). */
 export const BACKGROUND_TRACKS = [
   {
-    id: "eshop-loop",
-    label: "eShop Loop",
-    src: "/10secloopmenumusic.mp3",
-    /** Clip the tail so the loop is a clean 11 seconds. */
-    loopEnd: 11,
-  },
-  {
     id: "breakout",
     label: "Breakout",
     src: "/Breakout_menusong.mp3",
@@ -34,7 +27,7 @@ export const BACKGROUND_TRACKS = [
 export type BackgroundTrackId = (typeof BACKGROUND_TRACKS)[number]["id"];
 
 /** Default landing track for new sessions (no stored preference). */
-export const DEFAULT_BACKGROUND_TRACK_ID: BackgroundTrackId = "eshop-loop";
+export const DEFAULT_BACKGROUND_TRACK_ID: BackgroundTrackId = "palmtree";
 
 export function getBackgroundTrack(id: BackgroundTrackId) {
   return (

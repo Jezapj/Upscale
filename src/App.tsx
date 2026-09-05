@@ -137,10 +137,17 @@ function AppShell() {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [data]);
 
-  // Weekly recap offer once per new week.
+  // Weekly recap offer once per new week (after walkthrough and daily login bonus).
+  const walkthroughSeenFlag = walkthroughSeen();
+  const loginBonusShown = data.loginBonus?.lastPopupDate === todayKey();
+  const loginBonusClaimed = (data.wallet?.txns ?? []).some(
+    (t) => t.id === loginTxnId(todayKey()),
+  );
+  const shouldShowRecap = walkthroughSeenFlag && (loginBonusShown || loginBonusClaimed);
+
   useEffect(() => {
-    if (shouldOfferRecap(data)) setRecapOpen(true);
-  }, [data.lastRecapWeek, data.routines.length]);
+    if (shouldShowRecap && shouldOfferRecap(data)) setRecapOpen(true);
+  }, [data.lastRecapWeek, data.routines.length, shouldShowRecap]);
 
   // Publish public stats + load kudos for Google users.
   useEffect(() => {

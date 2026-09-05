@@ -29,7 +29,7 @@ export function BackgroundMusicPlayer() {
   const effectiveVolume = muted
     ? 0
     : volume * MUSIC_BED_GAIN * gameMusicDuck(location.pathname);
-  const loopEnd = "loopEnd" in track ? track.loopEnd : undefined;
+  const loopEnd = "loopEnd" in track ? (track as { loopEnd: number }).loopEnd : undefined;
 
   useEffect(() => {
     const apply = () => {
