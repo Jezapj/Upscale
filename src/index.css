@@ -13,8 +13,8 @@
   --loading-glow: rgba(58, 142, 240, 0.55);
   /* Scroll-edge dissolve. Edit the -mobile / -desktop values; the live
      --scroll-fade-* vars swap at the same breakpoint as the wide layout. */
-  --scroll-fade-top-mobile: 0.6rem;
-  --scroll-fade-bottom-mobile: 0.5rem;
+  --scroll-fade-top-mobile: 0.4rem;
+  --scroll-fade-bottom-mobile: 0.25rem;
   --scroll-fade-end-gap-mobile: 0.25rem;
   --scroll-fade-top-desktop: 0.15rem;
   --scroll-fade-bottom-desktop: 0.5rem;

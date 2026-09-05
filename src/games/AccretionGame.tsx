@@ -30,7 +30,7 @@ const RUN_TIME_MS = 20_000;
 /** Extra time granted per finished course loop in endless mode. */
 const LOOP_BONUS_MS = 10_000;
 /** Course length in world units (1 wu = 1px at 640px height). */
-const COURSE_LEN = 3400;
+const COURSE_LEN = 5000;
 /** Distance between zigzag control points. */
 const SEG = 420;
 /** Distance between junk spawn slots. */
@@ -333,7 +333,7 @@ export function AccretionGame({
       const mass = Math.pow((16 * u) / ballRadius(), 0.7);
 
       // Horizontal component steers; upward component (negative dy) adds speed.
-      steer(dx * Math.abs((0.025 - mass /80)) * u);
+      steer(dx * Math.abs((0.035 - mass /80)) * u);
 
       if (upInput) {
         thrust = Math.min(THRUST_MAX, thrust + up * THRUST_BUILD_RATE * (mass + 0.5));

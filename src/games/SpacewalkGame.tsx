@@ -99,14 +99,14 @@ const MAX_PORTALS = 3;
 const MIN_TRACE_LEN = 34;
 /** Launch bays across the top station. */
 const BAY_COUNT = 5;
-/** Max launch tilt from straight down (45 degrees). */
-const LAUNCH_SPREAD = Math.PI / 4;
+/** Max launch tilt from straight down (60 degrees). */
+const LAUNCH_SPREAD = Math.PI / 3;
 /** Post-flip gravity boost: inverted g is multiplied by (1 + BRAKE_MAX * brake). */
 const BRAKE_MAX = 5;
 /** Per-frame exponential decay of the post-flip brake. */
 const BRAKE_DECAY = 0.94;
 /** How long a bay stays destroyed after a rocket is flipped back into it. */
-const BAY_DOWN_MS = 8000;
+const BAY_DOWN_MS = 5000;
 /** Half-width of a launch-bay hit box (world units). */
 const BAY_HIT_HALF = 42;
 /** Rockets self-destruct after this many milliseconds in play. */
@@ -290,10 +290,10 @@ export function SpacewalkGame({
         const p = Math.min(1, tSec / (DAILY_DURATION_MS / 1000));
         return 5.0 - (5.0 - 1.8) * p;
       }
-      return Math.max(1.5, 5.0 - tSec * 0.03);
+      return Math.max(1, 5.0 - tSec * 0.15);
     };
 
-    const gravityMult = (tSec: number) => (daily ? 1 : 1 + tSec * 0.008);
+    const gravityMult = (tSec: number) => (daily ? 1 + tSec * 0.015: 1 + tSec * 0.01);
 
     /** Portal lifetime shrinks as the run progresses. */
     const portalLifeFrames = (tSec: number) => {
@@ -319,7 +319,7 @@ export function SpacewalkGame({
         if (bayEnabled(left)) { bay = left; break; }
       }
       if (bay < 0) return; // whole station is down: no launch (your reward)
-      const speed = 1.1 * u;
+      const speed = 1.5 * u;
       rockets.push({
         x: bayX(bay),
         y: stationH() + 6 * u,
@@ -456,7 +456,7 @@ export function SpacewalkGame({
     window.addEventListener("pointercancel", onPointerUp);
 
     spawnRocket(Math.floor(BAY_COUNT / 2));
-    nextSpawnMs = spawnIntervalSec(0) * 1000;
+    nextSpawnMs = spawnIntervalSec(0) * 500;
 
     let raf = 0;
     let lastFrame = performance.now();
