@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Crown, Loader2, X } from "lucide-react";
+import { Crown, Loader2, X, Settings } from "lucide-react";
 import { Sheet } from "./Sheet";
 import { PRO_PRICE_LABEL } from "@/lib/games";
+import { Purchases } from "@revenuecat/purchases-js";
 import {
   presentProPaywall,
   purchaseProPackage,
@@ -32,6 +33,8 @@ export function ProSubscriptionSheet({ open, onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [managementUrl, setManagementUrl] = useState<string | null>(null);
+  const [fetchingMgmt, setFetchingMgmt] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -39,6 +42,22 @@ export function ProSubscriptionSheet({ open, onClose }: Props) {
       setError(null);
     }
   }, [open]);
+
+  // Fetch management URL when Pro status is confirmed
+  useEffect(() => {
+    if (isPro && revenueCatConfigured() && !managementUrl && !fetchingMgmt) {
+      setFetchingMgmt(true);
+      Purchases.getSharedInstance()
+        .getCustomerInfo()
+        .then((info) => {
+          if (info.managementURL) {
+            setManagementUrl(info.managementURL);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setFetchingMgmt(false));
+    }
+  }, [isPro, managementUrl, fetchingMgmt]);
 
   const onSuccess = useCallback(() => {
     setGamePremium(true);
@@ -102,9 +121,20 @@ export function ProSubscriptionSheet({ open, onClose }: Props) {
           </div>
 
           {isPro ? (
-            <p className="text-center text-sm font-800 text-accent">
-              You&apos;re on Pro - enjoy unlimited Endless plays.
-            </p>
+            <div className="space-y-2">
+              <p className="text-center text-sm font-800 text-accent">
+                You&apos;re on Pro - enjoy unlimited Endless plays.
+              </p>
+              <button
+                type="button"
+                className="btn-ghost w-full flex items-center justify-center gap-2"
+                disabled={fetchingMgmt || !managementUrl}
+                onClick={() => managementUrl && window.open(managementUrl, "_blank")}
+              >
+                <Settings size={18} />
+                {fetchingMgmt ? "Loading…" : managementUrl ? "Manage Subscription" : "Unavailable"}
+              </button>
+            </div>
           ) : needsSignIn ? (
             <p className="text-center text-sm font-700 text-ink-soft">
               Sign in with Google to subscribe and sync Pro across devices.

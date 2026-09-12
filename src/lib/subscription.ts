@@ -58,7 +58,6 @@ export function forceRepinToCurrentSub(user: User | null): string | null {
   const currentSub = user.id.replace(/^google:/, "");
   try {
     localStorage.setItem(BILLING_UID_KEY, currentSub);
-    console.log("[forceRepinToCurrentSub] Re-pinned to:", currentSub);
     return currentSub;
   } catch {
     return currentSub;
@@ -68,15 +67,6 @@ export function forceRepinToCurrentSub(user: User | null): string | null {
 /** Initialize RevenueCat for the signed-in user. */
 export function initSubscriptionSdk(user: User | null): void {
   const uid = subscriptionUserId(user);
-  const currentSub = user?.id.replace(/^google:/, "");
-  const pinned = getPinnedBillingUid();
-  console.log("[initSubscriptionSdk] Configuring RevenueCat:", { 
-    uid, 
-    currentSub, 
-    pinned,
-    userId: user?.id,
-    match: uid === currentSub 
-  });
   if (!uid || !revenueCatConfigured()) return;
   configurePurchases(uid);
 }
@@ -96,14 +86,11 @@ export async function fetchProFromStripeApi(
       `${subscriptionApiBase()}/subscription-status?${params.toString()}`,
     );
     if (!res.ok) {
-      console.warn("[fetchProFromStripeApi] API error:", res.status, await res.text());
       return false;
     }
     const body = (await res.json()) as { active?: boolean };
-    console.log("[fetchProFromStripeApi] Result:", { active: body.active, uid, email });
     return body.active === true;
-  } catch (err) {
-    console.warn("[fetchProFromStripeApi] Failed", err);
+  } catch {
     return false;
   }
 }
@@ -152,7 +139,6 @@ export async function resolveProStatus(user: User | null): Promise<boolean> {
 
   if (revenueCatConfigured()) {
     const rcPro = await fetchProFromRevenueCat();
-    console.log("[resolveProStatus] RevenueCat check:", { rcPro, userId: user.id });
     if (rcPro) return true;
 
     // AGGRESSIVE RECONCILIATION: Try ALL possible IDs
@@ -166,30 +152,20 @@ export async function resolveProStatus(user: User | null): Promise<boolean> {
       { id: firebaseUid, label: "Firebase UID" },
     ].filter((c): c is { id: string; label: string } => !!c.id);
 
-    console.log("[resolveProStatus] Trying all candidate IDs:", { candidates: candidateIds.map(c => c.id) });
-
     const instance = Purchases.getSharedInstance();
-    for (const { id, label } of candidateIds) {
+    for (const { id } of candidateIds) {
       try {
-        console.log(`[resolveProStatus] Checking ${label}:`, id);
         await instance.changeUser(id);
         const info = await instance.getCustomerInfo();
         const active = "Upscale Pro" in info.entitlements.active;
-        console.log(`[resolveProStatus] ${label} check:`, { 
-          active, 
-          activeEntitlements: Object.keys(info.entitlements.active),
-          originalAppUserId: info.originalAppUserId,
-          id 
-        });
         if (active) {
           // Found it! Re-pin to this ID
           clearPinnedBillingUid();
           localStorage.setItem(BILLING_UID_KEY, id);
-          console.log("[resolveProStatus] SUCCESS - Re-pinned to:", id);
           return true;
         }
-      } catch (err) {
-        console.warn(`[resolveProStatus] ${label} check failed:`, err);
+      } catch {
+        // ignore
       }
     }
 
@@ -203,6 +179,5 @@ export async function resolveProStatus(user: User | null): Promise<boolean> {
   }
 
   const stripePro = await fetchProFromStripeApi(user);
-  console.log("[resolveProStatus] Stripe API fallback:", { stripePro, userId: user.id });
   return stripePro;
 }
