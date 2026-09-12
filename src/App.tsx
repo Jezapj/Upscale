@@ -31,6 +31,24 @@ import { GamesScreen } from "@/screens/GamesScreen";
 import { FriendsScreen } from "@/screens/FriendsScreen";
 import { ProgressScreen } from "@/screens/ProgressScreen";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import { resolveProStatus, verifyCheckoutSession } from "@/lib/subscription";
+import { Purchases } from "@revenuecat/purchases-js";
+import { useSearchParams } from "react-router-dom";
+import { useScreenOrientation } from "@/hooks/useScreenOrientation";
+import { setAppBadgeCount } from "@/lib/appBadge";
+import { isDueToday } from "@/lib/frequency";
+import { todayKey } from "@/lib/dates";
+import {
+  buildWeeklyRecap,
+  shouldOfferRecap,
+} from "@/lib/weeklyRecap";
+import { listKudosForDay, publishPublicStats } from "@/lib/social";
+import { isCloudUser } from "@/lib/cloudSync";
+import { cloudConfigured } from "@/lib/firebase";
+import { playUiChime } from "@/lib/uiSound";
+import { setAppAudioMuted } from "@/games/gameAudio";
+import { useMasterMute } from "@/store/useMasterMute";
+import { loginTxnId } from "@/lib/economy";
 
 const TipTopScreen = lazy(() =>
   import("@/screens/games/TipTopScreen").then((m) => ({ default: m.TipTopScreen })),
@@ -70,21 +88,6 @@ function GameRouteFallback() {
     </div>
   );
 }
-import { useScreenOrientation } from "@/hooks/useScreenOrientation";
-import { setAppBadgeCount } from "@/lib/appBadge";
-import { isDueToday } from "@/lib/frequency";
-import { todayKey } from "@/lib/dates";
-import {
-  buildWeeklyRecap,
-  shouldOfferRecap,
-} from "@/lib/weeklyRecap";
-import { listKudosForDay, publishPublicStats } from "@/lib/social";
-import { isCloudUser } from "@/lib/cloudSync";
-import { cloudConfigured } from "@/lib/firebase";
-import { playUiChime } from "@/lib/uiSound";
-import { setAppAudioMuted } from "@/games/gameAudio";
-import { useMasterMute } from "@/store/useMasterMute";
-import { loginTxnId } from "@/lib/economy";
 
 function AppShell() {
   const location = useLocation();
@@ -199,6 +202,59 @@ function AppShell() {
   useEffect(() => {
     setAppAudioMuted(masterMuted);
   }, [masterMuted]);
+
+  const setGamePremium = useStore((s) => s.setGamePremium);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Handle Stripe checkout verification globally (any page)
+  useEffect(() => {
+    const checkout = searchParams.get("checkout");
+    const sessionId = searchParams.get("session_id");
+    if (checkout === "success" && sessionId) {
+      void verifyCheckoutSession(sessionId).then((active) => {
+        if (active) setGamePremium(true);
+        searchParams.delete("checkout");
+        searchParams.delete("session_id");
+        setSearchParams(searchParams, { replace: true });
+      });
+    } else if (checkout === "cancel") {
+      searchParams.delete("checkout");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams, setGamePremium]);
+
+  // Sync pro status on app startup / user login for Google users
+  useEffect(() => {
+    if (user?.provider === "google") {
+      void resolveProStatus(user).then((active) => {
+        if (active) setGamePremium(true);
+      });
+    }
+  }, [user, setGamePremium]);
+
+  // Poll for RevenueCat entitlement changes every 30s when app is visible
+  useEffect(() => {
+    if (!user || user.provider !== "google") return;
+    let cancelled = false;
+
+    const checkProStatus = async () => {
+      if (cancelled) return;
+      try {
+        const info = await Purchases.getSharedInstance().getCustomerInfo();
+        const active = "pro" in info.entitlements.active;
+        if (active) setGamePremium(true);
+      } catch {
+        // ignore errors
+      }
+    };
+
+    const interval = setInterval(checkProStatus, 30000);
+    checkProStatus(); // initial check
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [user, setGamePremium]);
 
   useEffect(() => {
     if (location.pathname !== "/") return;
