@@ -52,11 +52,32 @@ export function clearPinnedBillingUid(): void {
   }
 }
 
+/** Force re-pin to current Google sub (for manual recovery). */
+export function forceRepinToCurrentSub(user: User | null): string | null {
+  if (!user) return null;
+  const currentSub = user.id.replace(/^google:/, "");
+  try {
+    localStorage.setItem(BILLING_UID_KEY, currentSub);
+    console.log("[forceRepinToCurrentSub] Re-pinned to:", currentSub);
+    return currentSub;
+  } catch {
+    return currentSub;
+  }
+}
+
 /** Initialize RevenueCat for the signed-in user. */
 export function initSubscriptionSdk(user: User | null): void {
   const uid = subscriptionUserId(user);
+  const currentSub = user?.id.replace(/^google:/, "");
+  const pinned = getPinnedBillingUid();
+  console.log("[initSubscriptionSdk] Configuring RevenueCat:", { 
+    uid, 
+    currentSub, 
+    pinned,
+    userId: user?.id,
+    match: uid === currentSub 
+  });
   if (!uid || !revenueCatConfigured()) return;
-  console.log("[initSubscriptionSdk] Configuring RevenueCat with uid:", uid);
   configurePurchases(uid);
 }
 
@@ -134,29 +155,50 @@ export async function resolveProStatus(user: User | null): Promise<boolean> {
     console.log("[resolveProStatus] RevenueCat check:", { rcPro, userId: user.id });
     if (rcPro) return true;
 
-    // Reconciliation: if pinned ID differs from current Google sub, try the legacy sub
+    // AGGRESSIVE RECONCILIATION: Try ALL possible IDs
     const pinnedUid = getPinnedBillingUid();
     const currentSub = user.id.replace(/^google:/, "");
-    if (pinnedUid && pinnedUid !== currentSub) {
-      console.log("[resolveProStatus] Trying legacy Google sub for reconciliation:", { pinnedUid, currentSub });
+    const firebaseUid = user.id.startsWith("google:") ? user.id.slice("google:".length) : null;
+    
+    const candidateIds = [
+      { id: currentSub, label: "Google sub" },
+      { id: pinnedUid, label: "Pinned UID" },
+      { id: firebaseUid, label: "Firebase UID" },
+    ].filter((c): c is { id: string; label: string } => !!c.id);
+
+    console.log("[resolveProStatus] Trying all candidate IDs:", { candidates: candidateIds.map(c => c.id) });
+
+    const instance = Purchases.getSharedInstance();
+    for (const { id, label } of candidateIds) {
       try {
-        const instance = Purchases.getSharedInstance();
-        // Switch to legacy ID to check
-        await instance.changeUser(currentSub);
+        console.log(`[resolveProStatus] Checking ${label}:`, id);
+        await instance.changeUser(id);
         const info = await instance.getCustomerInfo();
-        const legacyPro = "pro" in info.entitlements.active;
-        console.log("[resolveProStatus] Legacy sub check:", { legacyPro, currentSub });
-        if (legacyPro) {
-          // Found entitlement on legacy ID - re-pin to legacy and keep it
+        const active = "Upscale Pro" in info.entitlements.active;
+        console.log(`[resolveProStatus] ${label} check:`, { 
+          active, 
+          activeEntitlements: Object.keys(info.entitlements.active),
+          originalAppUserId: info.originalAppUserId,
+          id 
+        });
+        if (active) {
+          // Found it! Re-pin to this ID
           clearPinnedBillingUid();
-          localStorage.setItem(BILLING_UID_KEY, currentSub);
+          localStorage.setItem(BILLING_UID_KEY, id);
+          console.log("[resolveProStatus] SUCCESS - Re-pinned to:", id);
           return true;
         }
-        // Restore pinned ID
-        await instance.changeUser(pinnedUid);
       } catch (err) {
-        console.warn("[resolveProStatus] Legacy reconciliation failed", err);
+        console.warn(`[resolveProStatus] ${label} check failed:`, err);
       }
+    }
+
+    // Restore to pinned (or current sub if nothing pinned)
+    const restoreId = pinnedUid || currentSub;
+    try {
+      await instance.changeUser(restoreId);
+    } catch {
+      // ignore
     }
   }
 

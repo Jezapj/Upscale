@@ -241,7 +241,7 @@ function AppShell() {
       if (cancelled) return;
       try {
         const info = await Purchases.getSharedInstance().getCustomerInfo();
-        const active = "pro" in info.entitlements.active;
+        const active = "Upscale Pro" in info.entitlements.active;
         console.log("[AppShell polling] RevenueCat check:", { 
           active, 
           activeEntitlements: Object.keys(info.entitlements.active),

@@ -6,7 +6,7 @@ import {
 } from "@revenuecat/purchases-js";
 
 /** Entitlement identifier: must match RevenueCat dashboard. */
-export const PRO_ENTITLEMENT = "pro";
+export const PRO_ENTITLEMENT = "Upscale Pro";
 
 export function revenueCatConfigured(): boolean {
   return !!import.meta.env.VITE_REVENUECAT_API_KEY;
