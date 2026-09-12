@@ -242,9 +242,14 @@ function AppShell() {
       try {
         const info = await Purchases.getSharedInstance().getCustomerInfo();
         const active = "pro" in info.entitlements.active;
+        console.log("[AppShell polling] RevenueCat check:", { 
+          active, 
+          activeEntitlements: Object.keys(info.entitlements.active),
+          originalAppUserId: info.originalAppUserId 
+        });
         if (active) setGamePremium(true);
-      } catch {
-        // ignore errors
+      } catch (err) {
+        console.warn("[AppShell polling] RevenueCat check failed", err);
       }
     };
 

@@ -36,7 +36,13 @@ export function isProEntitlementActive(
 export async function fetchProFromRevenueCat(): Promise<boolean> {
   if (!revenueCatConfigured()) return false;
   try {
-    const info = await Purchases.getSharedInstance().getCustomerInfo();
+    const instance = Purchases.getSharedInstance();
+    const info = await instance.getCustomerInfo();
+    console.log("[RevenueCat] CustomerInfo:", {
+      originalAppUserId: info.originalAppUserId,
+      activeEntitlements: Object.keys(info.entitlements.active),
+      allEntitlements: Object.keys(info.entitlements.all),
+    });
     return isProEntitlementActive(info.entitlements.active);
   } catch (err) {
     console.warn("RevenueCat customer info failed", err);

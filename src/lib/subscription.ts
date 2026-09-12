@@ -1,4 +1,3 @@
-import { firestoreUserDocId } from "./cloudSync";
 import type { User } from "./types";
 import {
   configurePurchases,
@@ -17,13 +16,15 @@ function subscriptionApiBase(): string {
 /** Firebase uid used as RevenueCat / Stripe app user id. */
 export function subscriptionUserId(user: User | null): string | null {
   if (!user) return null;
-  return firestoreUserDocId(user.id) ?? user.id.replace(/^google:/, "");
+  // Use Google sub consistently to match RevenueCat customer IDs created before Firebase
+  return user.id.replace(/^google:/, "");
 }
 
 /** Initialize RevenueCat for the signed-in user. */
 export function initSubscriptionSdk(user: User | null): void {
   const uid = subscriptionUserId(user);
   if (!uid || !revenueCatConfigured()) return;
+  console.log("[initSubscriptionSdk] Configuring RevenueCat with uid:", uid);
   configurePurchases(uid);
 }
 
@@ -41,10 +42,15 @@ export async function fetchProFromStripeApi(
     const res = await fetch(
       `${subscriptionApiBase()}/subscription-status?${params.toString()}`,
     );
-    if (!res.ok) return false;
+    if (!res.ok) {
+      console.warn("[fetchProFromStripeApi] API error:", res.status, await res.text());
+      return false;
+    }
     const body = (await res.json()) as { active?: boolean };
+    console.log("[fetchProFromStripeApi] Result:", { active: body.active, uid, email });
     return body.active === true;
-  } catch {
+  } catch (err) {
+    console.warn("[fetchProFromStripeApi] Failed", err);
     return false;
   }
 }
@@ -93,8 +99,11 @@ export async function resolveProStatus(user: User | null): Promise<boolean> {
 
   if (revenueCatConfigured()) {
     const rcPro = await fetchProFromRevenueCat();
+    console.log("[resolveProStatus] RevenueCat check:", { rcPro, userId: user.id });
     if (rcPro) return true;
   }
 
-  return fetchProFromStripeApi(user);
+  const stripePro = await fetchProFromStripeApi(user);
+  console.log("[resolveProStatus] Stripe API fallback:", { stripePro, userId: user.id });
+  return stripePro;
 }
