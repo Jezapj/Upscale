@@ -1,4 +1,5 @@
 import type { User } from "./types";
+import { Purchases } from "@revenuecat/purchases-js";
 import {
   configurePurchases,
   fetchProFromRevenueCat,
@@ -13,11 +14,42 @@ function subscriptionApiBase(): string {
   return import.meta.env.VITE_SUBSCRIPTION_API_URL ?? "/api";
 }
 
-/** Firebase uid used as RevenueCat / Stripe app user id. */
+const BILLING_UID_KEY = "upscale:billing-uid";
+
+function pinBillingUid(candidate: string): string {
+  try {
+    const existing = localStorage.getItem(BILLING_UID_KEY);
+    if (existing) return existing;
+    localStorage.setItem(BILLING_UID_KEY, candidate);
+    return candidate;
+  } catch {
+    return candidate;
+  }
+}
+
+/** Stable RevenueCat / Stripe app user id, pinned on first sign-in. */
 export function subscriptionUserId(user: User | null): string | null {
   if (!user) return null;
-  // Use Google sub consistently to match RevenueCat customer IDs created before Firebase
-  return user.id.replace(/^google:/, "");
+  const strippedId = user.id.replace(/^google:/, "");
+  return pinBillingUid(strippedId);
+}
+
+/** Get the currently pinned billing uid (for debugging/reconciliation). */
+export function getPinnedBillingUid(): string | null {
+  try {
+    return localStorage.getItem(BILLING_UID_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** Clear pinned billing uid (for testing or manual reset). */
+export function clearPinnedBillingUid(): void {
+  try {
+    localStorage.removeItem(BILLING_UID_KEY);
+  } catch {
+    /* noop */
+  }
 }
 
 /** Initialize RevenueCat for the signed-in user. */
@@ -101,6 +133,31 @@ export async function resolveProStatus(user: User | null): Promise<boolean> {
     const rcPro = await fetchProFromRevenueCat();
     console.log("[resolveProStatus] RevenueCat check:", { rcPro, userId: user.id });
     if (rcPro) return true;
+
+    // Reconciliation: if pinned ID differs from current Google sub, try the legacy sub
+    const pinnedUid = getPinnedBillingUid();
+    const currentSub = user.id.replace(/^google:/, "");
+    if (pinnedUid && pinnedUid !== currentSub) {
+      console.log("[resolveProStatus] Trying legacy Google sub for reconciliation:", { pinnedUid, currentSub });
+      try {
+        const instance = Purchases.getSharedInstance();
+        // Switch to legacy ID to check
+        await instance.changeUser(currentSub);
+        const info = await instance.getCustomerInfo();
+        const legacyPro = "pro" in info.entitlements.active;
+        console.log("[resolveProStatus] Legacy sub check:", { legacyPro, currentSub });
+        if (legacyPro) {
+          // Found entitlement on legacy ID - re-pin to legacy and keep it
+          clearPinnedBillingUid();
+          localStorage.setItem(BILLING_UID_KEY, currentSub);
+          return true;
+        }
+        // Restore pinned ID
+        await instance.changeUser(pinnedUid);
+      } catch (err) {
+        console.warn("[resolveProStatus] Legacy reconciliation failed", err);
+      }
+    }
   }
 
   const stripePro = await fetchProFromStripeApi(user);
