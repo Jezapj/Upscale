@@ -32,11 +32,14 @@ export async function fetchProFromStripeApi(
   user: User | null,
 ): Promise<boolean> {
   const uid = subscriptionUserId(user);
+  const email = user?.email ?? undefined;
   if (!uid || !stripeCheckoutConfigured()) return false;
 
   try {
+    const params = new URLSearchParams({ uid });
+    if (email) params.set("email", email);
     const res = await fetch(
-      `${subscriptionApiBase()}/subscription-status?uid=${encodeURIComponent(uid)}`,
+      `${subscriptionApiBase()}/subscription-status?${params.toString()}`,
     );
     if (!res.ok) return false;
     const body = (await res.json()) as { active?: boolean };

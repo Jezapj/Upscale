@@ -10,13 +10,25 @@ function stripeClient(): Stripe | null {
 async function hasActiveSubscription(
   stripe: Stripe,
   firebaseUid: string,
+  email?: string,
 ): Promise<boolean> {
-  const customers = await stripe.customers.search({
+  // First try searching by firebaseUid metadata (our direct Stripe customers)
+  const customersByUid = await stripe.customers.search({
     query: `metadata['firebaseUid']:'${firebaseUid}'`,
     limit: 1,
   });
 
-  const customer = customers.data[0];
+  let customer = customersByUid.data[0];
+
+  // If not found, try searching by email (RevenueCat-created customers)
+  if (!customer && email) {
+    const customersByEmail = await stripe.customers.search({
+      query: `email:'${email}'`,
+      limit: 1,
+    });
+    customer = customersByEmail.data[0];
+  }
+
   if (!customer) return false;
 
   const subs = await stripe.subscriptions.list({
@@ -35,6 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const uid = req.query.uid as string | undefined;
+  const email = req.query.email as string | undefined;
   if (!uid) {
     res.status(400).json({ error: "uid is required" });
     return;
@@ -47,7 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const active = await hasActiveSubscription(stripe, uid);
+    const active = await hasActiveSubscription(stripe, uid, email);
     res.status(200).json({ active });
   } catch (err) {
     console.error("subscription-status failed", err);
