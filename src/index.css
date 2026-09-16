@@ -356,7 +356,7 @@ body {
 }
 
 /* Bottom sheets size to their form, then scroll once they hit max-height.
-   Do not use .scroll-fade here — its 0 flex-basis collapses the panel to the title. */
+   Do not use .scroll-fade here - its 0 flex-basis collapses the panel to the title. */
 .sheet-scroll {
   flex: 1 1 auto;
   overflow-x: hidden;

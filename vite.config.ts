@@ -117,6 +117,7 @@ export default defineConfig(({ mode }) => {
         "@": path.resolve(__dirname, "./src"),
       },
     },
+    assetsInclude: ["**/*.wasm"],
     build: {
       chunkSizeWarningLimit: 800,
       rollupOptions: {
@@ -251,7 +252,7 @@ export default defineConfig(({ mode }) => {
           ],
         },
         workbox: {
-          globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+          globPatterns: ["**/*.{js,css,html,svg,png,woff2,wasm}"],
           navigateFallback: "index.html",
           navigateFallbackDenylist: [/^\/seo\.html$/, /^\/robots\.txt$/, /^\/sitemap\.xml$/],
           cleanupOutdatedCaches: true,

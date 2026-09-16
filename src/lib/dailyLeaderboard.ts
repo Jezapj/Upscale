@@ -116,7 +116,7 @@ const DAILY_GAME_IDS: GameId[] = [
   "accretion",
 ];
 
-/** Own daily-board rows for today — used to hydrate local arcadeDaily on other devices. */
+/** Own daily-board rows for today - used to hydrate local arcadeDaily on other devices. */
 export async function listOwnDailyEntries(
   userId: string,
   day: string = todayKey(),

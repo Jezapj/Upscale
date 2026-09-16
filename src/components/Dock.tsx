@@ -1,5 +1,5 @@
 import { useNavigate, useLocation, NavLink } from "react-router-dom";
-import { Home, Gamepad2, Trophy, Smile, LayoutGrid } from "lucide-react";
+import { Home, Gamepad2, Trophy, Smile, GraduationCap } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { dockNext, dockPrev } from "@/lib/dock";
 import { hapticLight } from "@/lib/haptic";
@@ -15,7 +15,7 @@ const ITEMS: Item[] = [
   { to: "/games", label: "Arcade", icon: Gamepad2 },
   { to: "/goals", label: "Goals", icon: Trophy },
   { to: "/progress", label: "Progress", icon: Smile },
-  { to: "/library", label: "Library", icon: LayoutGrid },
+  { to: "/learn", label: "Learn", icon: GraduationCap },
 ];
 
 /** Floating IISU bottom dock with clickable LB/RB shoulder pills. */
@@ -67,13 +67,18 @@ export function Dock() {
               data-sfx="tapLow"
               onClick={() => hapticLight()}
             >
-              {({ isActive }) => (
+              {({ isActive }) => {
+                const active =
+                  item.to === "/goals"
+                    ? isActive || pathname.startsWith("/library")
+                    : isActive;
+                return (
                 <span
                   className={`relative flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-200 ${
-                    isActive ? "dock-tab-active" : ""
+                    active ? "dock-tab-active" : ""
                   }`}
                   style={
-                    isActive
+                    active
                       ? undefined
                       : { transform: "none" }
                   }
@@ -81,11 +86,12 @@ export function Dock() {
                   <item.icon
                     size={24}
                     strokeWidth={2.6}
-                    color={isActive ? "#ffffff" : "#8b919c"}
-                    className={isActive ? "" : "dock-icon-idle"}
+                    color={active ? "#ffffff" : "#8b919c"}
+                    className={active ? "" : "dock-icon-idle"}
                   />
                 </span>
-              )}
+                );
+              }}
             </NavLink>
           ))}
         </div>

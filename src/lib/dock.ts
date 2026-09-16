@@ -4,14 +4,20 @@ export const DOCK_ROUTES = [
   "/games",
   "/goals",
   "/progress",
-  "/library",
+  "/learn",
 ] as const;
 
 export type DockRoute = (typeof DOCK_ROUTES)[number];
 
+function normalizePath(pathname: string): string {
+  if (pathname.startsWith("/library")) return "/goals";
+  return pathname;
+}
+
 export function dockIndex(pathname: string): number {
+  const path = normalizePath(pathname);
   const i = DOCK_ROUTES.findIndex(
-    (r) => r === pathname || (r !== "/" && pathname.startsWith(r)),
+    (r) => r === path || (r !== "/" && path.startsWith(r)),
   );
   return i >= 0 ? i : 0;
 }

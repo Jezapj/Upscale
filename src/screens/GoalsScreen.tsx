@@ -11,10 +11,14 @@ import { GoalForm } from "@/components/GoalForm";
 import { RoutineForm } from "@/components/RoutineForm";
 import { RoutineRow } from "@/components/RoutineRow";
 import { computeGoalProgress, routinesForGoal } from "@/lib/stats";
-import { prettyDay } from "@/lib/dates";
+import { StudySession } from "@/components/learn/StudySession";
+import { deckDueCounts } from "@/lib/learn/scheduler";
+import { todayKey, prettyDay } from "@/lib/dates";
+import { activeLearnDecks } from "@/lib/types";
 import type { Goal, Routine } from "@/lib/types";
 import { useRegisterControls } from "@/store/useControls";
 import { ScrollArea } from "@/components/ScrollArea";
+import { GoalsLibraryToggle } from "@/components/GoalsLibraryToggle";
 
 export function GoalsScreen() {
   const nav = useNavigate();
@@ -25,6 +29,7 @@ export function GoalsScreen() {
   const [editGoal, setEditGoal] = useState<Goal | null>(null);
   const [addRoutineGoal, setAddRoutineGoal] = useState<string | null>(null);
   const [editRoutine, setEditRoutine] = useState<Routine | null>(null);
+  const [studyId, setStudyId] = useState<string | null>(null);
 
   const goals = data.goals.filter((g) => !g.archived);
   const selectedId = params.get("id");
@@ -54,6 +59,9 @@ export function GoalsScreen() {
     <>
       <StatusBar />
       <ScrollArea className="px-4 pb-4">
+        <div className="mb-3">
+          <GoalsLibraryToggle value="goals" />
+        </div>
         <PageHeader
           title="Goals"
           subtitle="Big things you're working toward."
@@ -123,6 +131,7 @@ export function GoalsScreen() {
             onEdit={() => setEditGoal(selected)}
             onAddRoutine={() => setAddRoutineGoal(selected.id)}
             onOpenRoutine={(r) => setEditRoutine(r)}
+            onStudyDeck={(id) => setStudyId(id)}
           />
         )}
       </Sheet>
@@ -195,6 +204,9 @@ export function GoalsScreen() {
           />
         )}
       </Sheet>
+      {studyId && (
+        <StudySession deckId={studyId} onClose={() => setStudyId(null)} />
+      )}
     </>
   );
 }
@@ -206,6 +218,7 @@ function GoalDetail({
   onEdit,
   onAddRoutine,
   onOpenRoutine,
+  onStudyDeck,
 }: {
   goal: Goal;
   routines: Routine[];
@@ -213,8 +226,11 @@ function GoalDetail({
   onEdit: () => void;
   onAddRoutine: () => void;
   onOpenRoutine: (r: Routine) => void;
+  onStudyDeck: (deckId: string) => void;
 }) {
   const p = computeGoalProgress(data, goal);
+  const decks = activeLearnDecks(data.learn?.decks).filter((d) => d.goalId === goal.id);
+  const today = todayKey();
   return (
     <div className="space-y-4">
       <div className="card flex items-center gap-4 p-4">
@@ -252,6 +268,41 @@ function GoalDetail({
         <button onClick={onEdit} className="btn-ghost">
           Edit goal
         </button>
+      </div>
+
+      <div>
+        <p className="mb-2 text-sm font-800 text-ink-soft">Linked decks</p>
+        {decks.length === 0 ? (
+          <div className="card p-4 text-center text-sm font-600 text-ink-soft">
+            No flashcard decks tied to this goal yet.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {decks.map((d) => {
+              const c = deckDueCounts(data, d, today);
+              return (
+                <div key={d.id} className="card flex items-center gap-3 p-3">
+                  <Tile glyph={d.icon} color={d.color} size={40} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-800 text-ink">{d.title}</p>
+                    <p className="text-xs font-700 text-ink-faint">
+                      {c.session > 0
+                        ? `${c.session} this sitting`
+                        : "Caught up"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onStudyDeck(d.id)}
+                    className="btn !h-9 !px-3 text-sm"
+                  >
+                    Study
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div>

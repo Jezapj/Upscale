@@ -30,6 +30,7 @@ import { NotesScreen } from "@/screens/NotesScreen";
 import { GamesScreen } from "@/screens/GamesScreen";
 import { FriendsScreen } from "@/screens/FriendsScreen";
 import { ProgressScreen } from "@/screens/ProgressScreen";
+import { LearnScreen } from "@/screens/LearnScreen";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { resolveProStatus, verifyCheckoutSession } from "@/lib/subscription";
 import { Purchases } from "@revenuecat/purchases-js";
@@ -335,6 +336,7 @@ function AppShell() {
             }
           />
           <Route path="/progress" element={<ProgressScreen />} />
+          <Route path="/learn" element={<LearnScreen />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

@@ -96,6 +96,22 @@ export function ScreenHints() {
     );
   }
 
+  if (pathname.startsWith("/learn")) {
+    return (
+      <HintBar
+        insetSafe={false}
+        left={[settingsHint, optionsHint, ...backHint]}
+        right={wire(
+          [
+            { glyph: "A", label: "Study", action: "primary" },
+            { glyph: "+", label: "New", action: "secondary" },
+          ],
+          invoke,
+        )}
+      />
+    );
+  }
+
   if (pathname.startsWith("/progress")) {
     return (
       <HintBar

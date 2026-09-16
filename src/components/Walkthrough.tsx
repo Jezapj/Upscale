@@ -64,7 +64,7 @@ const STEPS: TourStep[] = [
   {
     id: "dock",
     title: "The dock",
-    body: "Switch tabs without leaving the idea of Home: Arcade mini-games, all Goals, Progress heatmaps, and your Routine Library. LB / RB hop between them on desktop.",
+    body: "Switch tabs without leaving the idea of Home: Arcade mini-games, Goals + Library, Progress, and Learn flashcards. LB / RB hop between them on desktop.",
     target: "dock",
   },
 ];

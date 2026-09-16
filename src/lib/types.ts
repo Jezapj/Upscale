@@ -51,6 +51,8 @@ export interface Routine {
   goalId?: string | null;
   /** Optional daily reminder time in 24h HH:mm (device local timezone). */
   reminderTime?: string;
+  /** Optional flashcard deck to study during check-in. */
+  deckId?: string | null;
   createdAt: string; // ISO
   /** ISO timestamp of last edit (for per-entity cloud merge). */
   updatedAt?: string;
@@ -125,7 +127,84 @@ export interface AppData {
   lastRecapWeek?: string;
   /** Daily login bonus popup / claim presentation. */
   loginBonus?: LoginBonusState;
+  /** Flashcard decks, cards, and review log. */
+  learn?: LearnState;
   version: number;
+}
+
+export type LearnGrade = "again" | "hard" | "good" | "easy";
+export type LearnCardPhase = "new" | "learning" | "review";
+export type LearnDeckSource = "manual" | "anki" | "csv";
+
+export interface LearnDeck {
+  id: string;
+  title: string;
+  icon: string;
+  color: string;
+  /** New cards introduced per study session. */
+  newPerSession: number;
+  /** Max due reviews pulled into one session. */
+  sessionSize: number;
+  goalId?: string | null;
+  createdAt: string;
+  updatedAt?: string;
+  archived?: boolean;
+  source?: LearnDeckSource;
+}
+
+export interface LearnCard {
+  id: string;
+  deckId: string;
+  front: string;
+  back: string;
+  /** IndexedDB key for imported audio (device-local). */
+  audioKey?: string;
+  /** IndexedDB key for imported image (device-local). */
+  imageKey?: string;
+  phase: LearnCardPhase;
+  /** Next due calendar day YYYY-MM-DD. */
+  due: string;
+  /** Interval in days; replaces Anki's compounding ease factor. */
+  stability: number;
+  reps: number;
+  lapses: number;
+  createdAt: string;
+  updatedAt?: string;
+  deletedAt?: string;
+  /** ISO: retired from study (info cards). Still in the deck list. */
+  suspendedAt?: string;
+}
+
+export interface LearnReview {
+  id: string;
+  cardId: string;
+  deckId: string;
+  grade: LearnGrade;
+  date: string;
+  reviewedAt: string;
+  elapsedDays: number;
+}
+
+export interface LearnState {
+  decks: LearnDeck[];
+  cards: LearnCard[];
+  reviews: LearnReview[];
+}
+
+export function emptyLearnState(): LearnState {
+  return { decks: [], cards: [], reviews: [] };
+}
+
+export function activeLearnCards(cards: LearnCard[] | undefined): LearnCard[] {
+  return (cards ?? []).filter((c) => !c.deletedAt);
+}
+
+export function studyLearnCards(cards: LearnCard[] | undefined): LearnCard[] {
+  return activeLearnCards(cards).filter((c) => !c.suspendedAt);
+}
+
+export function activeLearnDecks(decks: LearnDeck[] | undefined): LearnDeck[] {
+  return (decks ?? []).filter((d) => !d.archived);
 }
 
 export interface ArcadeDailyCompletion {
@@ -157,7 +236,8 @@ export type TokenReason =
   | "continue"
   | "palette"
   | "grace_earn"
-  | "grace_spend";
+  | "grace_spend"
+  | "learn";
 
 export interface TokenTxn {
   id: string;

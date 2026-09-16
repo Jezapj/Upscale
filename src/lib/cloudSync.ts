@@ -11,6 +11,7 @@ import {
   resolveBackupConflict,
 } from "./backup";
 import { applyDailySession, ensureStarterBalance, mergeArcadeUnlocks, mergeLoginBonus, mergeWallets } from "./economy";
+import { mergeLearn } from "./learn/merge";
 import type { GameId } from "./types";
 import { compactScoreEntries } from "./gameLeaderboard";
 
@@ -210,6 +211,7 @@ export function mergeLocalAndCloud(
         ? local.lastRecapWeek ?? cloud.data.lastRecapWeek
         : cloud.data.lastRecapWeek ?? local.lastRecapWeek,
     loginBonus: mergeLoginBonus(local.loginBonus, cloud.data.loginBonus),
+    learn: mergeLearn(local.learn, cloud.data.learn),
   };
   if (!merged.lastGhosts || Object.keys(merged.lastGhosts).length === 0) {
     delete merged.lastGhosts;

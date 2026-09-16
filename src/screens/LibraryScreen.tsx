@@ -16,6 +16,7 @@ import { computeRoutineStats } from "@/lib/stats";
 import type { CategoryKey, Routine } from "@/lib/types";
 import { useRegisterControls } from "@/store/useControls";
 import { ScrollArea } from "@/components/ScrollArea";
+import { GoalsLibraryToggle } from "@/components/GoalsLibraryToggle";
 
 type ViewMode = "grid" | "list";
 
@@ -83,6 +84,9 @@ export function LibraryScreen() {
     <>
       <StatusBar />
       <div className="px-4">
+        <div className="mb-3">
+          <GoalsLibraryToggle value="library" />
+        </div>
         <PageHeader title="Library" subtitle="Every routine you've created." />
       </div>
 

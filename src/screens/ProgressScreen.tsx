@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Flame, Trophy, CheckCircle2, Target, Sparkles } from "lucide-react";
+import { Flame, Trophy, CheckCircle2, Target, Sparkles, GraduationCap } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { StatusBar } from "@/components/StatusBar";
 import { PageHeader } from "@/components/PageHeader";
@@ -16,6 +16,8 @@ import {
   dailyCompletionSeries,
 } from "@/lib/stats";
 import { computeInsights } from "@/lib/insights";
+import { learnStudyStreak } from "@/lib/learn/scheduler";
+import { activeLearnCards, activeLearnDecks } from "@/lib/types";
 import { buildWeeklyRecap } from "@/lib/weeklyRecap";
 import { parseDay, weekdayShort } from "@/lib/dates";
 import { useRegisterControls } from "@/store/useControls";
@@ -60,6 +62,20 @@ export function ProgressScreen() {
   const series = useMemo(() => dailyCompletionSeries(data, 30), [data]);
   const insights = useMemo(() => computeInsights(data), [data]);
   const recap = useMemo(() => buildWeeklyRecap(data), [data]);
+
+  const learnStats = useMemo(() => {
+    const reviews = data.learn?.reviews ?? [];
+    const remembered = reviews.filter(
+      (r) => r.grade === "good" || r.grade === "easy",
+    ).length;
+    return {
+      hasDecks: activeLearnDecks(data.learn?.decks).length > 0,
+      cards: activeLearnCards(data.learn?.cards).length,
+      reviewed: reviews.length,
+      streak: learnStudyStreak(reviews),
+      retention: reviews.length ? remembered / reviews.length : 0,
+    };
+  }, [data]);
 
   const totals = useMemo(() => {
     let completions = 0;
@@ -155,6 +171,34 @@ export function ProgressScreen() {
             label="All-time streak"
           />
         </div>
+
+        {learnStats.hasDecks && (
+          <div className="mt-3">
+            <p className="mb-2 flex items-center gap-1.5 font-display text-lg font-800 text-ink">
+              <GraduationCap size={18} className="text-cat-learning" /> Learning
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              <StatTile
+                icon={<BookGlyph />}
+                color="#4aa3ff"
+                value={learnStats.reviewed}
+                label="Cards reviewed"
+              />
+              <StatTile
+                icon={<Flame size={18} />}
+                color="#a06bff"
+                value={learnStats.streak}
+                label="Study streak"
+              />
+              <StatTile
+                icon={<CheckCircle2 size={18} />}
+                color="#2bc4a8"
+                value={Math.round(learnStats.retention * 100)}
+                label="Retention %"
+              />
+            </div>
+          </div>
+        )}
 
         <div className="card mt-4 p-4">
           <p className="mb-3 font-display text-lg font-800 text-ink">
@@ -327,4 +371,8 @@ function Empty({ text }: { text: string }) {
       {text}
     </div>
   );
+}
+
+function BookGlyph() {
+  return <GraduationCap size={18} />;
 }

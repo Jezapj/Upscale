@@ -4,7 +4,7 @@ import { getBackgroundTrack } from "@/lib/backgroundMusic";
 import { setWebAudioMusic } from "@/lib/webAudioMusic";
 import { useBackgroundMusic } from "@/store/useBackgroundMusic";
 
-/** Keep theme music behind UI and game SFX (slider is still 0–100). */
+/** Keep theme music behind UI and game SFX (slider is still 0-100). */
 const MUSIC_BED_GAIN = 0.58;
 
 /** Mute on rhythm games; duck on the others so game SFX stay clear. */

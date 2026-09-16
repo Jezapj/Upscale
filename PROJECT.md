@@ -107,7 +107,7 @@ Daily challenge entry stays free. Wallet is a transaction ledger (`AppData.walle
 - Completion **percentage** and 30-day completion chart
 - Goal-level **progress rings** (by routine / by goal views)
 - **Insight cards**: local correlations over DayLog data (e.g. linked habits, favourite weekdays)
-- **Weekly recap**: eShop-style featured cartridge cover for the previous Monday–Sunday
+- **Weekly recap**: eShop-style featured cartridge cover for the previous Monday-Sunday
 
 ### Notes
 

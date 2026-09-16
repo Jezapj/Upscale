@@ -125,7 +125,7 @@ export function generateLevel(seed: number): DaybreakLevel {
   const bpm = pickBpm(key, rng);
   const difficulty = key.accidentals;
 
-  // Slightly longer than the 5–10 cut: roughly 6–11 measures.
+  // Slightly longer than the 5-10 cut: roughly 6-11 measures.
   const measures = 6 + Math.round(difficulty * 0.8);
 
   const columns: LevelColumn[] = [];

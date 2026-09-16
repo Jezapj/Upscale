@@ -37,3 +37,8 @@ interface BatteryManager extends EventTarget {
 interface Navigator {
   getBattery?: () => Promise<BatteryManager>;
 }
+
+declare module "sql.js/dist/sql-wasm-browser.js?raw" {
+  const source: string;
+  export default source;
+}

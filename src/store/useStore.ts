@@ -5,11 +5,15 @@ import type {
   GameId,
   GameScoreEntry,
   Goal,
+  LearnCard,
+  LearnDeck,
+  LearnGrade,
   Note,
   Rating,
   Routine,
   User,
 } from "@/lib/types";
+import { emptyLearnState } from "@/lib/types";
 import { emptyAppData } from "@/lib/types";
 import { storage } from "@/lib/storage";
 import { todayKey } from "@/lib/dates";
@@ -32,6 +36,7 @@ import { alignGoogleUserWithFirebase } from "@/lib/storage";
 import {
   applyCheckinEarnings,
   applyDailySession,
+  applyLearnSessionEarnings,
   applyLoginBonus,
   equipPalette as applyEquipPalette,
   spendContinueTxnId,
@@ -41,6 +46,18 @@ import {
   unlockPalette as applyUnlockPalette,
   type UnlockablePaletteId,
 } from "@/lib/economy";
+import {
+  defaultDeckFields,
+  ensureLearn,
+  gradeCard,
+  makeNewCard,
+  makeReview,
+} from "@/lib/learn/scheduler";
+import {
+  deleteLearnMedia,
+  mediaKeysForCard,
+  putLearnMedia,
+} from "@/lib/learn/media";
 
 const uid = () => crypto.randomUUID();
 
@@ -58,6 +75,8 @@ interface StoreState {
   today: string;
   /** Latest token earn pulse for toast UI. */
   lastTokenEarn: TokenEarnEvent | null;
+  /** In-memory undo for the last flashcard grade. */
+  lastLearnUndo: { before: LearnCard; reviewId: string } | null;
   /** Daily login bonus sheet (auto once per day, or from Arcade). */
   loginBonusOpen: boolean;
 
@@ -112,6 +131,21 @@ interface StoreState {
   closeLoginBonus: () => void;
   claimLoginBonus: () => void;
   pullFromCloud: () => Promise<void>;
+
+  addDeck: (d: Omit<LearnDeck, "id" | "createdAt" | "updatedAt">) => LearnDeck;
+  updateDeck: (id: string, patch: Partial<LearnDeck>) => void;
+  deleteDeck: (id: string) => void;
+  addCard: (c: Omit<LearnCard, "id" | "createdAt" | "updatedAt" | "phase" | "due" | "stability" | "reps" | "lapses"> & Partial<LearnCard>) => LearnCard;
+  updateCard: (id: string, patch: Partial<LearnCard>) => void;
+  deleteCard: (id: string) => void;
+  dismissCard: (id: string) => void;
+  importDeck: (
+    deck: Omit<LearnDeck, "id" | "createdAt" | "updatedAt">,
+    cards: { front: string; back: string; audio?: Blob; image?: Blob }[],
+  ) => Promise<LearnDeck>;
+  reviewCard: (cardId: string, grade: LearnGrade) => void;
+  undoLastReview: () => boolean;
+  completeStudySession: (deckId: string) => void;
 }
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -157,6 +191,7 @@ export const useStore = create<StoreState>((set, get) => {
     signingIn: false,
     today: todayKey(),
     lastTokenEarn: null,
+    lastLearnUndo: null,
     loginBonusOpen: false,
 
     async init() {
@@ -225,7 +260,7 @@ export const useStore = create<StoreState>((set, get) => {
         if (auth) void firebaseSignOut(auth);
       }
       storage.setUser(null);
-      set({ user: null, data: emptyAppData(), lastTokenEarn: null, loginBonusOpen: false });
+      set({ user: null, data: emptyAppData(), lastTokenEarn: null, lastLearnUndo: null, loginBonusOpen: false });
     },
 
     addGoal(g) {
@@ -245,13 +280,24 @@ export const useStore = create<StoreState>((set, get) => {
     },
     deleteGoal(id) {
       const now = new Date().toISOString();
-      mutate((d) => ({
-        ...d,
-        goals: d.goals.filter((g) => g.id !== id),
-        routines: d.routines.map((r) =>
-          r.goalId === id ? { ...r, goalId: null, updatedAt: now } : r,
-        ),
-      }));
+      mutate((d) => {
+        const learn = d.learn
+          ? {
+              ...d.learn,
+              decks: d.learn.decks.map((deck) =>
+                deck.goalId === id ? { ...deck, goalId: null, updatedAt: now } : deck,
+              ),
+            }
+          : d.learn;
+        return {
+          ...d,
+          goals: d.goals.filter((g) => g.id !== id),
+          routines: d.routines.map((r) =>
+            r.goalId === id ? { ...r, goalId: null, updatedAt: now } : r,
+          ),
+          learn,
+        };
+      });
     },
 
     addRoutine(r) {
@@ -533,6 +579,255 @@ export const useStore = create<StoreState>((set, get) => {
       const merged = applyDailySession(mergeLocalAndCloud(get().data, cloud));
       set({ data: merged });
       await storage.saveData(user.id, merged);
+    },
+
+    addDeck(d) {
+      const now = new Date().toISOString();
+      const defaults = defaultDeckFields();
+      const deck: LearnDeck = {
+        ...defaults,
+        ...d,
+        id: uid(),
+        createdAt: now,
+        updatedAt: now,
+      };
+      mutate((data) => {
+        const learn = ensureLearn(data);
+        return { ...data, learn: { ...learn, decks: [...learn.decks, deck] } };
+      });
+      return deck;
+    },
+
+    updateDeck(id, patch) {
+      const now = new Date().toISOString();
+      mutate((data) => {
+        const learn = ensureLearn(data);
+        return {
+          ...data,
+          learn: {
+            ...learn,
+            decks: learn.decks.map((deck) =>
+              deck.id === id ? { ...deck, ...patch, updatedAt: now } : deck,
+            ),
+          },
+        };
+      });
+    },
+
+    deleteDeck(id) {
+      const now = new Date().toISOString();
+      const keys: string[] = [];
+      mutate((data) => {
+        const learn = ensureLearn(data);
+        for (const c of learn.cards) {
+          if (c.deckId === id) keys.push(...mediaKeysForCard(c));
+        }
+        return {
+          ...data,
+          routines: data.routines.map((r) =>
+            r.deckId === id ? { ...r, deckId: null, updatedAt: now } : r,
+          ),
+          learn: {
+            ...learn,
+            decks: learn.decks.map((deck) =>
+              deck.id === id ? { ...deck, archived: true, updatedAt: now } : deck,
+            ),
+            cards: learn.cards.map((c) =>
+              c.deckId === id ? { ...c, deletedAt: now, updatedAt: now } : c,
+            ),
+          },
+        };
+      });
+      void deleteLearnMedia(keys);
+    },
+
+    addCard(c) {
+      const now = new Date().toISOString();
+      const base = makeNewCard(c.deckId, c.front, c.back);
+      const card: LearnCard = {
+        ...base,
+        ...c,
+        id: uid(),
+        createdAt: now,
+        updatedAt: now,
+      };
+      mutate((data) => {
+        const learn = ensureLearn(data);
+        return { ...data, learn: { ...learn, cards: [...learn.cards, card] } };
+      });
+      return card;
+    },
+
+    updateCard(id, patch) {
+      const now = new Date().toISOString();
+      mutate((data) => {
+        const learn = ensureLearn(data);
+        return {
+          ...data,
+          learn: {
+            ...learn,
+            cards: learn.cards.map((c) =>
+              c.id === id ? { ...c, ...patch, updatedAt: now } : c,
+            ),
+          },
+        };
+      });
+    },
+
+    deleteCard(id) {
+      const now = new Date().toISOString();
+      const keys: string[] = [];
+      mutate((data) => {
+        const learn = ensureLearn(data);
+        const card = learn.cards.find((c) => c.id === id);
+        if (card) keys.push(...mediaKeysForCard(card));
+        return {
+          ...data,
+          learn: {
+            ...learn,
+            cards: learn.cards.map((c) =>
+              c.id === id ? { ...c, deletedAt: now, updatedAt: now } : c,
+            ),
+          },
+        };
+      });
+      void deleteLearnMedia(keys);
+    },
+
+    dismissCard(id) {
+      const now = new Date().toISOString();
+      let snapshot: LearnCard | null = null;
+      mutate((data) => {
+        const learn = ensureLearn(data);
+        const card = learn.cards.find((c) => c.id === id && !c.deletedAt);
+        if (!card || card.suspendedAt) return data;
+        snapshot = card;
+        return {
+          ...data,
+          learn: {
+            ...learn,
+            cards: learn.cards.map((c) =>
+              c.id === id ? { ...c, suspendedAt: now, updatedAt: now } : c,
+            ),
+          },
+        };
+      });
+      if (snapshot) set({ lastLearnUndo: { before: snapshot, reviewId: "" } });
+    },
+
+    async importDeck(deckInput, cardInputs) {
+      const now = new Date().toISOString();
+      const defaults = defaultDeckFields();
+      const deck: LearnDeck = {
+        ...defaults,
+        ...deckInput,
+        id: uid(),
+        createdAt: now,
+        updatedAt: now,
+      };
+      const cards: LearnCard[] = [];
+      for (let i = 0; i < cardInputs.length; i++) {
+        const pair = cardInputs[i];
+        const id = uid();
+        let audioKey: string | undefined;
+        let imageKey: string | undefined;
+        if (pair.audio) {
+          audioKey = `${id}:audio`;
+          try {
+            await putLearnMedia(audioKey, pair.audio);
+          } catch {
+            audioKey = undefined;
+          }
+        }
+        if (pair.image) {
+          imageKey = `${id}:image`;
+          try {
+            await putLearnMedia(imageKey, pair.image);
+          } catch {
+            imageKey = undefined;
+          }
+        }
+        cards.push({
+          ...makeNewCard(deck.id, pair.front, pair.back, undefined, now),
+          id,
+          audioKey,
+          imageKey,
+          createdAt: new Date(Date.now() + i).toISOString(),
+          updatedAt: now,
+        });
+      }
+      mutate((data) => {
+        const learn = data.learn ?? emptyLearnState();
+        return {
+          ...data,
+          learn: {
+            decks: [...learn.decks, deck],
+            cards: [...learn.cards, ...cards],
+            reviews: learn.reviews,
+          },
+        };
+      });
+      return deck;
+    },
+
+    reviewCard(cardId, grade) {
+      const today = todayKey();
+      let snapshot: { before: LearnCard; reviewId: string } | null = null;
+      mutate((data) => {
+        const learn = ensureLearn(data);
+        const card = learn.cards.find((c) => c.id === cardId && !c.deletedAt);
+        if (!card) return data;
+        const siblings = learn.cards.filter((c) => c.deckId === card.deckId && !c.deletedAt);
+        const next = gradeCard(card, grade, today, siblings);
+        const review = makeReview(card, grade, today);
+        snapshot = { before: card, reviewId: review.id };
+        return {
+          ...data,
+          learn: {
+            ...learn,
+            cards: learn.cards.map((c) => (c.id === cardId ? next : c)),
+            reviews: [...learn.reviews, review],
+          },
+        };
+      });
+      if (snapshot) set({ lastLearnUndo: snapshot });
+    },
+
+    undoLastReview() {
+      const undo = get().lastLearnUndo;
+      if (!undo) return false;
+      mutate((data) => {
+        const learn = data.learn;
+        if (!learn) return data;
+        return {
+          ...data,
+          learn: {
+            ...learn,
+            cards: learn.cards.map((c) => (c.id === undo.before.id ? undo.before : c)),
+            reviews: learn.reviews.filter((r) => r.id !== undo.reviewId),
+          },
+        };
+      });
+      set({ lastLearnUndo: null });
+      return true;
+    },
+
+    completeStudySession(deckId) {
+      let earned = 0;
+      mutate((d) => {
+        const result = applyLearnSessionEarnings(d, deckId, todayKey());
+        earned = result.earned;
+        return result.data;
+      });
+      if (earned > 0) {
+        set({
+          lastTokenEarn: {
+            id: crypto.randomUUID(),
+            amount: earned,
+            at: Date.now(),
+          },
+        });
+      }
     },
   };
 });

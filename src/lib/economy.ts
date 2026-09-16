@@ -582,3 +582,63 @@ export function tokensEarnedBetween(
     .filter((t) => t.amount > 0 && t.date >= start && t.date <= end)
     .reduce((s, t) => s + t.amount, 0);
 }
+
+export const LEARN_CLEAR_DAY_BONUS = 2;
+
+export function learnSessionTxnId(date: string, deckId: string): string {
+  return `learn:${date}:${deckId}`;
+}
+
+export function learnClearTxnId(date: string): string {
+  return `learn:clear:${date}`;
+}
+
+/**
+ * Mint 1 token per completed study session per deck per day, plus a +2
+ * bonus when no due/new cards remain across all decks.
+ */
+export function applyLearnSessionEarnings(
+  data: AppData,
+  deckId: string,
+  date: string = todayKey(),
+): { data: AppData; earned: number; reasons: TokenReason[] } {
+  let wallet = ensureWallet(data);
+  let earned = 0;
+  const reasons: TokenReason[] = [];
+  const now = new Date().toISOString();
+
+  const sessionId = learnSessionTxnId(date, deckId);
+  if (!hasTxn(wallet, sessionId)) {
+    wallet = appendTxn(wallet, makeTxn(sessionId, 1, "learn", date, now));
+    earned += 1;
+    reasons.push("learn");
+  }
+
+  const decks = (data.learn?.decks ?? []).filter((d) => !d.archived);
+  if (decks.length > 0 && learnAllDueCleared(data, date)) {
+    const clearId = learnClearTxnId(date);
+    if (!hasTxn(wallet, clearId)) {
+      wallet = appendTxn(
+        wallet,
+        makeTxn(clearId, LEARN_CLEAR_DAY_BONUS, "learn", date, now),
+      );
+      earned += LEARN_CLEAR_DAY_BONUS;
+      reasons.push("learn");
+    }
+  }
+
+  if (earned === 0 && wallet === data.wallet) {
+    return { data, earned: 0, reasons: [] };
+  }
+  return { data: { ...data, wallet }, earned, reasons };
+}
+
+function learnAllDueCleared(data: AppData, date: string): boolean {
+  const cards = (data.learn?.cards ?? []).filter((c) => !c.deletedAt);
+  const decks = (data.learn?.decks ?? []).filter((d) => !d.archived);
+  if (decks.length === 0) return false;
+  const deckIds = new Set(decks.map((d) => d.id));
+  return !cards.some(
+    (c) => deckIds.has(c.deckId) && (c.phase === "new" || c.due <= date),
+  );
+}

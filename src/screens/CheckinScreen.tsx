@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Check, Home, Flame, StickyNote, Gamepad2 } from "lucide-react";
+import { ArrowLeft, Check, Home, Flame, StickyNote, Gamepad2, GraduationCap } from "lucide-react";
 import { useStore } from "@/store/useStore";
 import { Tile } from "@/components/Tile";
 import { RatingButtons } from "@/components/RatingButtons";
@@ -18,6 +18,7 @@ import { tokensEarnedOnDate } from "@/lib/economy";
 import type { Rating, Routine } from "@/lib/types";
 import { useRegisterControls } from "@/store/useControls";
 import { hapticSuccess, hapticTick } from "@/lib/haptic";
+import { StudySession } from "@/components/learn/StudySession";
 
 export function CheckinScreen() {
   const nav = useNavigate();
@@ -38,6 +39,7 @@ export function CheckinScreen() {
   });
 
   const [index, setIndex] = useState(0);
+  const [studyDeckId, setStudyDeckId] = useState<string | null>(null);
   const total = queue.length;
   const current = queue[index];
 
@@ -179,6 +181,15 @@ export function CheckinScreen() {
           <p className="mt-5 text-sm font-800 text-ink-soft">
             Did you do this today?
           </p>
+          {current.deckId && (
+            <button
+              type="button"
+              onClick={() => setStudyDeckId(current.deckId!)}
+              className="btn mt-3 w-full"
+            >
+              <GraduationCap size={18} /> Study now
+            </button>
+          )}
           <div className="mt-3">
             <RatingButtons value={existing} onPick={pick} />
           </div>
@@ -200,6 +211,13 @@ export function CheckinScreen() {
       <div className="relative z-10">
         <CheckinHints />
       </div>
+      {studyDeckId && (
+        <StudySession
+          deckId={studyDeckId}
+          onClose={() => setStudyDeckId(null)}
+          onFinished={() => pick("yes")}
+        />
+      )}
     </div>
   );
 }

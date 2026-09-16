@@ -9,6 +9,7 @@ import {
 } from "./types";
 import { mergeArcadeDailyStates } from "./dailyChallenge";
 import { mergeArcadeUnlocks, mergeLoginBonus, mergeWallets } from "./economy";
+import { mergeLearn } from "./learn/merge";
 import { todayKey } from "./dates";
 
 export const BACKUP_FORMAT_VERSION = 1;
@@ -24,7 +25,9 @@ function hasCoreContent(data: AppData): boolean {
     data.goals.length > 0 ||
     data.routines.length > 0 ||
     Object.keys(data.logs).length > 0 ||
-    (data.notes ?? []).some((n) => !n.deletedAt)
+    (data.notes ?? []).some((n) => !n.deletedAt) ||
+    (data.learn?.decks ?? []).length > 0 ||
+    (data.learn?.cards ?? []).length > 0
   );
 }
 
@@ -157,6 +160,7 @@ export function mergeAppDataEntities(local: AppData, cloud: AppData): AppData {
     lastGhosts: { ...(cloud.lastGhosts ?? {}), ...(local.lastGhosts ?? {}) },
     lastRecapWeek: local.lastRecapWeek ?? cloud.lastRecapWeek,
     loginBonus: mergeLoginBonus(local.loginBonus, cloud.loginBonus),
+    learn: mergeLearn(local.learn, cloud.learn),
     syncedAt:
       (local.syncedAt ?? "") >= (cloud.syncedAt ?? "")
         ? local.syncedAt ?? cloud.syncedAt

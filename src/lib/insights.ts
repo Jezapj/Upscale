@@ -4,10 +4,17 @@
  */
 
 import type { AppData, Routine } from "./types";
+import { activeLearnDecks } from "./types";
 import { dayKey, daysBetween, parseDay, DOW_FULL } from "./dates";
 import { isScheduledOn } from "./frequency";
 
-export type InsightKind = "correlation" | "weekday" | "time_of_day";
+export type InsightKind =
+  | "correlation"
+  | "weekday"
+  | "time_of_day"
+  | "learn_retention"
+  | "learn_deck"
+  | "learn_time";
 
 export interface InsightCard {
   id: string;
@@ -164,11 +171,70 @@ function timeOfDayInsights(data: AppData): InsightCard[] {
   ];
 }
 
-/** Compute insight cards for Progress. Stable order: correlation, weekday, time. */
+/** Compute insight cards for Progress. Stable order: correlation, weekday, time, learn. */
 export function computeInsights(data: AppData, limit = 6): InsightCard[] {
   return [
     ...correlationInsights(data),
     ...weekdayInsights(data),
     ...timeOfDayInsights(data),
+    ...learnInsights(data),
   ].slice(0, limit);
+}
+
+function learnInsights(data: AppData): InsightCard[] {
+  const reviews = data.learn?.reviews ?? [];
+  if (reviews.length < 8) return [];
+  const cards: InsightCard[] = [];
+  const remembered = reviews.filter((r) => r.grade === "good" || r.grade === "easy").length;
+  const rate = remembered / reviews.length;
+  cards.push({
+    id: "learn:retention",
+    kind: "learn_retention",
+    title: "You remember your cards",
+    body: `You rate Good or Easy on ${Math.round(rate * 100)}% of flashcard reviews.`,
+    accent: "#4aa3ff",
+  });
+
+  const decks = activeLearnDecks(data.learn?.decks);
+  let worst: { title: string; rate: number; color: string } | null = null;
+  for (const deck of decks) {
+    const rs = reviews.filter((r) => r.deckId === deck.id);
+    if (rs.length < 8) continue;
+    const ok = rs.filter((r) => r.grade === "good" || r.grade === "easy").length / rs.length;
+    if (!worst || ok < worst.rate) {
+      worst = { title: deck.title, rate: ok, color: deck.color };
+    }
+  }
+  if (worst && worst.rate < 0.7) {
+    cards.push({
+      id: `learn:deck:${worst.title}`,
+      kind: "learn_deck",
+      title: "Toughest deck",
+      body: `“${worst.title}” is sticking at ${Math.round(worst.rate * 100)}% Good/Easy. Shorter sittings help it recover.`,
+      accent: worst.color,
+    });
+  }
+
+  const buckets = { morning: 0, afternoon: 0, evening: 0 };
+  for (const r of reviews) {
+    const hour = new Date(r.reviewedAt).getHours();
+    if (hour < 12) buckets.morning++;
+    else if (hour < 17) buckets.afternoon++;
+    else buckets.evening++;
+  }
+  const top = (Object.entries(buckets) as [keyof typeof buckets, number][]).sort(
+    (a, b) => b[1] - a[1],
+  )[0];
+  if (top && reviews.length >= 15) {
+    const label =
+      top[0] === "morning" ? "mornings" : top[0] === "afternoon" ? "afternoons" : "evenings";
+    cards.push({
+      id: "learn:tod",
+      kind: "learn_time",
+      title: "Best study window",
+      body: `Most flashcard reviews land in the ${label}.`,
+      accent: "#a06bff",
+    });
+  }
+  return cards;
 }

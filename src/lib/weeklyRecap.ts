@@ -1,5 +1,5 @@
 /**
- * Weekly recap: previous Monday–Sunday as an eShop-style “featured” cartridge.
+ * Weekly recap: previous Monday-Sunday as an eShop-style “featured” cartridge.
  */
 
 import type { AppData } from "./types";

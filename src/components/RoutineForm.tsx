@@ -7,6 +7,8 @@ import {
   downloadRoutineCalendarEvent,
   openGoogleCalendarForRoutine,
 } from "@/lib/calendar";
+import { useStore } from "@/store/useStore";
+import { activeLearnDecks } from "@/lib/types";
 import { Tile } from "./Tile";
 import { CategoryTile } from "./CategoryTile";
 import { ColorPicker, EmojiPicker, Field, inputClass } from "./Picker";
@@ -51,10 +53,12 @@ export function RoutineForm({
   const [goalId, setGoalId] = useState<string | null>(
     initial?.goalId ?? defaultGoalId ?? null,
   );
+  const [deckId, setDeckId] = useState<string | null>(initial?.deckId ?? null);
   const [reminderOn, setReminderOn] = useState(!!initial?.reminderTime);
   const [reminderTime, setReminderTime] = useState(
     initial?.reminderTime ?? "09:00",
   );
+  const decks = activeLearnDecks(useStore((s) => s.data.learn?.decks));
 
   const pickCategory = (k: CategoryKey) => {
     setCategory(k);
@@ -89,6 +93,7 @@ export function RoutineForm({
       hasEnd,
       endDate: hasEnd ? endDate || undefined : undefined,
       goalId,
+      deckId,
       reminderTime: reminderOn ? reminderTime : undefined,
       archived: initial?.archived,
     });
@@ -113,6 +118,7 @@ export function RoutineForm({
       hasEnd,
       endDate: hasEnd ? endDate || undefined : undefined,
       goalId,
+      deckId,
       reminderTime: reminderOn ? reminderTime : undefined,
     };
   };
@@ -309,6 +315,42 @@ export function RoutineForm({
               >
                 <span>{g.icon}</span>
                 {g.title}
+              </button>
+            ))}
+          </div>
+        </Field>
+      )}
+
+      {decks.length > 0 && (
+        <Field
+          label="Linked deck"
+          hint="Adds a Study now button when you check this routine in."
+        >
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setDeckId(null)}
+              className={`rounded-pill px-3 py-2 text-sm font-700 transition-all active:scale-95 ${
+                deckId === null
+                  ? "form-chip-active bg-ink text-white shadow-soft"
+                  : "form-chip-inactive bg-white/60 text-ink-soft"
+              }`}
+            >
+              None
+            </button>
+            {decks.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => setDeckId(d.id)}
+                className={`flex items-center gap-1.5 rounded-pill px-3 py-2 text-sm font-700 transition-all active:scale-95 ${
+                  deckId === d.id
+                    ? "form-chip-active bg-ink text-white shadow-soft"
+                    : "form-chip-inactive bg-white/60 text-ink-soft"
+                }`}
+              >
+                <span>{d.icon}</span>
+                {d.title}
               </button>
             ))}
           </div>
