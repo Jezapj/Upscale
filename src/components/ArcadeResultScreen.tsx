@@ -5,6 +5,7 @@ import type { GameId } from "@/lib/types";
 import { GAMES, GAME_BY_ID, GAME_GLYPH, gamePath } from "@/lib/games";
 import { dailyChallengeNumber } from "@/lib/dailyChallenge";
 import type { DailyBoardEntry } from "@/lib/dailyLeaderboard";
+import { isBotEntry } from "@/lib/dailyBots";
 import { GameStatDetail } from "./GameStatDetail";
 
 interface Props {
@@ -165,43 +166,65 @@ export function ArcadeResultScreen({
           </p>
         </div>
         <ul className={`text-sm ${expanded ? "max-h-64 overflow-y-auto" : ""}`}>
-          {shown.map((entry) => {
+          {shown.map((entry, i) => {
             const rank = board.indexOf(entry);
             const isYou = entry.uid === youKey;
+            const isNpc = isBotEntry(entry);
             const name = isYou
               ? "You"
               : entry.displayName?.trim() || "Anonymous";
             return (
               <li
-                key={`${entry.uid}-${entry.playedAt}`}
+                key={`${entry.uid}-${entry.playedAt}-${i}`}
                 className={`flex items-center gap-2.5 border-b border-white/5 px-3 py-2 last:border-0 ${
-                  isYou ? "bg-accent/10" : ""
+                  isYou ? "bg-accent/10" : isNpc ? "opacity-70" : ""
                 }`}
               >
                 <span
                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-800 tabular-nums"
                   style={
-                    rank < 3
-                      ? { background: MEDAL_BG[rank], color: "#3a2c10" }
-                      : { background: "rgba(255,255,255,0.06)" }
+                    isNpc
+                      ? { background: "rgba(255,255,255,0.06)", color: "#8b8f99" }
+                      : rank < 3
+                        ? { background: MEDAL_BG[rank], color: "#3a2c10" }
+                        : { background: "rgba(255,255,255,0.06)" }
                   }
                 >
                   {rank + 1}
                 </span>
                 <span
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-800 text-white"
-                  style={{ background: avatarGradient(name) }}
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-800 ${
+                    isNpc ? "text-ink-faint" : "text-white"
+                  }`}
+                  style={{
+                    background: isNpc
+                      ? "linear-gradient(135deg, #9aa0ab, #6f7480)"
+                      : avatarGradient(name),
+                  }}
                   aria-hidden
                 >
                   {initials(name)}
                 </span>
                 <span className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
-                  <span className="truncate font-800 leading-tight text-ink">
+                  <span
+                    className={`truncate font-800 leading-tight ${
+                      isNpc ? "text-ink-faint" : "text-ink"
+                    }`}
+                  >
                     {name}
+                    {isNpc ? (
+                      <span className="ml-1 text-[9px] font-700 uppercase tracking-wide text-ink-faint">
+                        npc
+                      </span>
+                    ) : null}
                   </span>
                   <GameStatDetail gameId={gameId} meta={entry.meta} />
                 </span>
-                <span className="shrink-0 text-right font-display text-base font-800 tabular-nums leading-none text-ink">
+                <span
+                  className={`shrink-0 text-right font-display text-base font-800 tabular-nums leading-none ${
+                    isNpc ? "text-ink-faint" : "text-ink"
+                  }`}
+                >
                   {entry.score.toLocaleString()}
                 </span>
               </li>

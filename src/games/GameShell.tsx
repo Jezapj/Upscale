@@ -111,6 +111,7 @@ export function GameShell({
   const meta = GAME_BY_ID[gameId];
   const containerRef = useRef<HTMLDivElement>(null);
   const startedRef = useRef(false);
+  const scoredRef = useRef(false);
   /** Charge daily lock / endless token only after the canvas is actually live. */
   const pendingChargeRef = useRef<null | "daily" | "practice">(null);
   const liveCommittedRef = useRef(false);
@@ -231,6 +232,7 @@ export function GameShell({
     liveCommittedRef.current = false;
     onSessionReset?.();
     startedRef.current = false;
+    scoredRef.current = false;
     setStarted(false);
     setPaused(false);
     setResult(null);
@@ -245,6 +247,7 @@ export function GameShell({
   const beginRun = useCallback((mode: PlayMode) => {
     if (startedRef.current) return;
     startedRef.current = true;
+    scoredRef.current = false;
     liveCommittedRef.current = false;
     setPlayMode(mode);
     setStarted(true);
@@ -385,6 +388,9 @@ export function GameShell({
     (input: number | GameResult) => {
       const normalized = normalizeResult(input);
       const mode = playMode ?? "practice";
+
+      if (scoredRef.current) return;
+      scoredRef.current = true;
 
       if (mode === "daily") {
         void finishDaily(normalized);
@@ -775,9 +781,11 @@ export function GameShell({
                         setShowPracticePicker(true);
                         setPlayMode("practice");
                         startedRef.current = false;
+                        scoredRef.current = false;
                         setStarted(false);
                       } else {
                         startedRef.current = false;
+                        scoredRef.current = false;
                         beginRun("practice");
                       }
                     }}

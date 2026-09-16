@@ -1,5 +1,6 @@
 import type { GameId } from "@/lib/types";
 import type { DailyBoardEntry } from "@/lib/dailyLeaderboard";
+import { isBotEntry } from "@/lib/dailyBots";
 import { BOARD_STAT_LABEL, GameStatDetail } from "./GameStatDetail";
 
 interface Props {
@@ -45,33 +46,48 @@ export function DailyBoardList({
       >
         {entries.map((entry, i) => {
           const isYou = highlightUid != null && entry.uid === highlightUid;
+          const isNpc = isBotEntry(entry);
           const name = entry.displayName?.trim() || "Anonymous";
           return (
             <li
-              key={`${entry.uid}-${entry.playedAt}`}
+              key={`${entry.uid}-${entry.playedAt}-${i}`}
               className={`flex items-center gap-2.5 border-b border-white/5 px-3 py-2 last:border-0 ${
-                isYou ? "bg-accent/10" : ""
+                isYou ? "bg-accent/10" : isNpc ? "opacity-70" : ""
               }`}
             >
               <span
                 className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-800 tabular-nums ${
-                  RANK_STYLE[i] ?? "bg-white/5 text-ink-faint"
+                  isNpc
+                    ? "bg-white/5 text-ink-faint"
+                    : RANK_STYLE[i] ?? "bg-white/5 text-ink-faint"
                 }`}
               >
                 {i + 1}
               </span>
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="truncate font-800 leading-tight text-ink">
+                <span
+                  className={`truncate font-800 leading-tight ${
+                    isNpc ? "text-ink-faint" : "text-ink"
+                  }`}
+                >
                   {name}
                   {isYou ? (
                     <span className="ml-1 text-[10px] font-700 text-accent">
                       you
                     </span>
+                  ) : isNpc ? (
+                    <span className="ml-1 text-[9px] font-700 uppercase tracking-wide text-ink-faint">
+                      npc
+                    </span>
                   ) : null}
                 </span>
                 <GameStatDetail gameId={gameId} meta={entry.meta} />
               </span>
-              <span className="shrink-0 text-right font-display text-base font-800 tabular-nums leading-none text-ink">
+              <span
+                className={`shrink-0 text-right font-display text-base font-800 tabular-nums leading-none ${
+                  isNpc ? "text-ink-faint" : "text-ink"
+                }`}
+              >
                 {entry.score.toLocaleString()}
               </span>
             </li>

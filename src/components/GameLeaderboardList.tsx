@@ -44,7 +44,7 @@ export function GameLeaderboardList({
             highlightScore !== undefined && entry.score === highlightScore && i === 0;
           return (
             <li
-              key={`${entry.playedAt}-${entry.score}`}
+              key={`${entry.playedAt}-${entry.score}-${i}`}
               className={`flex items-center gap-2.5 border-b border-white/5 px-3 py-2 last:border-0 ${
                 isHighlight ? "bg-accent/10" : ""
               }`}

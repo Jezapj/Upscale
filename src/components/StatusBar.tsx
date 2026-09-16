@@ -1,10 +1,75 @@
 import { useEffect, useState } from "react";
-import { BatteryFull, Clock3, Volume2, VolumeX } from "lucide-react";
+import {
+  BatteryCharging,
+  BatteryFull,
+  BatteryLow,
+  BatteryMedium,
+  BatteryWarning,
+  Clock3,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { prettyTime } from "@/lib/dates";
 import { useStore } from "@/store/useStore";
 import { useControls } from "@/store/useControls";
 import { useMasterMute } from "@/store/useMasterMute";
 import { SettingsSheet } from "./SettingsSheet";
+
+function useDeviceBattery() {
+  const [level, setLevel] = useState<number | null>(null);
+  const [charging, setCharging] = useState(false);
+
+  useEffect(() => {
+    if (typeof navigator.getBattery !== "function") return;
+
+    let battery: BatteryManager | null = null;
+    let cancelled = false;
+
+    const sync = () => {
+      if (!battery) return;
+      setLevel(Math.round(Math.min(1, Math.max(0, battery.level)) * 100));
+      setCharging(battery.charging);
+    };
+
+    void navigator.getBattery().then((b) => {
+      if (cancelled) return;
+      battery = b;
+      sync();
+      b.addEventListener("levelchange", sync);
+      b.addEventListener("chargingchange", sync);
+    });
+
+    return () => {
+      cancelled = true;
+      battery?.removeEventListener("levelchange", sync);
+      battery?.removeEventListener("chargingchange", sync);
+    };
+  }, []);
+
+  return { level, charging };
+}
+
+function BatteryIcon({
+  level,
+  charging,
+}: {
+  level: number | null;
+  charging: boolean;
+}) {
+  const className = `shrink-0 ${
+    charging || (level != null && level > 20)
+      ? "text-mint-deep"
+      : level != null && level <= 10
+        ? "text-rose-500"
+        : "text-ink-faint"
+  }`;
+  if (charging) return <BatteryCharging size={16} className={className} />;
+  if (level == null) return <BatteryFull size={16} className={className} />;
+  if (level <= 10) return <BatteryWarning size={16} className={className} />;
+  if (level <= 25) return <BatteryLow size={16} className={className} />;
+  if (level <= 60) return <BatteryMedium size={16} className={className} />;
+  return <BatteryFull size={16} className={className} />;
+}
 
 /** Top IISU console chrome: avatar cluster + LT/RT shoulder pills and a
  *  clock · battery status capsule. */
@@ -15,6 +80,7 @@ export function StatusBar() {
   const muted = useMasterMute((s) => s.muted);
   const toggleMuted = useMasterMute((s) => s.toggleMuted);
   const [now, setNow] = useState(new Date());
+  const battery = useDeviceBattery();
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 15_000);
@@ -84,8 +150,10 @@ export function StatusBar() {
           <Clock3 size={13} className="shrink-0 text-ink-faint" />
           <span className="tabular-nums">{prettyTime(now)}</span>
           <span className="text-ink-faint">·</span>
-          <BatteryFull size={16} className="shrink-0 text-mint-deep" />
-          <span>100%</span>
+          <BatteryIcon level={battery.level} charging={battery.charging} />
+          <span className="tabular-nums">
+            {battery.level != null ? `${battery.level}%` : "-"}
+          </span>
         </div>
       </div>
     </div>

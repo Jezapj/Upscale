@@ -1,5 +1,6 @@
 import type { AppData, User } from "./types";
 import { emptyAppData } from "./types";
+import { compactGameScores } from "./gameLeaderboard";
 import { cloudConfigured } from "./firebase";
 import {
   isCloudUser,
@@ -19,7 +20,8 @@ function loadLocal(userId: string): AppData {
     const raw = localStorage.getItem(dataKey(userId));
     if (!raw) return emptyAppData();
     const parsed = JSON.parse(raw) as AppData;
-    return { ...emptyAppData(), ...parsed };
+    const merged = { ...emptyAppData(), ...parsed };
+    return { ...merged, gameScores: compactGameScores(merged.gameScores) };
   } catch {
     return emptyAppData();
   }
@@ -32,7 +34,8 @@ function readLocalData(userId: string): AppData {
 
 function saveLocal(userId: string, data: AppData): void {
   try {
-    localStorage.setItem(dataKey(userId), JSON.stringify(data));
+    const next = { ...data, gameScores: compactGameScores(data.gameScores) };
+    localStorage.setItem(dataKey(userId), JSON.stringify(next));
   } catch (e) {
     console.error("Failed to persist data locally", e);
   }

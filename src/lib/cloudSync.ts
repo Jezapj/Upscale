@@ -12,6 +12,7 @@ import {
 } from "./backup";
 import { applyDailySession, ensureStarterBalance, mergeArcadeUnlocks, mergeLoginBonus, mergeWallets } from "./economy";
 import type { GameId } from "./types";
+import { compactScoreEntries } from "./gameLeaderboard";
 
 interface CloudPayload {
   formatVersion: number;
@@ -58,10 +59,7 @@ function mergeGameScores(
   const out = { ...a };
   for (const [key, entries] of Object.entries(b)) {
     const existing = out[key] ?? [];
-    const combined = [...existing, ...entries]
-      .sort((x, y) => y.score - x.score)
-      .slice(0, 10);
-    out[key] = combined;
+    out[key] = compactScoreEntries([...existing, ...entries]);
   }
   return out;
 }
