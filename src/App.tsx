@@ -173,6 +173,23 @@ function AppShell() {
   const isPlayingGame = /^\/games\/[^/]+/.test(location.pathname);
   const hideChrome = isCheckin || isPlayingGame;
 
+  // Browser edge-swipe navigates back and steals touches during play.
+  useEffect(() => {
+    if (!isPlayingGame) return;
+    const root = document.documentElement;
+    const prev = root.style.overscrollBehaviorX;
+    root.style.overscrollBehaviorX = "none";
+    const blockEdgeNav = (e: TouchEvent) => {
+      const x = e.touches[0]?.clientX ?? 0;
+      if (x < 24 || x > window.innerWidth - 24) e.preventDefault();
+    };
+    document.addEventListener("touchstart", blockEdgeNav, { capture: true, passive: false });
+    return () => {
+      root.style.overscrollBehaviorX = prev;
+      document.removeEventListener("touchstart", blockEdgeNav, { capture: true });
+    };
+  }, [isPlayingGame]);
+
   // Daily login bonus once per calendar day (skipped during games / recap / tour).
   useEffect(() => {
     if (loginBonusOpen || recapOpen || walkthroughActive) return;
