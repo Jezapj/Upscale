@@ -7,7 +7,6 @@ import { RatingButtons } from "@/components/RatingButtons";
 import { BackgroundDecor } from "@/components/BackgroundDecor";
 import { CheckinHints } from "@/components/ScreenHints";
 import { TokenBalanceCapsule } from "@/components/TokenBalanceCapsule";
-import { TokenEarnToast } from "@/components/TokenEarnToast";
 import { isDueToday } from "@/lib/frequency";
 import { todayKey } from "@/lib/dates";
 import { describeFrequency } from "@/lib/frequency";
@@ -50,7 +49,7 @@ export function CheckinScreen() {
     if (!current) return;
     hapticTick();
     rate(current.id, r);
-    setTimeout(() => setIndex((i) => i + 1), 240);
+    setIndex((i) => i + 1);
   };
 
   useRegisterControls(
@@ -87,7 +86,6 @@ export function CheckinScreen() {
   return (
     <div className="relative flex h-full flex-col">
       <BackgroundDecor />
-      <TokenEarnToast />
       <div className="relative z-10 flex items-center justify-between px-4 pt-4">
         <button
           onClick={() => (index === 0 ? nav("/") : setIndex((i) => i - 1))}
@@ -140,7 +138,7 @@ export function CheckinScreen() {
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6">
         <div
           key={current.id}
-          className="card w-full animate-pop-in p-6 text-center"
+          className="card w-full animate-pop-in p-6 text-center [animation-duration:90ms]"
         >
           {goal ? (
             <span
@@ -269,7 +267,6 @@ function Summary({
   return (
     <div className="relative flex h-full flex-col">
       <BackgroundDecor />
-      <TokenEarnToast />
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 text-center">
         <div className="animate-pop-in">
           <Tile

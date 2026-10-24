@@ -10,7 +10,8 @@ export function TokenEarnToast() {
 
   useEffect(() => {
     if (!event) return;
-    playUiChime("success");
+    // Check-in already plays a chime for the rating itself.
+    if (!window.location.pathname.startsWith("/checkin")) playUiChime("success");
     const t = window.setTimeout(() => clear(), 2200);
     return () => window.clearTimeout(t);
   }, [event, clear]);
