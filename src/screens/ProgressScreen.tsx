@@ -56,12 +56,19 @@ export function ProgressScreen() {
     }
   }, [user]);
 
-  const routines = data.routines.filter((r) => !r.archived);
-  const goals = data.goals.filter((g) => !g.archived);
+  const routines = useMemo(
+    () => data.routines.filter((r) => !r.archived),
+    [data.routines],
+  );
+  const goals = useMemo(() => data.goals.filter((g) => !g.archived), [data.goals]);
 
   const series = useMemo(() => dailyCompletionSeries(data, 30), [data]);
   const insights = useMemo(() => computeInsights(data), [data]);
-  const recap = useMemo(() => buildWeeklyRecap(data), [data]);
+  // Recap shows the top insight, which is the first of the list above.
+  const recap = useMemo(
+    () => buildWeeklyRecap(data, new Date(), insights.slice(0, 1)),
+    [data, insights],
+  );
 
   const learnStats = useMemo(() => {
     const reviews = data.learn?.reviews ?? [];
@@ -77,18 +84,28 @@ export function ProgressScreen() {
     };
   }, [data]);
 
+  // One full-history pass per routine, shared by the totals and the list.
+  const routineStats = useMemo(
+    () => new Map(routines.map((r) => [r.id, computeRoutineStats(data, r)])),
+    [data, routines],
+  );
+
+  const goalProgress = useMemo(
+    () => new Map(goals.map((g) => [g.id, computeGoalProgress(data, g)])),
+    [data, goals],
+  );
+
   const totals = useMemo(() => {
     let completions = 0;
     let best = 0;
     let currentStreaks = 0;
-    for (const r of routines) {
-      const s = computeRoutineStats(data, r);
+    for (const s of routineStats.values()) {
       completions += s.completions;
       best = Math.max(best, s.bestStreak);
       currentStreaks = Math.max(currentStreaks, s.streak);
     }
     return { completions, best, currentStreaks };
-  }, [data, routines]);
+  }, [routineStats]);
 
   useRegisterControls(
     {
@@ -266,7 +283,7 @@ export function ProgressScreen() {
           ) : (
             <div className="mt-3 space-y-3">
               {routines.map((r) => {
-                const s = computeRoutineStats(data, r);
+                const s = routineStats.get(r.id)!;
                 return (
                   <div key={r.id} className="card p-4">
                     <div className="flex items-center gap-3">
@@ -295,7 +312,7 @@ export function ProgressScreen() {
         ) : (
           <div className="mt-3 space-y-3">
             {goals.map((g) => {
-              const p = computeGoalProgress(data, g);
+              const p = goalProgress.get(g.id)!;
               return (
                 <div key={g.id} className="card flex items-center gap-4 p-4">
                   <ProgressRing value={p.rate} size={64} stroke={7} color={g.color}>

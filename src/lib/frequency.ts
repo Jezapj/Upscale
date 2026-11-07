@@ -1,5 +1,5 @@
 import type { AppData, DayEntry, Frequency, Routine } from "./types";
-import { daysBetween, parseDay, dayKey } from "./dates";
+import { daysBetween, dayNumber, dayNumberToKey, dayNumberWeekday } from "./dates";
 
 export function describeFrequency(f: Frequency): string {
   switch (f.type) {
@@ -25,28 +25,62 @@ export function describeFrequency(f: Frequency): string {
   }
 }
 
-/** Is the routine scheduled to occur on this calendar day (ignoring completion)? */
-export function isScheduledOn(routine: Routine, key: string): boolean {
-  const created = dayKey(parseDay(routine.createdAt.slice(0, 10)));
-  if (daysBetween(created, key) < 0) return false; // before it existed
-  if (routine.hasEnd && routine.endDate) {
-    if (daysBetween(key, routine.endDate) < 0) return false; // past the end
-  }
-  const date = parseDay(key);
+/** First day ordinal (see `dayNumber`) a routine exists on. */
+export const routineStartDay = (routine: Routine): number =>
+  dayNumber(routine.createdAt.slice(0, 10));
+
+/**
+ * Build a fast "is scheduled on day ordinal n" predicate for one routine.
+ * Use when checking many days of the same routine (stats, heatmaps, insights).
+ */
+export function scheduleChecker(routine: Routine): (n: number) => boolean {
+  const created = routineStartDay(routine);
+  const end =
+    routine.hasEnd && routine.endDate ? dayNumber(routine.endDate) : Infinity;
   const f = routine.frequency;
+  const inRange = (n: number) => !(n < created) && !(n > end);
   switch (f.type) {
     case "daily":
-      return true;
-    case "weekly":
-      return (f.daysOfWeek ?? []).includes(date.getDay());
+      return inRange;
+    case "weekly": {
+      const days = new Set(f.daysOfWeek ?? []);
+      return (n) => inRange(n) && days.has(dayNumberWeekday(n));
+    }
     case "interval": {
-      const n = Math.max(1, f.intervalDays ?? 1);
-      const since = daysBetween(created, key);
-      return since % n === 0;
+      const every = Math.max(1, f.intervalDays ?? 1);
+      return (n) => inRange(n) && (n - created) % every === 0;
     }
     default:
-      return false;
+      return () => false;
   }
+}
+
+/**
+ * Day keys the routine was scheduled on, from its creation day through
+ * `endKey` (oldest first). When the creation day is after `endKey` the
+ * creation day itself is included, matching the long-standing stats behaviour,
+ * unless `strict` is set.
+ */
+export function scheduledDayKeys(
+  routine: Routine,
+  endKey: string,
+  strict = false,
+): string[] {
+  const created = routineStartDay(routine);
+  const end = dayNumber(endKey);
+  if (!Number.isFinite(created) || !Number.isFinite(end)) return [];
+  const last = strict ? end : Math.max(created, end);
+  const isScheduled = scheduleChecker(routine);
+  const out: string[] = [];
+  for (let n = created; n <= last; n++) {
+    if (isScheduled(n)) out.push(dayNumberToKey(n));
+  }
+  return out;
+}
+
+/** Is the routine scheduled to occur on this calendar day (ignoring completion)? */
+export function isScheduledOn(routine: Routine, key: string): boolean {
+  return scheduleChecker(routine)(dayNumber(key));
 }
 
 /** Has the routine ended (past its end date)? */

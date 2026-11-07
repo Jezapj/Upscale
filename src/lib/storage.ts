@@ -63,6 +63,13 @@ async function idbGet(key: string): Promise<string | undefined> {
 /* ---- Learn state split: stored separately so importing a big deck doesn't
    blow the quota for the rest of the app's data. ---- */
 
+/**
+ * The learn object last written (or read) per user. App data is immutable, so
+ * an identical reference means nothing changed and the (potentially multi-MB)
+ * re-serialisation can be skipped, e.g. on every check-in save.
+ */
+const persistedLearn = new Map<string, LearnState | undefined>();
+
 function saveLearnToLocalStorage(userId: string, learn: LearnState | undefined): boolean {
   if (!learn || (learn.decks.length === 0 && learn.cards.length === 0)) {
     try { localStorage.removeItem(learnKey(userId)); } catch { /* ok */ }
@@ -103,7 +110,10 @@ function loadLocal(userId: string): AppData {
     const parsed = JSON.parse(raw) as AppData;
     const merged = { ...emptyAppData(), ...parsed };
     const learn = loadLearnFromLocalStorage(userId);
-    if (learn) merged.learn = learn;
+    if (learn) {
+      merged.learn = learn;
+      persistedLearn.set(userId, learn);
+    }
     return { ...merged, gameScores: compactGameScores(merged.gameScores) };
   } catch {
     return emptyAppData();
@@ -145,7 +155,9 @@ function saveLocal(userId: string, data: AppData): void {
     return;
   }
 
-  // Now save learn state; try trimming if too large
+  // Now save learn state (only when it changed); try trimming if too large
+  if (persistedLearn.has(userId) && persistedLearn.get(userId) === learn) return;
+  persistedLearn.set(userId, learn);
   if (learn) {
     if (!saveLearnToLocalStorage(userId, learn)) {
       const trimmed = trimLearnForStorage(learn);

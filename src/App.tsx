@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   BrowserRouter,
   Routes,
@@ -31,7 +31,7 @@ import { GamesScreen } from "@/screens/GamesScreen";
 import { FriendsScreen } from "@/screens/FriendsScreen";
 import { ProgressScreen } from "@/screens/ProgressScreen";
 import { LearnScreen } from "@/screens/LearnScreen";
-import { LoadingScreen } from "@/components/LoadingScreen";
+import { LoadingMark, LoadingOverlay, LoadingScreen } from "@/components/LoadingScreen";
 import { resolveProStatus, verifyCheckoutSession } from "@/lib/subscription";
 import { Purchases } from "@revenuecat/purchases-js";
 import { useSearchParams } from "react-router-dom";
@@ -42,6 +42,7 @@ import { todayKey } from "@/lib/dates";
 import {
   buildWeeklyRecap,
   shouldOfferRecap,
+  type WeeklyRecap,
 } from "@/lib/weeklyRecap";
 import { listKudosForDay, publishPublicStats } from "@/lib/social";
 import { isCloudUser } from "@/lib/cloudSync";
@@ -70,28 +71,22 @@ const AccretionScreen = lazy(() =>
   import("@/screens/games/AccretionScreen").then((m) => ({ default: m.AccretionScreen })),
 );
 
-function GameRouteFallback() {
+/** Suspense fallback for lazily loaded screens: the boot splash, in place. */
+function RouteFallback() {
   return (
-    <div
-      className="flex flex-1 items-center justify-center"
-      role="status"
-      aria-live="polite"
-      aria-label="Loading game"
-    >
-      <img
-        src="/Upscale.png"
-        alt=""
-        width={80}
-        height={80}
-        draggable={false}
-        className="loading-logo"
-      />
+    <div className="flex flex-1 items-center justify-center">
+      <LoadingMark label="Loading" logoSize={80} />
     </div>
   );
 }
 
 function AppShell() {
-  const location = useLocation();
+  // Render route changes as a deferred (interruptible) update: the current
+  // screen stays up and responsive while the next one renders, and the loading
+  // overlay appears if that takes noticeably long.
+  const liveLocation = useLocation();
+  const location = useDeferredValue(liveLocation);
+  const routePending = location !== liveLocation;
   const refreshToday = useStore((s) => s.refreshToday);
   const pullFromCloud = useStore((s) => s.pullFromCloud);
   const data = useStore((s) => s.data);
@@ -103,9 +98,10 @@ function AppShell() {
   const startTour = useWalkthrough((s) => s.start);
   const walkthroughActive = useWalkthrough((s) => s.active);
   const [recapOpen, setRecapOpen] = useState(false);
+  // Built only when offered: it walks every routine's full history, so it must
+  // not run on every data change (e.g. each check-in rating).
+  const [recap, setRecap] = useState<WeeklyRecap | null>(null);
   const [kudosNote, setKudosNote] = useState<string | null>(null);
-
-  const recap = useMemo(() => buildWeeklyRecap(data), [data]);
 
   // Roll the day over when the app regains focus, and pull the latest cloud backup
   // so tokens / notes / palettes / daily plays catch up across devices.
@@ -150,7 +146,10 @@ function AppShell() {
   const shouldShowRecap = walkthroughSeenFlag && (loginBonusShown || loginBonusClaimed);
 
   useEffect(() => {
-    if (shouldShowRecap && shouldOfferRecap(data)) setRecapOpen(true);
+    if (shouldShowRecap && shouldOfferRecap(data)) {
+      setRecap(buildWeeklyRecap(data));
+      setRecapOpen(true);
+    }
   }, [data.lastRecapWeek, data.routines.length, shouldShowRecap]);
 
   // Publish public stats + load kudos for Google users.
@@ -281,6 +280,32 @@ function AppShell() {
     return () => window.clearTimeout(id);
   }, [location.pathname, startTour]);
 
+  const routes = useMemo(
+    () => (
+      <Suspense fallback={<RouteFallback />}>
+        <Routes location={location}>
+          <Route path="/" element={<HomeScreen />} />
+          <Route path="/checkin" element={<CheckinScreen />} />
+          <Route path="/goals" element={<GoalsScreen />} />
+          <Route path="/library" element={<LibraryScreen />} />
+          <Route path="/notes" element={<NotesScreen />} />
+          <Route path="/games" element={<GamesScreen />} />
+          <Route path="/friends" element={<FriendsScreen />} />
+          <Route path="/games/tiptop" element={<TipTopScreen />} />
+          <Route path="/games/octane" element={<OctaneScreen />} />
+          <Route path="/games/dissiada" element={<DissiadaScreen />} />
+          <Route path="/games/daybreak" element={<DaybreakScreen />} />
+          <Route path="/games/spacewalk" element={<SpacewalkScreen />} />
+          <Route path="/games/accretion" element={<AccretionScreen />} />
+          <Route path="/progress" element={<ProgressScreen />} />
+          <Route path="/learn" element={<LearnScreen />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    ),
+    [location],
+  );
+
   return (
     <div id="app-shell" className="app-shell">
       <ThemeSyncEffect />
@@ -296,73 +321,15 @@ function AppShell() {
             </div>
           </div>
         )}
-        <Routes>
-          <Route path="/" element={<HomeScreen />} />
-          <Route path="/checkin" element={<CheckinScreen />} />
-          <Route path="/goals" element={<GoalsScreen />} />
-          <Route path="/library" element={<LibraryScreen />} />
-          <Route path="/notes" element={<NotesScreen />} />
-          <Route path="/games" element={<GamesScreen />} />
-          <Route path="/friends" element={<FriendsScreen />} />
-          <Route
-            path="/games/tiptop"
-            element={
-              <Suspense fallback={<GameRouteFallback />}>
-                <TipTopScreen />
-              </Suspense>
-            }
-          />
-          <Route
-            path="/games/octane"
-            element={
-              <Suspense fallback={<GameRouteFallback />}>
-                <OctaneScreen />
-              </Suspense>
-            }
-          />
-          <Route
-            path="/games/dissiada"
-            element={
-              <Suspense fallback={<GameRouteFallback />}>
-                <DissiadaScreen />
-              </Suspense>
-            }
-          />
-          <Route
-            path="/games/daybreak"
-            element={
-              <Suspense fallback={<GameRouteFallback />}>
-                <DaybreakScreen />
-              </Suspense>
-            }
-          />
-          <Route
-            path="/games/spacewalk"
-            element={
-              <Suspense fallback={<GameRouteFallback />}>
-                <SpacewalkScreen />
-              </Suspense>
-            }
-          />
-          <Route
-            path="/games/accretion"
-            element={
-              <Suspense fallback={<GameRouteFallback />}>
-                <AccretionScreen />
-              </Suspense>
-            }
-          />
-          <Route path="/progress" element={<ProgressScreen />} />
-          <Route path="/learn" element={<LearnScreen />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        {routes}
+        {routePending && <LoadingOverlay />}
       </div>
       <QuickMenu />
       <Walkthrough />
       <WeeklyRecapSheet
         open={recapOpen}
         onClose={() => {
-          setLastRecapWeek(recap.weekKey);
+          if (recap) setLastRecapWeek(recap.weekKey);
           setRecapOpen(false);
         }}
         recap={recap}
@@ -379,7 +346,10 @@ function AppShell() {
 }
 
 export default function App() {
-  const { ready, user, signingIn, init } = useStore();
+  const ready = useStore((s) => s.ready);
+  const user = useStore((s) => s.user);
+  const signingIn = useStore((s) => s.signingIn);
+  const init = useStore((s) => s.init);
   useScreenOrientation("portrait-primary");
 
   useEffect(() => {

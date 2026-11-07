@@ -5,8 +5,8 @@
 
 import type { AppData, Routine } from "./types";
 import { activeLearnDecks } from "./types";
-import { dayKey, daysBetween, parseDay, DOW_FULL } from "./dates";
-import { isScheduledOn } from "./frequency";
+import { dayKey, dayNumber, dayNumberWeekday, DOW_FULL } from "./dates";
+import { scheduledDayKeys } from "./frequency";
 
 export type InsightKind =
   | "correlation"
@@ -31,62 +31,60 @@ function activeRoutines(data: AppData): Routine[] {
   return data.routines.filter((r) => !r.archived);
 }
 
-function scheduledKeys(routine: Routine, endKey: string): string[] {
-  const created = routine.createdAt.slice(0, 10);
-  const total = Math.max(0, daysBetween(created, endKey)) + 1;
-  const keys: string[] = [];
-  for (let i = 0; i < total; i++) {
-    const d = parseDay(created);
-    d.setDate(d.getDate() + i);
-    const key = dayKey(d);
-    if (daysBetween(key, endKey) < 0) break;
-    if (isScheduledOn(routine, key)) keys.push(key);
-  }
-  return keys;
+/** Per-routine scheduled / completed day keys, computed once per insight pass. */
+interface RoutineHistory {
+  routine: Routine;
+  scheduled: string[];
+  scheduledSet: Set<string>;
+  done: string[];
+  doneSet: Set<string>;
 }
 
-function completionRateOnDays(
-  data: AppData,
-  routine: Routine,
-  days: string[],
-): number | null {
-  if (days.length === 0) return null;
-  let done = 0;
-  for (const key of days) {
-    if (data.logs[key]?.entries[routine.id]?.completed) done++;
-  }
-  return done / days.length;
+function routineHistories(data: AppData, endKey: string): RoutineHistory[] {
+  return activeRoutines(data).map((routine) => {
+    const scheduled = scheduledDayKeys(routine, endKey, true);
+    const done = scheduled.filter(
+      (k) => data.logs[k]?.entries[routine.id]?.completed,
+    );
+    return {
+      routine,
+      scheduled,
+      scheduledSet: new Set(scheduled),
+      done,
+      doneSet: new Set(done),
+    };
+  });
 }
 
-function correlationInsights(data: AppData): InsightCard[] {
-  const routines = activeRoutines(data);
-  const today = dayKey();
+function correlationInsights(histories: RoutineHistory[]): InsightCard[] {
   const cards: InsightCard[] = [];
 
-  for (let i = 0; i < routines.length; i++) {
-    for (let j = 0; j < routines.length; j++) {
+  for (let i = 0; i < histories.length; i++) {
+    const a = histories[i];
+    if (a.scheduled.length === 0) continue;
+    const rateOverall = a.done.length / a.scheduled.length;
+    for (let j = 0; j < histories.length; j++) {
       if (i === j) continue;
-      const a = routines[i];
-      const b = routines[j];
-      const aKeys = new Set(scheduledKeys(a, today));
-      const bDoneDays = scheduledKeys(b, today).filter(
-        (k) => data.logs[k]?.entries[b.id]?.completed,
-      );
-      const sharedWhenB = bDoneDays.filter((k) => aKeys.has(k));
-      if (sharedWhenB.length < MIN_SHARED_DAYS) continue;
+      const b = histories[j];
+      if (b.done.length < MIN_SHARED_DAYS) continue;
+      let shared = 0;
+      let doneWithB = 0;
+      for (const k of b.done) {
+        if (!a.scheduledSet.has(k)) continue;
+        shared++;
+        if (a.doneSet.has(k)) doneWithB++;
+      }
+      if (shared < MIN_SHARED_DAYS) continue;
 
-      const rateWithB = completionRateOnDays(data, a, sharedWhenB);
-      const allA = [...aKeys];
-      const rateOverall = completionRateOnDays(data, a, allA);
-      if (rateWithB == null || rateOverall == null) continue;
+      const rateWithB = doneWithB / shared;
       if (rateWithB - rateOverall < MIN_RATE_GAP) continue;
 
       cards.push({
-        id: `corr:${a.id}:${b.id}`,
+        id: `corr:${a.routine.id}:${b.routine.id}`,
         kind: "correlation",
         title: "Linked habits",
-        body: `You complete “${a.title}” ${Math.round(rateWithB * 100)}% on days you also do “${b.title}” (vs ${Math.round(rateOverall * 100)}% overall).`,
-        accent: a.color,
+        body: `You complete “${a.routine.title}” ${Math.round(rateWithB * 100)}% on days you also do “${b.routine.title}” (vs ${Math.round(rateOverall * 100)}% overall).`,
+        accent: a.routine.color,
       });
     }
   }
@@ -96,18 +94,17 @@ function correlationInsights(data: AppData): InsightCard[] {
     .slice(0, 4);
 }
 
-function weekdayInsights(data: AppData): InsightCard[] {
-  const today = dayKey();
+function weekdayInsights(histories: RoutineHistory[]): InsightCard[] {
   const cards: InsightCard[] = [];
-  for (const routine of activeRoutines(data)) {
+  for (const { routine, scheduled, doneSet } of histories) {
     const byDow: { done: number; total: number }[] = Array.from(
       { length: 7 },
       () => ({ done: 0, total: 0 }),
     );
-    for (const key of scheduledKeys(routine, today)) {
-      const dow = parseDay(key).getDay();
+    for (const key of scheduled) {
+      const dow = dayNumberWeekday(dayNumber(key));
       byDow[dow].total++;
-      if (data.logs[key]?.entries[routine.id]?.completed) byDow[dow].done++;
+      if (doneSet.has(key)) byDow[dow].done++;
     }
     let best = -1;
     let bestRate = 0;
@@ -173,9 +170,10 @@ function timeOfDayInsights(data: AppData): InsightCard[] {
 
 /** Compute insight cards for Progress. Stable order: correlation, weekday, time, learn. */
 export function computeInsights(data: AppData, limit = 6): InsightCard[] {
+  const histories = routineHistories(data, dayKey());
   return [
-    ...correlationInsights(data),
-    ...weekdayInsights(data),
+    ...correlationInsights(histories),
+    ...weekdayInsights(histories),
     ...timeOfDayInsights(data),
     ...learnInsights(data),
   ].slice(0, limit);

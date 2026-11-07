@@ -13,25 +13,15 @@ import type {
   TokenTxn,
   TokenWallet,
 } from "./types";
-import { dayKey, daysBetween, parseDay, shiftDay, todayKey } from "./dates";
-import { isScheduledOn } from "./frequency";
+import { dayKey, shiftDay, todayKey } from "./dates";
+import { isScheduledOn, scheduledDayKeys } from "./frequency";
 
 /** Lightweight current streak so economy does not import stats (avoids a cycle). */
 function currentStreakFor(data: AppData, routine: Routine): number {
-  const created = routine.createdAt.slice(0, 10);
-  const today = dayKey();
-  const total = Math.max(0, daysBetween(created, today)) + 1;
-  const days: boolean[] = [];
-  for (let i = 0; i < total; i++) {
-    const d = parseDay(created);
-    d.setDate(d.getDate() + i);
-    const key = dayKey(d);
-    if (!isScheduledOn(routine, key)) continue;
-    days.push(!!data.logs[key]?.entries[routine.id]?.completed);
-  }
+  const keys = scheduledDayKeys(routine, dayKey());
   let streak = 0;
-  for (let i = days.length - 1; i >= 0; i--) {
-    if (days[i]) streak++;
+  for (let i = keys.length - 1; i >= 0; i--) {
+    if (data.logs[keys[i]]?.entries[routine.id]?.completed) streak++;
     else break;
   }
   return streak;

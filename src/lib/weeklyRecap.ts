@@ -7,7 +7,7 @@ import { dayKey, parseDay } from "./dates";
 import { isScheduledOn } from "./frequency";
 import { computeRoutineStats } from "./stats";
 import { tokensEarnedBetween } from "./economy";
-import { computeInsights } from "./insights";
+import { computeInsights, type InsightCard } from "./insights";
 import { GAMES } from "./games";
 
 export interface WeeklyRecap {
@@ -61,6 +61,8 @@ export function previousWeekRange(now: Date = new Date()): {
 export function buildWeeklyRecap(
   data: AppData,
   now: Date = new Date(),
+  /** Reuse insights the caller already computed for the same data. */
+  precomputedInsights?: InsightCard[],
 ): WeeklyRecap {
   const { start, end, weekKey } = previousWeekRange(now);
   let scheduled = 0;
@@ -86,7 +88,7 @@ export function buildWeeklyRecap(
     ? Math.round((completed / scheduled) * 100)
     : 0;
   const tokensEarned = tokensEarnedBetween(data.wallet, start, end);
-  const insights = computeInsights(data, 1);
+  const insights = precomputedInsights ?? computeInsights(data, 1);
 
   let arcadeHighlight: string | undefined;
   let bestScore = 0;

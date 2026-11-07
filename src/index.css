@@ -577,6 +577,26 @@ input[type="number"]::-webkit-inner-spin-button {
   }
 }
 
+/* In-app fallback: same splash, over the content area. Waits before fading
+   in so fast screen changes never flash it. */
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(var(--surface-body) / 0.82);
+  opacity: 0;
+  animation: loading-overlay-in 0.2s ease-out 0.25s forwards;
+}
+
+@keyframes loading-overlay-in {
+  to {
+    opacity: 1;
+  }
+}
+
 /* Reduced motion: keep the "still loading" signal, drop the movement. */
 @keyframes loading-letter-fade {
   0%,

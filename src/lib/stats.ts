@@ -1,6 +1,6 @@
 import type { AppData, Goal, Routine } from "./types";
-import { dayKey, daysBetween, lastNDays, parseDay } from "./dates";
-import { isScheduledOn } from "./frequency";
+import { dayKey, dayNumber, lastNDays } from "./dates";
+import { isScheduledOn, scheduleChecker, scheduledDayKeys } from "./frequency";
 import {
   bankedGraceCount,
   graceShieldedDays,
@@ -62,36 +62,41 @@ export function routineDayState(
   routine: Routine,
   key: string,
 ): DayState {
-  const today = dayKey();
-  const inFuture = daysBetween(today, key) > 0;
-  if (!isScheduledOn(routine, key)) return "none";
-  const entry = data.logs[key]?.entries[routine.id];
-  if (inFuture) return "future";
-  if (graceShieldedDays(data.wallet, routine.id).has(key)) return "shielded";
-  if (!entry) return daysBetween(key, today) === 0 ? "none" : "missed";
-  if (entry.rating === "yes") return "done";
-  if (entry.rating === "kinda") return "partial";
-  if (entry.rating === "not_really") return "partial";
-  return "missed";
+  return routineDayStates(data, routine, [key])[0];
+}
+
+/** Day states for many keys of one routine (heatmaps): shared setup, O(1) per day. */
+export function routineDayStates(
+  data: AppData,
+  routine: Routine,
+  keys: string[],
+): DayState[] {
+  const today = dayNumber(dayKey());
+  const isScheduled = scheduleChecker(routine);
+  const shielded = graceShieldedDays(data.wallet, routine.id);
+  return keys.map((key) => {
+    const n = dayNumber(key);
+    if (!isScheduled(n)) return "none";
+    if (n > today) return "future";
+    if (shielded.has(key)) return "shielded";
+    const entry = data.logs[key]?.entries[routine.id];
+    if (!entry) return n === today ? "none" : "missed";
+    if (entry.rating === "yes") return "done";
+    if (entry.rating === "kinda") return "partial";
+    if (entry.rating === "not_really") return "partial";
+    return "missed";
+  });
 }
 
 export function computeRoutineStats(
   data: AppData,
   routine: Routine,
 ): RoutineStats {
-  const created = routine.createdAt.slice(0, 10);
-  const today = dayKey();
-  const total = Math.max(0, daysBetween(created, today)) + 1;
-
   let scheduled = 0;
   let completions = 0;
   const completionByDay: { key: string; done: boolean }[] = [];
 
-  for (let i = 0; i < total; i++) {
-    const d = parseDay(created);
-    d.setDate(d.getDate() + i);
-    const key = dayKey(d);
-    if (!isScheduledOn(routine, key)) continue;
+  for (const key of scheduledDayKeys(routine, dayKey())) {
     scheduled++;
     const entry = data.logs[key]?.entries[routine.id];
     const done = !!entry?.completed;
@@ -135,15 +140,8 @@ export function consumeGraceForRoutine(
   data: AppData,
   routine: Routine,
 ): AppData {
-  const created = routine.createdAt.slice(0, 10);
-  const today = dayKey();
-  const total = Math.max(0, daysBetween(created, today)) + 1;
   const completionByDay: { key: string; done: boolean }[] = [];
-  for (let i = 0; i < total; i++) {
-    const d = parseDay(created);
-    d.setDate(d.getDate() + i);
-    const key = dayKey(d);
-    if (!isScheduledOn(routine, key)) continue;
+  for (const key of scheduledDayKeys(routine, dayKey())) {
     completionByDay.push({
       key,
       done: !!data.logs[key]?.entries[routine.id]?.completed,
@@ -232,10 +230,14 @@ export function dailyCompletionSeries(
   data: AppData,
   n: number,
 ): { key: string; ratio: number; scheduled: number }[] {
+  const active = data.routines
+    .filter((r) => !r.archived)
+    .map((r) => ({ r, isScheduled: scheduleChecker(r) }));
   return lastNDays(n).map((key) => {
-    const scheduledRoutines = data.routines.filter(
-      (r) => !r.archived && isScheduledOn(r, key),
-    );
+    const day = dayNumber(key);
+    const scheduledRoutines = active
+      .filter((x) => x.isScheduled(day))
+      .map((x) => x.r);
     const done = scheduledRoutines.filter(
       (r) => data.logs[key]?.entries[r.id]?.completed,
     ).length;

@@ -1,6 +1,7 @@
+import { memo, useMemo } from "react";
 import type { AppData, Routine } from "@/lib/types";
 import { lastNDays } from "@/lib/dates";
-import { routineDayState, type DayState } from "@/lib/stats";
+import { routineDayStates, type DayState } from "@/lib/stats";
 
 interface Props {
   data: AppData;
@@ -27,19 +28,28 @@ const stateStyle = (state: DayState, accent: string): string => {
 };
 
 /** GitHub-style contribution grid for a single routine. */
-export function Heatmap({ data, routine, weeks = 16, accent = "#3a8ef0" }: Props) {
-  const days = lastNDays(weeks * 7);
-  // Build columns of 7 (weeks).
-  const columns: string[][] = [];
-  for (let i = 0; i < days.length; i += 7) {
-    columns.push(days.slice(i, i + 7));
-  }
+export const Heatmap = memo(function Heatmap({
+  data,
+  routine,
+  weeks = 16,
+  accent = "#3a8ef0",
+}: Props) {
+  // Columns of 7 (weeks) of [key, state]. Day states only read logs + wallet,
+  // so unrelated data changes don't recompute the grid.
+  const columns = useMemo(() => {
+    const days = lastNDays(weeks * 7);
+    const states = routineDayStates(data, routine, days);
+    const out: [string, DayState][][] = [];
+    for (let i = 0; i < days.length; i += 7) {
+      out.push(days.slice(i, i + 7).map((k, j) => [k, states[i + j]]));
+    }
+    return out;
+  }, [data.logs, data.wallet, routine, weeks]);
   return (
     <div className="hscroll flex gap-[3px] pb-1">
       {columns.map((col, ci) => (
         <div key={ci} className="flex flex-col gap-[3px]">
-          {col.map((key) => {
-            const st = routineDayState(data, routine, key);
+          {col.map(([key, st]) => {
             return (
               <div
                 key={key}
@@ -53,4 +63,4 @@ export function Heatmap({ data, routine, weeks = 16, accent = "#3a8ef0" }: Props
       ))}
     </div>
   );
-}
+});

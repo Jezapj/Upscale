@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Check, Home, Flame, StickyNote, Gamepad2, GraduationCap } from "lucide-react";
 import { useStore } from "@/store/useStore";
@@ -21,7 +21,8 @@ import { StudySession } from "@/components/learn/StudySession";
 
 export function CheckinScreen() {
   const nav = useNavigate();
-  const { data, rate } = useStore();
+  const data = useStore((s) => s.data);
+  const rate = useStore((s) => s.rate);
   const key = todayKey();
 
   // Freeze the queue order on mount so re-rating doesn't reshuffle the flow.
@@ -41,6 +42,11 @@ export function CheckinScreen() {
   const [studyDeckId, setStudyDeckId] = useState<string | null>(null);
   const total = queue.length;
   const current = queue[index];
+  // Only the streak is shown; recompute when this card or its logs change.
+  const streak = useMemo(
+    () => (current ? computeRoutineStats(data, current).streak : 0),
+    [current, data.logs, data.wallet],
+  );
 
   const goalFor = (r: Routine) =>
     r.goalId ? data.goals.find((g) => g.id === r.goalId) : undefined;
@@ -80,7 +86,6 @@ export function CheckinScreen() {
 
   const goal = goalFor(current);
   const cat = getCategory(current.category);
-  const stats = computeRoutineStats(data, current);
   const existing = data.logs[key]?.entries[current.id]?.rating;
 
   return (
@@ -169,9 +174,9 @@ export function CheckinScreen() {
           )}
           <div className="mt-2 flex items-center justify-center gap-3 text-xs font-700 text-ink-faint">
             <span>{describeFrequency(current.frequency)}</span>
-            {stats.streak > 0 && (
+            {streak > 0 && (
               <span className="flex items-center gap-0.5 text-cat-exercise">
-                <Flame size={13} /> {stats.streak} day streak
+                <Flame size={13} /> {streak} day streak
               </span>
             )}
           </div>
