@@ -862,3 +862,605 @@ input[type="number"]::-webkit-inner-spin-button {
 [data-theme="dark"] .tour-back {
   background: rgba(255, 255, 255, 0.1);
 }
+
+/* ── Shop ─────────────────────────────────────────────────────────────────── */
+
+.shop-item {
+  border-radius: 1.1rem;
+}
+
+.shop-item-selected {
+  box-shadow:
+    0 0 0 2.5px #3a8ef0,
+    0 8px 18px -10px rgba(58, 142, 240, 0.6);
+}
+
+[data-theme="dark"] .shop-item-selected {
+  background: rgba(192, 132, 252, 0.14);
+  box-shadow:
+    0 0 0 2.5px #c084fc,
+    0 8px 18px -10px rgba(192, 132, 252, 0.6);
+}
+
+.shop-badge {
+  display: flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #ffffff;
+  box-shadow: 0 0 0 2px #ffffff;
+}
+
+.shop-badge-lock {
+  background: #3c4047;
+}
+
+.shop-badge-on {
+  background: #4cc79c;
+}
+
+.shop-chip-on {
+  color: #ffffff;
+  background: linear-gradient(180deg, #8fe6c6, #5cd0a8);
+}
+
+/* ── Shop themes ("skins") ─────────────────────────────────────────────────
+   Each skin sits on a light or dark base (see lib/appThemes.ts), so the rules
+   above still decide text contrast. These blocks only reshape and recolour
+   the shared surfaces: paper, cards, capsules, buttons, dock, tiles, titles. */
+
+[data-skin] .doodle-layer {
+  display: none;
+}
+
+/* Patterned papers do not line up inside the edge-dissolve strips. */
+[data-skin] .scroll-fade::before,
+[data-skin] .scroll-fade::after {
+  display: none;
+}
+
+[data-skin] .paper-bg::before,
+[data-skin] .paper-bg::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+/* Skewed buttons keep Tailwind's press-scale by reusing its transform vars. */
+[data-skin] .btn,
+[data-skin] .btn-ghost {
+  transform: translate(var(--tw-translate-x), var(--tw-translate-y))
+    rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y))
+    scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y));
+}
+
+/* ── Speed: sky blue, gold rings, slanted italics ───────────────────────── */
+
+[data-skin="speed"] {
+  --ink: 10 38 110;
+  --ink-soft: 48 88 164;
+  --ink-faint: 118 148 200;
+  --surface-body: 226 241 255;
+  --loading-glow: rgba(28, 109, 255, 0.6);
+}
+
+[data-skin="speed"] .paper-bg {
+  background-color: #e2f1ff;
+  background-image:
+    repeating-linear-gradient(115deg, rgba(28, 109, 255, 0.06) 0 14px, transparent 14px 46px),
+    linear-gradient(
+      115deg,
+      transparent 0 64%,
+      rgba(28, 109, 255, 0.2) 64% 68%,
+      transparent 68% 70%,
+      rgba(255, 196, 0, 0.45) 70% 71.5%,
+      transparent 71.5%
+    ),
+    radial-gradient(120% 90% at 50% 0%, #ffffff 0%, #eaf5ff 45%, #b9dcff 100%);
+  background-size: auto, auto, auto;
+}
+
+/* A trail of gold rings. */
+[data-skin="speed"] .paper-bg::before {
+  right: -6px;
+  top: 13%;
+  width: 150px;
+  height: 28px;
+  background: radial-gradient(
+      circle at 14px 14px,
+      transparent 6px,
+      #ffc400 6.5px 10px,
+      transparent 10.5px
+    )
+    0 0 / 34px 28px repeat-x;
+  opacity: 0.8;
+  transform: rotate(-12deg);
+}
+
+/* Checkered finish strip along the floor. */
+[data-skin="speed"] .paper-bg::after {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 22px;
+  background: conic-gradient(#1c6dff 25%, #ffffff 0 50%, #1c6dff 0 75%, #ffffff 0) 0 0 / 22px 22px;
+  opacity: 0.22;
+}
+
+[data-skin="speed"] .font-display {
+  font-family: "Exo 2", "Baloo 2", "Nunito", system-ui, sans-serif;
+  font-style: italic;
+  letter-spacing: -0.01em;
+}
+
+[data-skin="speed"] .hero-greeting {
+  color: #0f4fe0;
+  text-shadow: 2px 2px 0 rgba(255, 196, 0, 0.65);
+}
+
+[data-skin="speed"] .card,
+[data-skin="speed"] .panel,
+[data-skin="speed"] .tour-card,
+[data-skin="speed"] .quick-menu-panel {
+  background: linear-gradient(180deg, #ffffff 0%, #eef7ff 100%);
+  border: 0 solid transparent;
+  border-left: 5px solid #1c6dff;
+  border-bottom: 3px solid #ffc400;
+  border-radius: 1.4rem 0.45rem 1.4rem 0.45rem;
+  box-shadow: 0 10px 22px -12px rgba(16, 60, 160, 0.45);
+}
+
+[data-skin="speed"] .capsule,
+[data-skin="speed"] .quick-menu-row,
+[data-skin="speed"] .dock-shoulder {
+  background: linear-gradient(180deg, #ffffff 0%, #e6f2ff 100%);
+  border: 2px solid rgba(28, 109, 255, 0.28);
+  box-shadow: 0 6px 14px -10px rgba(16, 60, 160, 0.55);
+}
+
+[data-skin="speed"] .dock-shoulder {
+  color: #1c6dff;
+  font-style: italic;
+}
+
+[data-skin="speed"] .btn,
+[data-skin="speed"] .tour-next {
+  --tw-skew-x: -8deg;
+  border-radius: 0.7rem;
+  border-bottom: 3px solid #ffc400;
+  background: linear-gradient(180deg, #3d8bff 0%, #0f4fe0 100%);
+  box-shadow:
+    0 10px 20px -10px rgba(15, 79, 224, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  font-style: italic;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+[data-skin="speed"] .btn-ghost {
+  --tw-skew-x: -8deg;
+  border-radius: 0.7rem;
+  color: #0f4fe0;
+  font-style: italic;
+}
+
+[data-skin="speed"] .dock-tab-active {
+  border-radius: 50%;
+  background: linear-gradient(180deg, #3d8bff, #0f4fe0);
+  box-shadow:
+    0 0 0 3px #ffc400,
+    0 0 0 4.5px #fff3a8,
+    0 8px 16px -4px rgba(15, 79, 224, 0.7);
+}
+
+[data-skin="speed"] .iisu-tile {
+  border-radius: 50% !important;
+}
+
+[data-skin="speed"] .glyph {
+  color: #ffffff;
+  background: linear-gradient(180deg, #3d8bff, #0f4fe0);
+  box-shadow: 0 0 0 1.5px #ffc400;
+}
+
+[data-skin="speed"] .sheet-panel {
+  border-top: 4px solid #1c6dff !important;
+  background: rgba(243, 249, 255, 0.98) !important;
+}
+
+[data-skin="speed"] .home-hero {
+  border-bottom: 3px solid #ffc400;
+  border-radius: 1.4rem 0.45rem 1.4rem 0.45rem;
+}
+
+[data-skin="speed"] .iisu-gradient-text {
+  background-image: linear-gradient(115deg, #0f4fe0 0%, #35b6ff 60%, #ffc400 100%);
+}
+
+[data-skin="speed"] .game-shell {
+  background: linear-gradient(180deg, #f4faff 0%, #cfe6ff 100%);
+}
+
+[data-skin="speed"] .game-overlay {
+  background: rgba(226, 241, 255, 0.9);
+}
+
+[data-skin="speed"] .shop-item-selected {
+  box-shadow:
+    0 0 0 2.5px #ffc400,
+    0 10px 20px -10px rgba(15, 79, 224, 0.7);
+}
+
+[data-skin="speed"] .shop-chip-on {
+  background: linear-gradient(180deg, #3d8bff, #0f4fe0);
+}
+
+/* ── Battle: charcoal arena, cut-corner panels, fighter colours ─────────── */
+
+[data-skin="battle"] {
+  --ink: 255 255 255;
+  --ink-soft: 208 210 220;
+  --ink-faint: 142 146 162;
+  --surface-body: 21 21 27;
+  --loading-glow: rgba(255, 96, 40, 0.75);
+  --battle-accent: #e8222c;
+}
+
+[data-skin="battle"] .paper-bg {
+  background-color: #15151b;
+  background-image:
+    linear-gradient(118deg, #e8222c 0 7%, #ffc21a 7% 7.7%, transparent 7.7%),
+    linear-gradient(298deg, #1f63e0 0 7%, #ffc21a 7% 7.7%, transparent 7.7%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.035) 0 2px, transparent 2px 10px),
+    radial-gradient(110% 80% at 50% 40%, #2c2c38 0%, #15151b 70%, #0b0b0f 100%);
+  background-size: auto, auto, auto, auto;
+}
+
+/* Two slanted light bars behind the content. */
+[data-skin="battle"] .paper-bg::before,
+[data-skin="battle"] .paper-bg::after {
+  left: -20%;
+  right: -20%;
+  top: 46%;
+  height: 54px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06) 30% 70%, transparent);
+  transform: rotate(-24deg);
+}
+
+[data-skin="battle"] .paper-bg::after {
+  height: 14px;
+  background: linear-gradient(90deg, transparent, rgba(255, 194, 26, 0.16) 30% 70%, transparent);
+  transform: rotate(-24deg) translateY(58px);
+}
+
+[data-skin="battle"] .font-display {
+  font-family: "Barlow Condensed", "Baloo 2", "Nunito", system-ui, sans-serif;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+[data-skin="battle"] .hero-greeting {
+  font-size: 2.2rem;
+  text-shadow:
+    3px 3px 0 #000000,
+    0 0 18px rgba(232, 34, 44, 0.55);
+}
+
+/* Bottom-right corner is cut out of the background (no clip-path, so menus
+   and popovers inside a card are never clipped). */
+[data-skin="battle"] .card,
+[data-skin="battle"] .panel,
+[data-skin="battle"] .tour-card,
+[data-skin="battle"] .quick-menu-row {
+  background: linear-gradient(-45deg, transparent 11px, #272732 11.5px);
+  border: 0 solid transparent;
+  border-left: 6px solid var(--battle-accent);
+  border-radius: 3px;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+[data-skin="battle"] .card:nth-child(4n + 2) {
+  --battle-accent: #1f63e0;
+}
+[data-skin="battle"] .card:nth-child(4n + 3) {
+  --battle-accent: #ffc21a;
+}
+[data-skin="battle"] .card:nth-child(4n + 4) {
+  --battle-accent: #20b455;
+}
+
+[data-skin="battle"] .capsule,
+[data-skin="battle"] .dock-shoulder {
+  background: #0f0f14;
+  border: 2px solid rgba(255, 255, 255, 0.24);
+  border-radius: 6px;
+  box-shadow: 0 6px 0 -2px rgba(0, 0, 0, 0.55);
+  backdrop-filter: none;
+}
+
+[data-skin="battle"] .btn,
+[data-skin="battle"] .tour-next {
+  --tw-skew-x: -10deg;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #ff6a2a 0%, #d81c1c 100%);
+  box-shadow:
+    0 4px 0 #7a0d0d,
+    inset 0 0 0 2px rgba(255, 194, 26, 0.9);
+  font-style: italic;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+[data-skin="battle"] .btn-ghost {
+  --tw-skew-x: -10deg;
+  border-radius: 4px;
+  background: #2b2b36;
+  border: 2px solid rgba(255, 255, 255, 0.38);
+  font-style: italic;
+  text-transform: uppercase;
+}
+
+[data-skin="battle"] .dock-tab-active {
+  border-radius: 6px;
+  background: linear-gradient(180deg, #ff6a2a, #d81c1c) !important;
+  box-shadow:
+    0 0 0 2px #ffc21a,
+    0 5px 0 rgba(0, 0, 0, 0.6) !important;
+}
+
+[data-skin="battle"] .iisu-tile {
+  border-radius: 16% !important;
+}
+
+[data-skin="battle"] .glyph {
+  border-radius: 4px;
+  color: #15151b;
+  background: #ffc21a;
+  box-shadow: none;
+}
+
+[data-skin="battle"] .sheet-panel,
+[data-skin="battle"] .quick-menu-panel {
+  border-radius: 0 !important;
+  border: 0 solid transparent !important;
+  border-top: 4px solid #e8222c !important;
+  background: #1a1a21 !important;
+  box-shadow: 0 -4px 0 #ffc21a !important;
+}
+
+[data-skin="battle"] .home-hero {
+  border-left: 6px solid #ffc21a;
+  border-radius: 3px;
+  box-shadow: none;
+}
+
+[data-skin="battle"] .sheet-close,
+[data-skin="aria"] .sheet-close {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+}
+
+[data-skin="battle"] .iisu-gradient-text {
+  background-image: linear-gradient(100deg, #ff6a2a 0%, #ffc21a 100%);
+}
+
+[data-skin="battle"] .game-shell {
+  background: linear-gradient(180deg, #22222b 0%, #0f0f14 100%);
+}
+
+[data-skin="battle"] .shop-item-selected {
+  --battle-accent: #ffc21a !important;
+  background: linear-gradient(-45deg, transparent 11px, #4a3d14 11.5px);
+  box-shadow: none;
+}
+
+[data-skin="battle"] .shop-chip-on {
+  color: #15151b;
+  background: #ffc21a;
+}
+
+[data-skin="battle"] .form-chip-active {
+  background: linear-gradient(180deg, #ff6a2a, #d81c1c) !important;
+}
+
+/* ── Aria: midnight blue, TV yellow and rebel red over halftone ink ─────── */
+
+[data-skin="aria"] {
+  --ink: 255 255 255;
+  --ink-soft: 216 216 226;
+  --ink-faint: 150 150 168;
+  --surface-body: 10 10 15;
+  --loading-glow: rgba(214, 0, 28, 0.8);
+  --aria-shadow: #d6001c;
+}
+
+[data-skin="aria"] .paper-bg {
+  background-color: #0a0a0f;
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.1) 1.2px, transparent 1.6px),
+    linear-gradient(112deg, #d6001c 0 10%, #000000 10% 10.8%, #ffe100 10.8% 12%, transparent 12%),
+    linear-gradient(292deg, #1146c9 0 9%, #7fb2ff 9% 9.6%, transparent 9.6%),
+    radial-gradient(90% 60% at 85% 80%, rgba(17, 70, 201, 0.38), transparent 70%),
+    linear-gradient(180deg, #0a0a0f 0%, #13131c 100%);
+  background-size:
+    11px 11px,
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    100% 100%;
+}
+
+/* A pale moon hanging over the midnight corner. */
+[data-skin="aria"] .paper-bg::before {
+  right: -34px;
+  top: 16%;
+  width: 128px;
+  height: 128px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 36% 36%, #f6ffd0 0%, #c9e86a 70%);
+  opacity: 0.16;
+  box-shadow: 0 0 40px 10px rgba(201, 232, 106, 0.5);
+}
+
+/* A jagged red burst in the opposite corner. */
+[data-skin="aria"] .paper-bg::after {
+  left: -30px;
+  bottom: 12%;
+  width: 150px;
+  height: 150px;
+  background: #d6001c;
+  opacity: 0.4;
+  clip-path: polygon(
+    50% 0%, 61% 30%, 93% 12%, 74% 42%, 100% 55%, 70% 62%,
+    80% 96%, 52% 72%, 30% 100%, 31% 66%, 0% 62%, 26% 45%, 8% 14%, 40% 30%
+  );
+}
+
+[data-skin="aria"] .font-display {
+  font-family: "Anton", "Baloo 2", "Nunito", system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* Cut-out headline: white type on a tilted red slab. */
+[data-skin="aria"] .hero-greeting {
+  display: inline-block;
+  padding: 0.1em 0.5em 0.14em;
+  color: #ffffff;
+  background: #d6001c;
+  box-shadow: 5px 5px 0 #000000;
+  outline: 2px solid #ffffff;
+  rotate: -2deg;
+  margin: 0.45rem 0 0.5rem;
+  font-size: 1.7rem;
+  filter: none;
+}
+
+[data-skin="aria"] .home-hero {
+  border: 2px solid #ffffff;
+  border-radius: 2px;
+  box-shadow: 5px 5px 0 #ffe100;
+}
+
+[data-skin="aria"] .sheet-close {
+  border-radius: 0;
+}
+
+[data-skin="aria"] .card,
+[data-skin="aria"] .panel,
+[data-skin="aria"] .tour-card,
+[data-skin="aria"] .quick-menu-row {
+  background: #0d0d13;
+  border: 2px solid #ffffff;
+  border-radius: 2px;
+  box-shadow: 5px 5px 0 var(--aria-shadow);
+  backdrop-filter: none;
+}
+
+[data-skin="aria"] .card:nth-child(3n + 2) {
+  --aria-shadow: #ffe100;
+}
+[data-skin="aria"] .card:nth-child(3n + 3) {
+  --aria-shadow: #1c5cf0;
+}
+
+[data-skin="aria"] .capsule,
+[data-skin="aria"] .dock-shoulder {
+  background: #0d0d13;
+  border: 2px solid #ffffff;
+  border-radius: 2px;
+  box-shadow: 4px 4px 0 #ffe100;
+  backdrop-filter: none;
+}
+
+[data-skin="aria"] .dock-shoulder {
+  color: #ffffff;
+  box-shadow: 3px 3px 0 #d6001c;
+}
+
+[data-skin="aria"] .btn,
+[data-skin="aria"] .tour-next {
+  --tw-skew-x: -10deg;
+  border: 2px solid #ffffff;
+  border-radius: 0;
+  background: #d6001c;
+  box-shadow: 4px 4px 0 #000000;
+  font-family: "Anton", "Nunito", system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+[data-skin="aria"] .btn-ghost {
+  --tw-skew-x: -10deg;
+  border: 2px solid #0a0a0f;
+  border-radius: 0;
+  color: #0a0a0f;
+  background: #ffffff;
+  box-shadow: 4px 4px 0 #1c5cf0;
+  text-transform: uppercase;
+}
+
+[data-skin="aria"] .dock-tab-active {
+  border-radius: 2px;
+  background: #ffe100 !important;
+  box-shadow: 3px 3px 0 #d6001c !important;
+  rotate: -8deg;
+}
+
+[data-skin="aria"] .dock-tab-active svg {
+  stroke: #0a0a0f;
+}
+
+[data-skin="aria"] .iisu-tile {
+  border-radius: 8% !important;
+  rotate: -5deg;
+}
+
+[data-skin="aria"] .glyph {
+  border-radius: 0;
+  color: #0a0a0f;
+  background: #ffe100;
+  box-shadow: 2px 2px 0 #d6001c;
+}
+
+[data-skin="aria"] .sheet-panel,
+[data-skin="aria"] .quick-menu-panel {
+  border-radius: 0 !important;
+  border: 0 solid transparent !important;
+  border-top: 4px solid #ffffff !important;
+  background: #0b0b10 !important;
+  box-shadow: 0 -7px 0 #d6001c !important;
+}
+
+[data-skin="aria"] .iisu-gradient-text {
+  background-image: linear-gradient(100deg, #ffe100 0%, #ff3b52 100%);
+}
+
+[data-skin="aria"] .game-shell {
+  background: linear-gradient(180deg, #13131c 0%, #050508 100%);
+}
+
+[data-skin="aria"] .shop-item-selected {
+  --aria-shadow: #ffe100 !important;
+  background: #d6001c;
+}
+
+[data-skin="aria"] .shop-chip-on {
+  color: #0a0a0f;
+  background: #ffe100;
+}
+
+[data-skin="aria"] .shop-badge {
+  border-radius: 0;
+}
+
+[data-skin="aria"] .form-chip-active {
+  background: #d6001c !important;
+}

@@ -119,10 +119,6 @@ export interface AppData {
   wallet?: TokenWallet;
   /** Cosmetic unlocks bought with tokens. */
   arcadeUnlocks?: ArcadeUnlocks;
-  /** Last TipTop (etc.) ghost traces kept across daily rollover. */
-  lastGhosts?: Partial<
-    Record<GameId, { day: string; trace: number[]; score: number }>
-  >;
   /** ISO week key (e.g. 2026-W12) of the last weekly recap the user saw. */
   lastRecapWeek?: string;
   /** Daily login bonus popup / claim presentation. */
@@ -210,8 +206,6 @@ export function activeLearnDecks(decks: LearnDeck[] | undefined): LearnDeck[] {
 export interface ArcadeDailyCompletion {
   score: number;
   playedAt: string;
-  /** Compact TipTop flap-time trace for ghost races (ms from run start). */
-  ghostTrace?: number[];
   /** True when a continue-credit was already used on this daily run. */
   continued?: boolean;
 }
@@ -235,6 +229,8 @@ export type TokenReason =
   | "endless"
   | "continue"
   | "palette"
+  | "track"
+  | "theme"
   | "grace_earn"
   | "grace_spend"
   | "learn";
@@ -253,8 +249,12 @@ export interface TokenWallet {
 }
 
 export interface ArcadeUnlocks {
-  /** Unlocked palette ids. */
+  /** Unlocked game theme (palette) ids. */
   palettes: string[];
+  /** Unlocked background music track ids (Breakout is always free). */
+  tracks?: string[];
+  /** Unlocked whole-app theme ids (Speed, Battle, Aria). */
+  themes?: string[];
   /** Equipped palette id per game (falls back to theme default). */
   equipped: Partial<Record<GameId, string>>;
 }

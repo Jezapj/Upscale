@@ -81,7 +81,7 @@ export function markDailyPlayed(
   day: string = todayKey(),
   playedAt: string = new Date().toISOString(),
   overwrite = false,
-  extras?: { ghostTrace?: number[]; continued?: boolean },
+  extras?: { continued?: boolean },
 ): AppData {
   const daily = normalizeArcadeDaily(data.arcadeDaily, day);
   if (daily.completed[gameId] && !overwrite) return data;
@@ -89,10 +89,9 @@ export function markDailyPlayed(
   const completion: ArcadeDailyCompletion = {
     score,
     playedAt,
-    ghostTrace: extras?.ghostTrace ?? prev?.ghostTrace,
     continued: extras?.continued ?? prev?.continued,
   };
-  let next: AppData = {
+  return {
     ...data,
     arcadeDaily: {
       date: day,
@@ -102,20 +101,6 @@ export function markDailyPlayed(
       },
     },
   };
-  if (completion.ghostTrace?.length) {
-    next = {
-      ...next,
-      lastGhosts: {
-        ...next.lastGhosts,
-        [gameId]: {
-          day,
-          trace: completion.ghostTrace,
-          score: completion.score,
-        },
-      },
-    };
-  }
-  return next;
 }
 
 /** Union daily completions from two devices (same calendar day). */
@@ -137,19 +122,16 @@ export function mergeArcadeDailyStates(
     if (entry.score > cur.score) {
       completed[gameId] = {
         ...entry,
-        ghostTrace: entry.ghostTrace ?? cur.ghostTrace,
         continued: entry.continued || cur.continued,
       };
     } else if (entry.score === cur.score && entry.playedAt > cur.playedAt) {
       completed[gameId] = {
         ...entry,
-        ghostTrace: entry.ghostTrace ?? cur.ghostTrace,
         continued: entry.continued || cur.continued,
       };
     } else {
       completed[gameId] = {
         ...cur,
-        ghostTrace: cur.ghostTrace ?? entry.ghostTrace,
         continued: cur.continued || entry.continued,
       };
     }

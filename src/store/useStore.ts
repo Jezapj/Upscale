@@ -43,9 +43,13 @@ import {
   spendTokens,
   TOKEN_COST_CONTINUE,
   tokenBalance as getTokenBalance,
+  unlockAppTheme as applyUnlockAppTheme,
   unlockPalette as applyUnlockPalette,
+  unlockTrack as applyUnlockTrack,
   type UnlockablePaletteId,
 } from "@/lib/economy";
+import type { BackgroundTrackId } from "@/lib/backgroundMusic";
+import type { AppThemeId } from "@/lib/appThemes";
 import {
   defaultDeckFields,
   ensureLearn,
@@ -116,7 +120,7 @@ interface StoreState {
     gameId: GameId,
     score: number,
     overwrite?: boolean,
-    extras?: { ghostTrace?: number[]; continued?: boolean },
+    extras?: { continued?: boolean },
   ) => void;
   setArcadeProfile: (profile: ArcadeProfile) => void;
   setGamePremium: (premium: boolean) => void;
@@ -125,6 +129,8 @@ interface StoreState {
   buyContinue: (gameId: GameId) => boolean;
   unlockPalette: (paletteId: UnlockablePaletteId) => boolean;
   equipPalette: (gameId: GameId, paletteId: UnlockablePaletteId | null) => void;
+  unlockTrack: (trackId: BackgroundTrackId) => boolean;
+  unlockAppTheme: (themeId: AppThemeId) => boolean;
   setLastRecapWeek: (weekKey: string) => void;
   clearTokenEarn: () => void;
   openLoginBonus: () => void;
@@ -507,7 +513,6 @@ export const useStore = create<StoreState>((set, get) => {
               [gameId]: {
                 score: prev?.score ?? 0,
                 playedAt: prev?.playedAt ?? new Date().toISOString(),
-                ghostTrace: prev?.ghostTrace,
                 continued: true,
               },
             },
@@ -530,6 +535,28 @@ export const useStore = create<StoreState>((set, get) => {
 
     equipPalette(gameId, paletteId) {
       mutate((d) => applyEquipPalette(d, gameId, paletteId));
+    },
+
+    unlockTrack(trackId) {
+      let ok = false;
+      mutate((d) => {
+        const next = applyUnlockTrack(d, trackId);
+        if (!next) return d;
+        ok = true;
+        return next;
+      });
+      return ok;
+    },
+
+    unlockAppTheme(themeId) {
+      let ok = false;
+      mutate((d) => {
+        const next = applyUnlockAppTheme(d, themeId);
+        if (!next) return d;
+        ok = true;
+        return next;
+      });
+      return ok;
     },
 
     setLastRecapWeek(weekKey) {

@@ -5,7 +5,7 @@ import { StatusBar } from "@/components/StatusBar";
 import { PageHeader } from "@/components/PageHeader";
 import { Tile } from "@/components/Tile";
 import { ProSubscriptionSheet } from "@/components/ProSubscriptionSheet";
-import { ArcadeShopSheet } from "@/components/ArcadeShopSheet";
+import { ShopSheet } from "@/components/ShopSheet";
 import { TokenBalanceCapsule } from "@/components/TokenBalanceCapsule";
 import { GAMES, GAME_GLYPH, gamePath, PRO_PRICE_LABEL } from "@/lib/games";
 import { TOKEN_COST_ENDLESS } from "@/lib/economy";
@@ -49,11 +49,7 @@ export function GamesScreen() {
         const id = gameId as GameId;
         const local = getDailyCompletion(useStore.getState().data, id, today);
         if (local && local.score > 0 && local.score >= entry.score) continue;
-        markDailyPlayed(id, entry.score, true, {
-          ghostTrace: entry.meta?.ghostTrace
-            ? entry.meta.ghostTrace.split(",").map(Number).filter((n) => Number.isFinite(n))
-            : undefined,
-        });
+        markDailyPlayed(id, entry.score, true);
       }
     });
     return () => {
@@ -166,7 +162,7 @@ export function GamesScreen() {
       </ScrollArea>
 
       <ProSubscriptionSheet open={proOpen} onClose={() => setProOpen(false)} />
-      <ArcadeShopSheet open={shopOpen} onClose={() => setShopOpen(false)} />
+      <ShopSheet open={shopOpen} onClose={() => setShopOpen(false)} />
     </>
   );
 }

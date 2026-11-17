@@ -84,7 +84,7 @@ export function HomeScreen() {
             <button
               data-tour="checkin"
               onClick={() => nav("/checkin")}
-              className="relative w-full overflow-hidden rounded-tile text-left shadow-panel active:scale-[0.99] transition-transform"
+              className="home-hero relative w-full overflow-hidden rounded-tile text-left shadow-panel active:scale-[0.99] transition-transform"
             >
               <div
                 className="relative min-h-[166px] w-full sm:min-h-[142px]"

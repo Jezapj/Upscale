@@ -12,7 +12,6 @@ import {
 } from "./backup";
 import { applyDailySession, ensureStarterBalance, mergeArcadeUnlocks, mergeLoginBonus, mergeWallets } from "./economy";
 import { mergeLearn } from "./learn/merge";
-import type { GameId } from "./types";
 import { compactScoreEntries } from "./gameLeaderboard";
 
 interface CloudPayload {
@@ -160,27 +159,6 @@ export async function saveCloudData(userId: string, data: AppData): Promise<void
   }
 }
 
-function mergeLastGhosts(
-  a: AppData["lastGhosts"],
-  b: AppData["lastGhosts"],
-): AppData["lastGhosts"] {
-  if (!a && !b) return undefined;
-  const out: NonNullable<AppData["lastGhosts"]> = { ...(a ?? {}) };
-  for (const [key, ghost] of Object.entries(b ?? {})) {
-    const gameId = key as GameId;
-    const cur = out[gameId];
-    if (!cur) {
-      out[gameId] = ghost;
-      continue;
-    }
-    if (!ghost) continue;
-    if (ghost.day > cur.day || (ghost.day === cur.day && ghost.score >= cur.score)) {
-      out[gameId] = ghost;
-    }
-  }
-  return Object.keys(out).length ? out : undefined;
-}
-
 /** Login / sync: merge habits, then always union notes/wallet/arcade from both sides. */
 export function mergeLocalAndCloud(
   local: AppData,
@@ -205,7 +183,6 @@ export function mergeLocalAndCloud(
     gamePremium: local.gamePremium || cloud.data.gamePremium || undefined,
     wallet: mergeWallets(local.wallet, cloud.data.wallet),
     arcadeUnlocks: mergeArcadeUnlocks(local.arcadeUnlocks, cloud.data.arcadeUnlocks),
-    lastGhosts: mergeLastGhosts(local.lastGhosts, cloud.data.lastGhosts),
     lastRecapWeek:
       (local.lastRecapWeek ?? "") >= (cloud.data.lastRecapWeek ?? "")
         ? local.lastRecapWeek ?? cloud.data.lastRecapWeek
@@ -213,8 +190,7 @@ export function mergeLocalAndCloud(
     loginBonus: mergeLoginBonus(local.loginBonus, cloud.data.loginBonus),
     learn: mergeLearn(local.learn, cloud.data.learn),
   };
-  if (!merged.lastGhosts || Object.keys(merged.lastGhosts).length === 0) {
-    delete merged.lastGhosts;
-  }
+  // Ghost replays were removed; drop traces left in older saves.
+  delete (merged as { lastGhosts?: unknown }).lastGhosts;
   return applyDailySession(ensureStarterBalance(merged));
 }

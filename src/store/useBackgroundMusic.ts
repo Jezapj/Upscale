@@ -49,7 +49,8 @@ interface BackgroundMusicState {
   setMuted: (muted: boolean) => void;
   toggleMuted: () => void;
   setTrackId: (trackId: BackgroundTrackId) => void;
-  cycleTrack: () => void;
+  /** Step to the next owned track (locked tracks are skipped). */
+  cycleTrack: (unlockedTracks?: readonly string[]) => void;
 }
 
 export const useBackgroundMusic = create<BackgroundMusicState>((set, get) => ({
@@ -85,9 +86,9 @@ export const useBackgroundMusic = create<BackgroundMusicState>((set, get) => ({
     }
     set({ trackId });
   },
-  cycleTrack: () => {
-    const next = nextBackgroundTrackId(get().trackId);
-    get().setTrackId(next);
+  cycleTrack: (unlockedTracks) => {
+    const next = nextBackgroundTrackId(get().trackId, unlockedTracks);
+    if (next !== get().trackId) get().setTrackId(next);
   },
 }));
 

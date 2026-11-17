@@ -52,7 +52,8 @@ export function Sheet({ open, onClose, title, children }: Props) {
           )}
           <button
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-white/80 text-ink-soft shadow-soft active:scale-95"
+            aria-label="Close"
+            className="sheet-close flex h-9 w-9 items-center justify-center rounded-full bg-white/80 text-ink-soft shadow-soft active:scale-95"
           >
             <X size={18} />
           </button>

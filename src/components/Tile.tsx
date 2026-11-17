@@ -59,7 +59,7 @@ export function Tile({
     <div
       onClick={onClick}
       role={onClick ? "button" : undefined}
-      className={`relative flex items-center justify-center no-select ${
+      className={`iisu-tile relative flex items-center justify-center no-select ${
         state === "priority" ? "animate-glow-pulse" : ""
       } ${onClick ? "cursor-pointer active:scale-95 transition-transform" : ""} ${className}`}
       style={{

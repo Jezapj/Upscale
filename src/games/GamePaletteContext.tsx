@@ -1,6 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react";
 import { getGamePalette, getGamePaletteWithUnlock, type GamePalette } from "@/lib/gameTheme";
-import { useTheme } from "@/store/useTheme";
+import { useEffectiveTheme } from "@/store/useTheme";
 import { useStore } from "@/store/useStore";
 import type { GameId } from "@/lib/types";
 
@@ -15,7 +15,7 @@ export function GamePaletteProvider({
   children: ReactNode;
   gameId?: GameId;
 }) {
-  const theme = useTheme((s) => s.theme);
+  const theme = useEffectiveTheme();
   const equipped = useStore((s) =>
     gameId ? s.data?.arcadeUnlocks?.equipped?.[gameId] : undefined,
   );

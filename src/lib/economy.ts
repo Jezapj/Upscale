@@ -15,6 +15,12 @@ import type {
 } from "./types";
 import { dayKey, shiftDay, todayKey } from "./dates";
 import { isScheduledOn, scheduledDayKeys } from "./frequency";
+import {
+  BACKGROUND_TRACKS,
+  isTrackOwned,
+  type BackgroundTrackId,
+} from "./backgroundMusic";
+import { getAppTheme, type AppThemeId } from "./appThemes";
 
 /** Lightweight current streak so economy does not import stats (avoids a cycle). */
 function currentStreakFor(data: AppData, routine: Routine): number {
@@ -175,6 +181,14 @@ export function spendContinueTxnId(
 
 export function spendPaletteTxnId(paletteId: string): string {
   return `spend:palette:${paletteId}`;
+}
+
+export function spendTrackTxnId(trackId: string): string {
+  return `spend:track:${trackId}`;
+}
+
+export function spendThemeTxnId(themeId: string): string {
+  return `spend:theme:${themeId}`;
 }
 
 export function graceEarnTxnId(routineId: string, milestone: number): string {
@@ -486,6 +500,42 @@ export function unlockPalette(
   };
 }
 
+/** Buy a locked background music track. Null when unknown or unaffordable. */
+export function unlockTrack(
+  data: AppData,
+  trackId: BackgroundTrackId,
+): AppData | null {
+  const meta = BACKGROUND_TRACKS.find((t) => t.id === trackId);
+  if (!meta) return null;
+  const unlocks = ensureUnlocks(data);
+  if (isTrackOwned(trackId, unlocks.tracks)) return data;
+  const spent = spendTokens(data, meta.cost, "track", spendTrackTxnId(trackId));
+  if (!spent) return null;
+  const next = ensureUnlocks(spent);
+  return {
+    ...spent,
+    arcadeUnlocks: { ...next, tracks: [...(next.tracks ?? []), trackId] },
+  };
+}
+
+/** Buy a whole-app theme. Null when unknown or unaffordable. */
+export function unlockAppTheme(
+  data: AppData,
+  themeId: AppThemeId,
+): AppData | null {
+  const meta = getAppTheme(themeId);
+  if (!meta) return null;
+  const unlocks = ensureUnlocks(data);
+  if (unlocks.themes?.includes(themeId)) return data;
+  const spent = spendTokens(data, meta.cost, "theme", spendThemeTxnId(themeId));
+  if (!spent) return null;
+  const next = ensureUnlocks(spent);
+  return {
+    ...spent,
+    arcadeUnlocks: { ...next, themes: [...(next.themes ?? []), themeId] },
+  };
+}
+
 /** Sentinel for "explicitly no palette" - distinguishes unset from explicitly cleared. */
 const NO_PALETTE = "__NONE__" as const;
 
@@ -549,7 +599,14 @@ export function mergeArcadeUnlocks(
       equipped[gameId] = bVal;
     }
   }
-  return { palettes, equipped };
+  const tracks = [...new Set([...(a.tracks ?? []), ...(b.tracks ?? [])])];
+  const themes = [...new Set([...(a.themes ?? []), ...(b.themes ?? [])])];
+  return {
+    palettes,
+    equipped,
+    ...(tracks.length ? { tracks } : {}),
+    ...(themes.length ? { themes } : {}),
+  };
 }
 
 export function tokensEarnedOnDate(

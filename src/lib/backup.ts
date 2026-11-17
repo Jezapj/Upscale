@@ -157,7 +157,6 @@ export function mergeAppDataEntities(local: AppData, cloud: AppData): AppData {
     gameScores: local.gameScores ?? cloud.gameScores,
     gamePlays: local.gamePlays ?? cloud.gamePlays,
     gamePremium: local.gamePremium || cloud.gamePremium,
-    lastGhosts: { ...(cloud.lastGhosts ?? {}), ...(local.lastGhosts ?? {}) },
     lastRecapWeek: local.lastRecapWeek ?? cloud.lastRecapWeek,
     loginBonus: mergeLoginBonus(local.loginBonus, cloud.loginBonus),
     learn: mergeLearn(local.learn, cloud.learn),

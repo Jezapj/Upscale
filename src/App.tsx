@@ -19,6 +19,7 @@ import { LoginBonusSheet } from "@/components/LoginBonusSheet";
 import { useKeyboardControls } from "@/hooks/useKeyboardControls";
 import { useRoutineReminders } from "@/hooks/useRoutineReminders";
 import { ThemeSyncEffect } from "@/store/useTheme";
+import { UnlockGuard } from "@/components/UnlockGuard";
 import { useWalkthrough, walkthroughSeen } from "@/store/useWalkthrough";
 import { Walkthrough } from "@/components/Walkthrough";
 import { LoginScreen } from "@/screens/LoginScreen";
@@ -309,6 +310,7 @@ function AppShell() {
   return (
     <div id="app-shell" className="app-shell">
       <ThemeSyncEffect />
+      <UnlockGuard />
       <BackgroundMusicPlayer />
       <UiTapSound />
       <BackgroundDecor paused={isPlayingGame} />

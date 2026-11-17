@@ -95,7 +95,7 @@ Habits fund the arcade (Play Coins / StreetPass vibe):
 | ---- | ----- |
 | 1 token per routine completed today (idempotent) | 1 token per Endless run (non-Pro) |
 | Clear-day bonus when every scheduled routine is done | 3 tokens for one daily continue credit |
-| Streak milestone bonuses every 7 days | Unlockable game palettes in the Arcade shop |
+| Streak milestone bonuses every 7 days | Shop: game themes, music tracks and whole-app themes (Speed, Battle, Aria) |
 | Starter grant of 5 tokens on first load after update | Arcade Pro still bypasses Endless costs |
 
 Daily challenge entry stays free. Wallet is a transaction ledger (`AppData.wallet.txns`) so cloud merge is a safe union by id.
@@ -141,7 +141,6 @@ Four mini-games with **daily challenges** (one seeded run per game per calendar 
 - **Personal high scores**: stored in `AppData.gameScores` (top 10 per board key).
 - **Global daily leaderboard**: Firestore `dailyBoards/{gameId}_{day}/entries/{uid}`; one create-once entry per user per game per day.
 - **Arcade profile**: optional public display name for leaderboards (or anonymous opt-out).
-- **TipTop ghosts**: daily runs record flap traces; race your last ghost or a board entry that uploaded `meta.ghostTrace`.
 - **Friends** (`/friends`): 3DS-style friend codes, shared streak summaries (no routine details), and daily kudos.
 
 ### Settings & backup
@@ -305,8 +304,7 @@ interface AppData {
   arcadeDaily?: ArcadeDailyState;
   arcadeProfile?: ArcadeProfile;
   wallet?: TokenWallet;           // Play Token ledger
-  arcadeUnlocks?: ArcadeUnlocks;  // palette unlocks
-  lastGhosts?: Partial<Record<GameId, { day: string; trace: number[]; score: number }>>;
+  arcadeUnlocks?: ArcadeUnlocks;  // game themes, music tracks, app themes
   lastRecapWeek?: string;
   version: number;
 }
@@ -443,7 +441,7 @@ Owned by the authenticated user (`request.auth.uid == userId`).
     "logs": { /* … */ },
     "syncedAt": "2026-08-01T12:00:00.000Z",
     "wallet": { "txns": [ /* TokenTxn */ ] },
-    "arcadeUnlocks": { "palettes": [], "equipped": {} },
+    "arcadeUnlocks": { "palettes": [], "equipped": {}, "tracks": [], "themes": [] },
     "gameScores": { "tiptop": [ /* … */ ] },
     "arcadeDaily": { "date": "2026-08-01", "completed": { /* … */ } },
     "arcadeProfile": { "username": "Player", "optedOut": false, "prompted": true },
@@ -468,7 +466,7 @@ Owned by the authenticated user. Used by Cloud Functions to send FCM reminders.
 
 ### `dailyBoards/{gameId}_{day}/entries/{uid}`
 
-Global daily arcade scores. **Create-once** per user per game per day (no updates or deletes). Optional `meta.ghostTrace` for TipTop.
+Global daily arcade scores. **Create-once** per user per game per day (no updates or deletes).
 
 ### `friendCodes/{code}`
 

@@ -55,8 +55,6 @@ interface Props {
     playMode: PlayMode;
     /** Set for daily runs (and optional practice seeds). */
     seed?: number;
-    /** TipTop ghost flap trace to race against. */
-    ghostTrace?: number[];
     /** First successful frame: lock daily / spend the endless token. */
     onLive: () => void;
   }) => React.ReactNode;
@@ -150,8 +148,6 @@ export function GameShell({
   const dailyContinued =
     data.arcadeDaily?.date === today &&
     !!data.arcadeDaily.completed[gameId]?.continued;
-  const [raceGhost, setRaceGhost] = useState(false);
-  const [ghostTrace, setGhostTrace] = useState<number[] | undefined>(undefined);
 
   const dailyDone =
     hasPlayedDaily(data, gameId, today) || remoteDailyLocked;
@@ -201,14 +197,7 @@ export function GameShell({
     if (!mine) return;
     const local = getDailyCompletion(useStore.getState().data, gameId, today);
     if (local && local.score > 0 && local.score >= mine.score) return;
-    markDailyPlayed(gameId, mine.score, true, {
-      ghostTrace: mine.meta?.ghostTrace
-        ? mine.meta.ghostTrace
-            .split(",")
-            .map(Number)
-            .filter((n) => Number.isFinite(n))
-        : undefined,
-    });
+    markDailyPlayed(gameId, mine.score, true);
   }, [dailyEntries, boardUid, gameId, today, markDailyPlayed]);
 
   useEffect(() => {
@@ -240,8 +229,6 @@ export function GameShell({
     setPlayMode(null);
     setShowPracticePicker(false);
     setPendingDailySubmit(null);
-    setRaceGhost(false);
-    setGhostTrace(undefined);
   }, [onSessionReset]);
 
   const beginRun = useCallback((mode: PlayMode) => {
@@ -337,19 +324,13 @@ export function GameShell({
     async (normalized: GameResult) => {
       if (!user || !isGoogle) return;
       const profile = useStore.getState().data.arcadeProfile;
-      const meta: Record<string, string> = {
-        ...(resultMeta(normalized) ?? {}),
-      };
-      if (normalized.ghostTrace?.length) {
-        const encoded = normalized.ghostTrace.join(",");
-        if (encoded.length < 40_000) meta.ghostTrace = encoded;
-      }
+      const meta = resultMeta(normalized);
       await submitDailyScore({
         userId: user.id,
         gameId,
         score: normalized.score,
         displayName: arcadeDisplayName(profile),
-        meta: Object.keys(meta).length ? meta : undefined,
+        meta,
       });
       await refreshDailyBoard();
     },
@@ -358,9 +339,7 @@ export function GameShell({
 
   const finishDaily = useCallback(
     async (normalized: GameResult) => {
-      markDailyPlayed(gameId, normalized.score, true, {
-        ghostTrace: normalized.ghostTrace,
-      });
+      markDailyPlayed(gameId, normalized.score, true);
       setResult(normalized);
       setIsNewBest(false);
       startedRef.current = false;
@@ -508,52 +487,6 @@ export function GameShell({
                     Today&apos;s score: {dailyCompletion.score.toLocaleString()}
                   </p>
                 ) : null}
-
-                {gameId === "tiptop" && dailyCompletion?.ghostTrace?.length ? (
-                  <label className="flex items-center gap-2 text-xs font-700 text-ink-soft">
-                    <input
-                      type="checkbox"
-                      checked={raceGhost}
-                      onChange={(e) => {
-                        setRaceGhost(e.target.checked);
-                        setGhostTrace(
-                          e.target.checked ? dailyCompletion.ghostTrace : undefined,
-                        );
-                      }}
-                    />
-                    Race today&apos;s ghost (practice only after daily)
-                  </label>
-                ) : null}
-
-                {gameId === "tiptop" && !dailyDone && (() => {
-                  const last = data.lastGhosts?.tiptop;
-                  const boardGhost = dailyEntries.find((e) => e.meta?.ghostTrace);
-                  const trace = last?.trace?.length
-                    ? last.trace
-                    : boardGhost?.meta?.ghostTrace
-                      ? boardGhost.meta.ghostTrace
-                          .split(",")
-                          .map(Number)
-                          .filter((n) => Number.isFinite(n))
-                      : undefined;
-                  if (!trace?.length) return null;
-                  const label = last?.trace?.length
-                    ? `Race your ${last.day} ghost`
-                    : "Race a board ghost";
-                  return (
-                    <label className="flex items-center gap-2 text-xs font-700 text-ink-soft">
-                      <input
-                        type="checkbox"
-                        checked={raceGhost}
-                        onChange={(e) => {
-                          setRaceGhost(e.target.checked);
-                          setGhostTrace(e.target.checked ? trace : undefined);
-                        }}
-                      />
-                      {label}
-                    </label>
-                  );
-                })()}
 
                 <button
                   type="button"
@@ -823,8 +756,6 @@ export function GameShell({
                 playMode,
                 onLive,
                 seed: playMode === "daily" ? daySeed : undefined,
-                ghostTrace:
-                  gameId === "tiptop" && raceGhost ? ghostTrace : undefined,
               })}
 
               {!paused && (

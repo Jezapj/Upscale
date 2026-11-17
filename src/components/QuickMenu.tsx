@@ -4,14 +4,17 @@ import { Bell, ChevronRight, Moon, Music, Sun, Volume2, VolumeX, X } from "lucid
 import { useControls } from "@/store/useControls";
 import { useBackgroundMusic, useBackgroundTrack } from "@/store/useBackgroundMusic";
 import { useUiSound } from "@/store/useUiSound";
-import { useTheme } from "@/store/useTheme";
+import { effectiveTheme, useTheme } from "@/store/useTheme";
+import { useStore } from "@/store/useStore";
+import { getAppTheme } from "@/lib/appThemes";
 import { playUiChime } from "@/lib/uiSound";
 
 /** Quick options menu (B) - dark mode toggle and future shortcuts. */
 export function QuickMenu() {
   const open = useControls((s) => s.quickMenuOpen);
   const setOpen = useControls((s) => s.setQuickMenuOpen);
-  const { theme, toggleTheme } = useTheme();
+  const { theme, skin, toggleTheme } = useTheme();
+  const unlockedTracks = useStore((s) => s.data.arcadeUnlocks?.tracks);
   const { volume, muted, setVolume, toggleMuted, cycleTrack } = useBackgroundMusic();
   const sfxVolume = useUiSound((s) => s.volume);
   const sfxMuted = useUiSound((s) => s.muted);
@@ -39,7 +42,8 @@ export function QuickMenu() {
 
   if (!open || !shell) return null;
 
-  const isDark = theme === "dark";
+  const isDark = effectiveTheme(theme, skin) === "dark";
+  const skinMeta = getAppTheme(skin);
 
   return createPortal(
     <div className="absolute inset-0 z-[45] flex flex-col justify-end">
@@ -64,7 +68,8 @@ export function QuickMenu() {
         <button
           type="button"
           onClick={toggleTheme}
-          className="quick-menu-row flex w-full items-center justify-between gap-3 rounded-tile px-4 py-3.5 text-left transition-all active:scale-[0.98]"
+          disabled={!!skinMeta}
+          className="quick-menu-row flex w-full items-center justify-between gap-3 rounded-tile px-4 py-3.5 text-left transition-all active:scale-[0.98] disabled:opacity-60"
         >
           <div className="flex items-center gap-3">
             <span
@@ -87,7 +92,11 @@ export function QuickMenu() {
             <div>
               <p className="font-800 text-ink">Dark mode</p>
               <p className="text-xs font-700 text-ink-faint">
-                {isDark ? "Dark theme enabled" : "Light theme"}
+                {skinMeta
+                  ? `Set by the ${skinMeta.name} theme · change it in the Shop`
+                  : isDark
+                    ? "Dark theme enabled"
+                    : "Light theme"}
               </p>
             </div>
           </div>
@@ -125,7 +134,7 @@ export function QuickMenu() {
               <p className="font-800 text-ink">Music</p>
               <button
                 type="button"
-                onClick={cycleTrack}
+                onClick={() => cycleTrack(unlockedTracks)}
                 className="mt-0.5 flex w-full items-center gap-1 text-left text-xs font-700 text-ink-faint transition-colors active:text-ink"
               >
                 <span className="truncate">{track.label}</span>
