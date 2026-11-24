@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { FormActions } from "./FormActions";
 import type { Note } from "@/lib/types";
 import { ColorPicker, Field, inputClass } from "./Picker";
 
@@ -95,17 +95,10 @@ export function NoteForm({ initial, onSave, onDelete }: Props) {
         <ColorPicker value={color} onChange={setColor} />
       </Field>
 
-      <div className="flex gap-2 pt-1">
-        {onDelete && (
-          <button
-            type="button"
-            onClick={onDelete}
-            className="flex h-12 w-12 items-center justify-center rounded-pill bg-white/80 text-cat-exercise shadow-soft active:scale-95"
-            data-sfx="alert"
-          >
-            <Trash2 size={20} />
-          </button>
-        )}
+      <FormActions
+        onDelete={onDelete}
+        itemLabel="note"
+      >
         <button
           type="button"
           onClick={submit}
@@ -114,7 +107,7 @@ export function NoteForm({ initial, onSave, onDelete }: Props) {
         >
           {initial ? "Save changes" : "Add note"}
         </button>
-      </div>
+      </FormActions>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { FormActions } from "../FormActions";
 import type { LearnDeck } from "@/lib/types";
 import { DEFAULT_NEW_PER_SESSION, DEFAULT_SESSION_SIZE } from "@/lib/learn/scheduler";
 import { Tile } from "../Tile";
@@ -129,17 +129,11 @@ export function DeckForm({
         <ColorPicker value={color} onChange={setColor} />
       </Field>
 
-      <div className="flex gap-2 pt-1">
-        {onDelete && (
-          <button
-            type="button"
-            onClick={onDelete}
-            className="flex h-12 w-12 items-center justify-center rounded-pill bg-white/80 text-cat-exercise shadow-soft active:scale-95"
-            data-sfx="alert"
-          >
-            <Trash2 size={20} />
-          </button>
-        )}
+      <FormActions
+        onDelete={onDelete}
+        itemLabel="deck"
+        deleteDetail="All of its cards will be deleted too."
+      >
         <button
           type="button"
           onClick={submit}
@@ -148,7 +142,7 @@ export function DeckForm({
         >
           {initial ? "Save deck" : "Create deck"}
         </button>
-      </div>
+      </FormActions>
     </div>
   );
 }

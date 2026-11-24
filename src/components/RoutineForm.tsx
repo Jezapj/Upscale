@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Calendar, Trash2 } from "lucide-react";
+import { FormActions } from "./FormActions";
+import { Calendar } from "lucide-react";
 import type { CategoryKey, Frequency, Routine } from "@/lib/types";
 import { CATEGORY_LIST, getCategory } from "@/lib/categories";
 import { DOW_LABELS } from "@/lib/dates";
@@ -398,17 +399,11 @@ export function RoutineForm({
         </Field>
       )}
 
-      <div className="flex gap-2 pt-1">
-        {onDelete && (
-          <button
-            type="button"
-            onClick={onDelete}
-            className="flex h-12 w-12 items-center justify-center rounded-pill bg-white/80 text-cat-exercise shadow-soft active:scale-95"
-            data-sfx="alert"
-          >
-            <Trash2 size={20} />
-          </button>
-        )}
+      <FormActions
+        onDelete={onDelete}
+        itemLabel="routine"
+        deleteDetail="Its check-in history will be removed too."
+      >
         <button
           type="button"
           onClick={submit}
@@ -417,7 +412,7 @@ export function RoutineForm({
         >
           {initial ? "Save changes" : "Add routine"}
         </button>
-      </div>
+      </FormActions>
     </div>
   );
 }
