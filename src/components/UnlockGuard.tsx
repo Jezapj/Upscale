@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useStore } from "@/store/useStore";
 import { useTheme } from "@/store/useTheme";
 import { useBackgroundMusic } from "@/store/useBackgroundMusic";
+import { ownsAppTheme } from "@/lib/appThemes";
 import {
   DEFAULT_BACKGROUND_TRACK_ID,
   isTrackOwned,
@@ -26,7 +27,7 @@ export function UnlockGuard() {
   }, [trackId, unlocks?.tracks, setTrackId]);
 
   useEffect(() => {
-    if (skin && !unlocks?.themes?.includes(skin)) setSkin(null);
+    if (skin && !ownsAppTheme(unlocks?.themes, skin)) setSkin(null);
   }, [skin, unlocks?.themes, setSkin]);
 
   return null;

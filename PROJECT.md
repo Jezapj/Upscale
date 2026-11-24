@@ -95,7 +95,7 @@ Habits fund the arcade (Play Coins / StreetPass vibe):
 | ---- | ----- |
 | 1 token per routine completed today (idempotent) | 1 token per Endless run (non-Pro) |
 | Clear-day bonus when every scheduled routine is done | 3 tokens for one daily continue credit |
-| Streak milestone bonuses every 7 days | Shop: game themes, music tracks and whole-app themes (Speed, Battle, Aria) |
+| Streak milestone bonuses every 7 days | Shop: game themes, music tracks and whole-app themes (Speed, Battle, Midnight Aria, TV Aria, Rebel Aria) |
 | Starter grant of 5 tokens on first load after update | Arcade Pro still bypasses Endless costs |
 
 Daily challenge entry stays free. Wallet is a transaction ledger (`AppData.wallet.txns`) so cloud merge is a safe union by id.

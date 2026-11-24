@@ -20,7 +20,7 @@ import {
   isTrackOwned,
   type BackgroundTrackId,
 } from "./backgroundMusic";
-import { getAppTheme, type AppThemeId } from "./appThemes";
+import { getAppTheme, ownsAppTheme, type AppThemeId } from "./appThemes";
 
 /** Lightweight current streak so economy does not import stats (avoids a cycle). */
 function currentStreakFor(data: AppData, routine: Routine): number {
@@ -526,7 +526,7 @@ export function unlockAppTheme(
   const meta = getAppTheme(themeId);
   if (!meta) return null;
   const unlocks = ensureUnlocks(data);
-  if (unlocks.themes?.includes(themeId)) return data;
+  if (ownsAppTheme(unlocks.themes, themeId)) return data;
   const spent = spendTokens(data, meta.cost, "theme", spendThemeTxnId(themeId));
   if (!spent) return null;
   const next = ensureUnlocks(spent);

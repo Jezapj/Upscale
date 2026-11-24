@@ -13,7 +13,7 @@ import {
   tokenBalance,
   type UnlockablePaletteId,
 } from "@/lib/economy";
-import { APP_THEMES, type AppThemeId } from "@/lib/appThemes";
+import { APP_THEMES, ownsAppTheme, type AppThemeId } from "@/lib/appThemes";
 import {
   BACKGROUND_TRACKS,
   isTrackOwned,
@@ -190,7 +190,7 @@ export function ShopSheet({ open, onClose, focusGameId }: Props) {
   const [trackSel, setTrackSel] = useState<BackgroundTrackId>(trackId);
 
   const themeOwned = (id: ThemeChoice) =>
-    id === CLASSIC || !!unlocks.themes?.includes(id);
+    id === CLASSIC || ownsAppTheme(unlocks.themes, id);
   const themeActive = (id: ThemeChoice) => (skin ?? CLASSIC) === id;
 
   const palette =

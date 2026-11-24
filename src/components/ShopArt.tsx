@@ -109,16 +109,42 @@ function BucketLabel({ theme }: { theme: AppThemeId | "classic" }) {
           <path d="M16 11h9" stroke="#fff" strokeWidth="2.6" strokeLinecap="square" />
         </>
       );
-    case "aria":
+    case "aria-midnight":
       return (
         <>
-          <rect width="40" height="22" fill="#0b0b10" />
-          <path d="M0 0h16L7 22H0z" fill="#d6001c" />
-          <path d="M40 22H22l5-9 13-4z" fill="#1146c9" />
-          <path d="M22 3l2 4.4 4.8.5-3.6 3.2 1 4.7-4.2-2.4-4.2 2.4 1-4.7-3.6-3.2 4.8-.5z" fill="#ffe100" stroke="#0b0b10" strokeWidth="0.8" />
-          {[30, 34, 38].map((x) =>
-            [3, 7].map((y) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1" fill="#fff" fillOpacity="0.75" />),
-          )}
+          <rect width="40" height="22" fill="#0b3fd0" />
+          <path d="M0 0h40v8C26 5 14 5 0 8z" fill="#5fb8ff" fillOpacity="0.45" />
+          <path d="M4 0h5L3 22H0zM17 0h4L13 22H9zM31 0h4L27 22h-4z" fill="#c8f0ff" fillOpacity="0.16" />
+          <path d="M11 17l3-6h16l-3 6z" fill="#ff2d55" />
+          <path d="M9 15l3-6h16l-3 6z" fill="#fff" />
+          <circle cx="34" cy="16" r="1.6" fill="none" stroke="#c8f0ff" strokeWidth="0.7" />
+          <circle cx="36" cy="11" r="1" fill="none" stroke="#c8f0ff" strokeWidth="0.6" />
+        </>
+      );
+    case "aria-tv":
+      return (
+        <>
+          <rect width="40" height="22" fill="#fff4a8" />
+          <path d="M30 0l8 6-8 6 8 6-8 6" fill="none" stroke="#ff7a1a" strokeWidth="1.6" />
+          <path d="M33 0l7 6-7 6 7 6-7 6" fill="none" stroke="#20b4c8" strokeWidth="1.6" />
+          <rect x="8" y="3" width="16" height="12" rx="3" fill="#ffd800" stroke="#141414" strokeWidth="1.8" />
+          <path d="M13 3l-2-3M19 3l2-3" stroke="#141414" strokeWidth="1.2" />
+          <g transform="rotate(-8 20 19)">
+            <rect x="-4" y="16.5" width="48" height="5" fill="#ffd800" stroke="#141414" strokeWidth="0.8" />
+            {[0, 6, 12, 18, 24, 30, 36].map((x) => (
+              <path key={x} d={`M${x} 21.5l3-5h2.4l-3 5z`} fill="#141414" />
+            ))}
+          </g>
+        </>
+      );
+    case "aria-rebel":
+      return (
+        <>
+          <rect width="40" height="22" fill="#161616" />
+          <path d="M0 0h40v6l-5 2-6-2-6 3-6-2-6 3-6-2-5 1z" fill="#d8001c" />
+          <path d="M0 22h40v-5l-6-2-6 2-7-3-6 3-7-2-8 2z" fill="#d8001c" />
+          <path d="M3 16L37 9" stroke="#f2f2f2" strokeWidth="0.8" />
+          <path d="M23 6l1.8 4 4.4.4-3.3 2.9 1 4.3-3.9-2.3-3.9 2.3 1-4.3-3.3-2.9 4.4-.4z" fill="#0d0d0d" stroke="#fff" strokeWidth="0.9" />
         </>
       );
     default:
@@ -139,7 +165,9 @@ const BUCKET_PAINT: Record<AppThemeId | "classic", [string, string]> = {
   classic: ["#74dcb6", "#3a8ef0"],
   speed: ["#1c6dff", "#ffc400"],
   battle: ["#e8222c", "#ffc21a"],
-  aria: ["#d6001c", "#ffe100"],
+  "aria-midnight": ["#1d7cf2", "#ff2d55"],
+  "aria-tv": ["#ffd800", "#141414"],
+  "aria-rebel": ["#d8001c", "#ffffff"],
 };
 
 /** Paint bucket: label previews the theme, paint spills in its colours. */

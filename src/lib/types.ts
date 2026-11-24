@@ -253,7 +253,7 @@ export interface ArcadeUnlocks {
   palettes: string[];
   /** Unlocked background music track ids (Breakout is always free). */
   tracks?: string[];
-  /** Unlocked whole-app theme ids (Speed, Battle, Aria). */
+  /** Unlocked whole-app theme ids. A legacy "aria" entry owns all three Aria themes. */
   themes?: string[];
   /** Equipped palette id per game (falls back to theme default). */
   equipped: Partial<Record<GameId, string>>;

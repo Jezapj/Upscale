@@ -1,6 +1,11 @@
 import { useEffect } from "react";
 import { create } from "zustand";
-import { getAppTheme, isAppThemeId, type AppThemeId } from "@/lib/appThemes";
+import {
+  getAppTheme,
+  isAppThemeId,
+  migrateSkinId,
+  type AppThemeId,
+} from "@/lib/appThemes";
 
 export type Theme = "light" | "dark";
 
@@ -24,7 +29,7 @@ function storedTheme(): Theme | null {
 
 function storedSkin(): AppThemeId | null {
   try {
-    const raw = localStorage.getItem(STORAGE_SKIN);
+    const raw = migrateSkinId(localStorage.getItem(STORAGE_SKIN));
     if (isAppThemeId(raw)) return raw;
   } catch {
     /* noop */
